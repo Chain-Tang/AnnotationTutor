@@ -51,6 +51,20 @@ export type Anchor = {
 
 export type AnchorOrigin = "generated" | "existing" | "legacy";
 
+export type DialogueRole = "user" | "agent";
+
+/**
+ * One turn of in-annotation dialogue (learner ↔ tutor), persisted in the
+ * annotation file's `## Dialogue` section so the conversation context survives
+ * reloads and is readable/editable as plain Markdown.
+ */
+export type DialogueTurn = {
+  role: DialogueRole;
+  text: string;
+  /** ISO timestamp the turn was recorded. */
+  at: string;
+};
+
 export type AgentReview = {
   source: ReviewSource;
   correctness: Correctness;
@@ -77,6 +91,8 @@ export type Annotation = {
   reviewText?: string;
   /** Raw Markdown of the Review History section, preserved verbatim. */
   reviewHistory?: string;
+  /** In-annotation chat turns (learner + tutor), persisted in the file. */
+  dialogue?: DialogueTurn[];
   createdAt: string;
   updatedAt: string;
 };
@@ -192,6 +208,8 @@ export type IndexRecord = {
   userNoteSummary?: string;
   /** Full user note, so margin cards can edit it without re-reading the file. */
   userNote?: string;
+  /** In-annotation dialogue turns, so margin cards render them without re-reading. */
+  dialogue?: DialogueTurn[];
   createdAt: string;
   updatedAt: string;
 };

@@ -3,6 +3,7 @@
 // CodeMirror runtime. `decorations.ts` turns these plans into real CM6 ranges.
 
 import type { Text } from "@codemirror/state";
+import type { DialogueTurn } from "./model.js";
 import type { HighlightStyle } from "./settings.js";
 
 export type AnchorMark = {
@@ -17,6 +18,8 @@ export type AnchorMark = {
   review?: string;
   /** The review's Socratic question, shown as a distinct prompt under the comment. */
   reviewQuestion?: string;
+  /** In-annotation dialogue turns, rendered as a thread in the margin card. */
+  dialogue?: DialogueTurn[];
 };
 
 export type DecoPlan =
@@ -100,32 +103,23 @@ export function planDecorations(
     for (const mark of blockMarks) {
       if (!mark.selectedText) continue;
       const start = cursor.get(mark.selectedText) ?? { line: blockStart, ch: 0 };
-      for (let ln = start.line; ln <= lineNumber; ln += 1) {
-        const lineObj = doc.line(ln);
-        const index = lineObj.text.indexOf(
-          mark.selectedText,
-          ln === start.line ? start.ch : 0
-        );
-        if (index < 0) continue;
-        cursor.set(mark.selectedText, {
-          line: ln,
-          ch: index + mark.selectedText.length
-        });
-        const from = lineObj.from + index;
-        const to = from + mark.selectedText.length;
-        if (className) {
-          plans.push({ kind: "style", from, to, className, id: mark.id });
-        }
-        if (showMarker) {
-          // Sit the marker right after the underlined span. When the span abuts
-          // the trailing ` ^id` (e.g. a whole-sentence selection), clamp to the
-          // id's start and order it before the hidden token (side -1).
-          const pos = Math.min(to, suffixStart);
-          plans.push({ kind: "marker", pos, id: mark.id, side: to >= suffixStart ? -1 : 1 });
-        }
-        anyMatched = true;
-        break;
+      // The selection may span several lines (e.g. two sentences split by a soft
+      // line break with no blank line between them). locateSpan resolves it to a
+      // single range hugging the whole selection, not just its last line.
+      const span = locateSpan(doc, start.line, start.ch, lineNumber, mark.selectedText);
+      if (!span) continue;
+      cursor.set(mark.selectedText, { line: span.endLine, ch: span.endCh });
+      if (className) {
+        plans.push({ kind: "style", from: span.from, to: span.to, className, id: mark.id });
       }
+      if (showMarker) {
+        // Sit the marker right after the underlined span. When the span abuts
+        // the trailing ` ^id` (e.g. a whole-sentence selection), clamp to the
+        // id's start and order it before the hidden token (side -1).
+        const pos = Math.min(span.to, suffixStart);
+        plans.push({ kind: "marker", pos, id: mark.id, side: span.to >= suffixStart ? -1 : 1 });
+      }
+      anyMatched = true;
     }
 
     if (!anyMatched) {
@@ -153,4 +147,65 @@ export function planDecorations(
 /** The document position a plan starts at, for a stable ordering. */
 function planStart(plan: DecoPlan): number {
   return plan.kind === "marker" ? plan.pos : plan.from;
+}
+
+/**
+ * Locate `selectedText` within the block's line range `[startLine .. lastLine]`,
+ * resuming from `startCh` on `startLine`. Returns the absolute `from`/`to`
+ * offsets of the whole selection plus the cursor position just past it, or null
+ * if it is not found.
+ *
+ * A single-line selection is matched with `indexOf` (so a phrase anywhere on a
+ * line is found). A multi-line selection — the learner picked text that crosses
+ * one or more soft line breaks, with no blank line between (a blank line is its
+ * own block and is blocked at creation) — is matched piecewise: the first part
+ * is the tail of its line, any middle parts are whole lines, and the last part
+ * is the head of its line (its trailing ` ^id` may follow). The resulting range
+ * spans the newlines, which a CodeMirror `Decoration.mark` handles natively.
+ */
+function locateSpan(
+  doc: Text,
+  startLine: number,
+  startCh: number,
+  lastLine: number,
+  selectedText: string
+): { from: number; to: number; endLine: number; endCh: number } | null {
+  const parts = selectedText.split("\n");
+  if (parts.length === 1) {
+    for (let ln = startLine; ln <= lastLine; ln += 1) {
+      const lineObj = doc.line(ln);
+      const index = lineObj.text.indexOf(selectedText, ln === startLine ? startCh : 0);
+      if (index < 0) continue;
+      const endCh = index + selectedText.length;
+      return { from: lineObj.from + index, to: lineObj.from + endCh, endLine: ln, endCh };
+    }
+    return null;
+  }
+
+  const span = parts.length;
+  const first = parts[0] ?? "";
+  const last = parts[span - 1] ?? "";
+  for (let ln = startLine; ln + span - 1 <= lastLine; ln += 1) {
+    const firstLine = doc.line(ln);
+    const c = firstLine.text.length - first.length;
+    if (c < (ln === startLine ? startCh : 0)) continue;
+    if (firstLine.text.slice(c) !== first) continue;
+    let ok = true;
+    for (let k = 1; k < span - 1; k += 1) {
+      if (doc.line(ln + k).text !== (parts[k] ?? "")) {
+        ok = false;
+        break;
+      }
+    }
+    if (!ok) continue;
+    const lastLineObj = doc.line(ln + span - 1);
+    if (lastLineObj.text.slice(0, last.length) !== last) continue;
+    return {
+      from: firstLine.from + c,
+      to: lastLineObj.from + last.length,
+      endLine: ln + span - 1,
+      endCh: last.length
+    };
+  }
+  return null;
 }

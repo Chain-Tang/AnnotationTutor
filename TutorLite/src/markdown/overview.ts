@@ -34,6 +34,7 @@ export function reviewLanguageInstruction(reviewLanguage?: string): string {
 }
 
 const SUGGESTED_BEHAVIOR = [
+  "Read the learner profile and recent learning first; tailor depth, examples, and tone to this learner.",
   "Ask the learner to explain their understanding before correcting it.",
   "Correct misunderstandings gently and cite the annotation ID and source file.",
   "Separate evidence from the source document from general background knowledge.",
@@ -82,7 +83,7 @@ export function renderAgentInstructions(options: OverviewOptions): string {
     "",
     "When working with this Vault:",
     "",
-    `1. Read \`${root}/annotation-memory.md\` for an overview of the learner's state.`,
+    `1. Read \`${root}/annotation-memory.md\` for an overview of the learner's state, then \`${root}/profiles/learner-profile.md\` and \`${root}/recent-learning.md\` to tailor your feedback to this learner.`,
     `2. Read \`${root}/agent-inbox.md\` for pending review tasks.`,
     `3. Each annotation lives in its own file under \`${root}/annotations/\`.`,
     `4. Memory cells live under \`${root}/memory-cells/\`.`,

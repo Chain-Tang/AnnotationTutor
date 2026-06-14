@@ -141,6 +141,57 @@ describe("planDecorations", () => {
     expect(styles[0]?.to).toBe("Cognitive dissonance".length);
   });
 
+  it("underlines a selection spanning two soft-broken lines as one span", () => {
+    // Two sentences on consecutive lines (no blank line between them, so they
+    // are one Markdown block). The block id sits on the last line.
+    const first = "Multi-head attention is useful.";
+    const second = "It scales to long sequences. ^ann-20260606-001";
+    const doc2 = Text.of([first, second]);
+    const m: AnchorMark = {
+      id: "ANN-1",
+      blockId: "ann-20260606-001",
+      selectedText: "Multi-head attention is useful.\nIt scales to long sequences."
+    };
+    const plans = planDecorations(doc2, [m], "dotted-underline", true);
+    const styles = plans.filter((p) => p.kind === "style");
+    expect(styles).toHaveLength(1);
+    const line2From = first.length + 1; // +1 for the newline between the lines
+    if (styles[0]?.kind === "style") {
+      expect(styles[0].from).toBe(0); // start of the first line
+      expect(styles[0].to).toBe(line2From + "It scales to long sequences.".length);
+      expect(styles[0].id).toBe("ANN-1");
+    }
+    // One marker, clamped to the ^id start (the span runs up to it).
+    const marker = plans.find((p) => p.kind === "marker");
+    expect(marker?.kind).toBe("marker");
+    if (marker?.kind === "marker") {
+      expect(marker.pos).toBe(line2From + second.indexOf(" ^ann"));
+      expect(marker.side).toBe(-1);
+    }
+  });
+
+  it("underlines a selection spanning three lines (partial first and last)", () => {
+    const l1 = "Alpha beta";
+    const l2 = "gamma delta";
+    const l3 = "epsilon zeta. ^ann-20260606-001";
+    const doc3 = Text.of([l1, l2, l3]);
+    const m: AnchorMark = {
+      id: "ANN-1",
+      blockId: "ann-20260606-001",
+      // tail of l1, whole l2, head of l3
+      selectedText: "beta\ngamma delta\nepsilon"
+    };
+    const styles = planDecorations(doc3, [m], "dotted-underline", false).filter(
+      (p) => p.kind === "style"
+    );
+    expect(styles).toHaveLength(1);
+    const l3From = l1.length + 1 + l2.length + 1;
+    if (styles[0]?.kind === "style") {
+      expect(styles[0].from).toBe(l1.indexOf("beta"));
+      expect(styles[0].to).toBe(l3From + "epsilon".length);
+    }
+  });
+
   it("falls back to a whole-line underline when the selected text drifts", () => {
     const plans = planDecorations(
       doc(),

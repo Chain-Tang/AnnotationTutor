@@ -1316,9 +1316,9 @@ ${indent}`) + "'";
         start = start.replace(/\n+/g, `$&${indent}`);
       }
       const indentSize = indent ? "2" : "1";
-      let header = (startWithSpace ? indentSize : "") + chomp;
+      let header2 = (startWithSpace ? indentSize : "") + chomp;
       if (comment) {
-        header += " " + commentString(comment.replace(/ ?[\r\n]+/g, " "));
+        header2 += " " + commentString(comment.replace(/ ?[\r\n]+/g, " "));
         if (onComment)
           onComment();
       }
@@ -1333,11 +1333,11 @@ ${indent}`) + "'";
         }
         const body = foldFlowLines.foldFlowLines(`${start}${foldedValue}${end}`, indent, foldFlowLines.FOLD_BLOCK, foldOptions);
         if (!literalFallback)
-          return `>${header}
+          return `>${header2}
 ${indent}${body}`;
       }
       value = value.replace(/\n+/g, `$&${indent}`);
-      return `|${header}
+      return `|${header2}
 ${indent}${start}${value}${end}`;
     }
     function plainString(item, ctx, onComment, onChompKeep) {
@@ -4440,10 +4440,10 @@ var require_resolve_block_scalar = __commonJS({
     var Scalar = require_Scalar();
     function resolveBlockScalar(ctx, scalar, onError) {
       const start = scalar.offset;
-      const header = parseBlockScalarHeader(scalar, ctx.options.strict, onError);
-      if (!header)
+      const header2 = parseBlockScalarHeader(scalar, ctx.options.strict, onError);
+      if (!header2)
         return { value: "", type: null, comment: "", range: [start, start, start] };
-      const type = header.mode === ">" ? Scalar.Scalar.BLOCK_FOLDED : Scalar.Scalar.BLOCK_LITERAL;
+      const type = header2.mode === ">" ? Scalar.Scalar.BLOCK_FOLDED : Scalar.Scalar.BLOCK_LITERAL;
       const lines = scalar.source ? splitLines(scalar.source) : [];
       let chompStart = lines.length;
       for (let i = lines.length - 1; i >= 0; --i) {
@@ -4454,26 +4454,26 @@ var require_resolve_block_scalar = __commonJS({
           break;
       }
       if (chompStart === 0) {
-        const value2 = header.chomp === "+" && lines.length > 0 ? "\n".repeat(Math.max(1, lines.length - 1)) : "";
-        let end2 = start + header.length;
+        const value2 = header2.chomp === "+" && lines.length > 0 ? "\n".repeat(Math.max(1, lines.length - 1)) : "";
+        let end2 = start + header2.length;
         if (scalar.source)
           end2 += scalar.source.length;
-        return { value: value2, type, comment: header.comment, range: [start, end2, end2] };
+        return { value: value2, type, comment: header2.comment, range: [start, end2, end2] };
       }
-      let trimIndent = scalar.indent + header.indent;
-      let offset = scalar.offset + header.length;
+      let trimIndent = scalar.indent + header2.indent;
+      let offset = scalar.offset + header2.length;
       let contentStart = 0;
       for (let i = 0; i < chompStart; ++i) {
         const [indent, content] = lines[i];
         if (content === "" || content === "\r") {
-          if (header.indent === 0 && indent.length > trimIndent)
+          if (header2.indent === 0 && indent.length > trimIndent)
             trimIndent = indent.length;
         } else {
           if (indent.length < trimIndent) {
             const message = "Block scalars with more-indented leading empty lines must use an explicit indentation indicator";
             onError(offset + indent.length, "MISSING_CHAR", message);
           }
-          if (header.indent === 0)
+          if (header2.indent === 0)
             trimIndent = indent.length;
           contentStart = i;
           if (trimIndent === 0 && !ctx.atRoot) {
@@ -4500,7 +4500,7 @@ var require_resolve_block_scalar = __commonJS({
         if (crlf)
           content = content.slice(0, -1);
         if (content && indent.length < trimIndent) {
-          const src = header.indent ? "explicit indentation indicator" : "first line";
+          const src = header2.indent ? "explicit indentation indicator" : "first line";
           const message = `Block scalar lines must not be less indented than their ${src}`;
           onError(offset - content.length - (crlf ? 2 : 1), "BAD_INDENT", message);
           indent = "";
@@ -4527,7 +4527,7 @@ var require_resolve_block_scalar = __commonJS({
           prevMoreIndented = false;
         }
       }
-      switch (header.chomp) {
+      switch (header2.chomp) {
         case "-":
           break;
         case "+":
@@ -4539,8 +4539,8 @@ var require_resolve_block_scalar = __commonJS({
         default:
           value += "\n";
       }
-      const end = start + header.length + scalar.source.length;
-      return { value, type, comment: header.comment, range: [start, end, end] };
+      const end = start + header2.length + scalar.source.length;
+      return { value, type, comment: header2.comment, range: [start, end, end] };
     }
     function parseBlockScalarHeader({ offset, props }, strict, onError) {
       if (props[0].type !== "block-scalar-header") {
@@ -5378,10 +5378,10 @@ var require_cst_scalar = __commonJS({
             type = "QUOTE_DOUBLE";
             break;
           case "block-scalar": {
-            const header = token.props[0];
-            if (header.type !== "block-scalar-header")
+            const header2 = token.props[0];
+            if (header2.type !== "block-scalar-header")
               throw new Error("Invalid block scalar header");
-            type = header.source[0] === ">" ? "BLOCK_FOLDED" : "BLOCK_LITERAL";
+            type = header2.source[0] === ">" ? "BLOCK_FOLDED" : "BLOCK_LITERAL";
             break;
           }
           default:
@@ -5413,10 +5413,10 @@ var require_cst_scalar = __commonJS({
       const head = source.substring(0, he);
       const body = source.substring(he + 1) + "\n";
       if (token.type === "block-scalar") {
-        const header = token.props[0];
-        if (header.type !== "block-scalar-header")
+        const header2 = token.props[0];
+        if (header2.type !== "block-scalar-header")
           throw new Error("Invalid block scalar header");
-        header.source = head;
+        header2.source = head;
         token.source = body;
       } else {
         const { offset } = token;
@@ -7735,8 +7735,8 @@ function fromBlockquote(text) {
   return text.split(/\r?\n/).map((line) => line.replace(/^>\s?/, "")).join("\n").trim();
 }
 function truncate(text, max = 120) {
-  const oneLine = text.replace(/\s+/g, " ").trim();
-  return oneLine.length > max ? `${oneLine.slice(0, max - 1)}\u2026` : oneLine;
+  const oneLine2 = text.replace(/\s+/g, " ").trim();
+  return oneLine2.length > max ? `${oneLine2.slice(0, max - 1)}\u2026` : oneLine2;
 }
 
 // src/markdown/review.ts
@@ -7857,9 +7857,53 @@ function normalizeSource(value) {
 }
 
 // src/markdown/annotation-file.ts
+var DIALOGUE_LABEL = {
+  user: "You",
+  agent: "Tutor"
+};
+function serializeDialogue(turns) {
+  return turns.map((turn) => {
+    const label = DIALOGUE_LABEL[turn.role];
+    const head = turn.at ? `### ${label} \u2014 ${turn.at}` : `### ${label}`;
+    return `${head}
+
+${toBlockquote(turn.text)}`;
+  }).join("\n\n");
+}
+function parseDialogue(sectionBody) {
+  if (!sectionBody.trim()) return [];
+  const lines = sectionBody.split(/\r?\n/);
+  const turns = [];
+  let role = null;
+  let at = "";
+  let buffer = [];
+  const flush = () => {
+    if (role !== null) {
+      const text = fromBlockquote(buffer.join("\n"));
+      if (text) turns.push({ role, text, at });
+    }
+    buffer = [];
+  };
+  for (const line of lines) {
+    const heading = /^###\s+(.+?)\s*$/.exec(line);
+    if (heading) {
+      flush();
+      const title = heading[1] ?? "";
+      const parts = title.split(" \u2014 ");
+      const label = (parts[0] ?? "").trim().toLowerCase();
+      at = parts.length > 1 ? parts.slice(1).join(" \u2014 ").trim() : "";
+      role = label.startsWith("you") || label.startsWith("user") ? "user" : "agent";
+    } else {
+      buffer.push(line);
+    }
+  }
+  flush();
+  return turns;
+}
 function serializeAnnotation(annotation, memoryRoot = "Agent Memory") {
   const reviewBody = annotation.reviewText && annotation.reviewText.trim() ? annotation.reviewText.trim() : reviewPlaceholder();
   const historyBody = annotation.reviewHistory?.trim() ?? "";
+  const dialogueBody = annotation.dialogue && annotation.dialogue.length > 0 ? serializeDialogue(annotation.dialogue) : "";
   const body = [
     `# ${annotation.id}`,
     `## Selected Text
@@ -7873,7 +7917,10 @@ ${toBlockquote(annotation.userNote)}`,
 ${reviewBody}`,
     historyBody ? `## Review History
 
-${historyBody}` : "## Review History"
+${historyBody}` : "## Review History",
+    ...dialogueBody ? [`## Dialogue
+
+${dialogueBody}`] : []
   ].join("\n\n");
   return renderFrontmatter(
     {
@@ -7913,6 +7960,7 @@ function parseV2Annotation(document2) {
   const reviewText = isReviewPlaceholder(reviewSection) ? void 0 : reviewSection.trim();
   const reviewHistory = section(document2.body, "Review History").trim() || void 0;
   const review = reviewText ? parseAgentReview(reviewText, updatedAt) ?? void 0 : void 0;
+  const dialogue = parseDialogue(section(document2.body, "Dialogue"));
   const origin = document2.data.anchor_origin;
   return {
     id,
@@ -7935,6 +7983,7 @@ function parseV2Annotation(document2) {
     review,
     reviewText,
     reviewHistory,
+    ...dialogue.length > 0 ? { dialogue } : {},
     createdAt,
     updatedAt
   };
@@ -7983,6 +8032,7 @@ function updateAnnotationMarkdown(currentMarkdown, patch, memoryRoot = "Agent Me
     concepts: patch.concepts ?? existing.concepts,
     relatedMemoryCells: patch.relatedMemoryCells ?? existing.relatedMemoryCells,
     anchor: patch.anchor ? { ...existing.anchor, ...patch.anchor } : existing.anchor,
+    dialogue: patch.dialogue ?? existing.dialogue,
     updatedAt: patch.updatedAt ?? (/* @__PURE__ */ new Date()).toISOString()
   };
   return serializeAnnotation(updated, memoryRoot);
@@ -8016,6 +8066,7 @@ function recordFromAnnotation(annotation, memoryFile) {
     reviewText: annotation.reviewText,
     userNoteSummary: annotation.userNote ? truncate(annotation.userNote) : void 0,
     userNote: annotation.userNote,
+    ...annotation.dialogue && annotation.dialogue.length > 0 ? { dialogue: annotation.dialogue } : {},
     createdAt: annotation.createdAt,
     updatedAt: annotation.updatedAt
   };
@@ -10774,10 +10825,10 @@ function isValidJWT(token, algorithm = null) {
     const tokensParts = token.split(".");
     if (tokensParts.length !== 3)
       return false;
-    const [header] = tokensParts;
-    if (!header)
+    const [header2] = tokensParts;
+    if (!header2)
       return false;
-    const parsedHeader = JSON.parse(atob(header));
+    const parsedHeader = JSON.parse(atob(header2));
     if ("typ" in parsedHeader && parsedHeader?.typ !== "JWT")
       return false;
     if (!parsedHeader.alg)
@@ -23363,6 +23414,7 @@ function reviewLanguageInstruction(reviewLanguage) {
   return `${base} Keep the field labels and the Correctness value in English.`;
 }
 var SUGGESTED_BEHAVIOR = [
+  "Read the learner profile and recent learning first; tailor depth, examples, and tone to this learner.",
   "Ask the learner to explain their understanding before correcting it.",
   "Correct misunderstandings gently and cite the annotation ID and source file.",
   "Separate evidence from the source document from general background knowledge.",
@@ -23403,7 +23455,7 @@ function renderAgentInstructions(options) {
     "",
     "When working with this Vault:",
     "",
-    `1. Read \`${root}/annotation-memory.md\` for an overview of the learner's state.`,
+    `1. Read \`${root}/annotation-memory.md\` for an overview of the learner's state, then \`${root}/profiles/learner-profile.md\` and \`${root}/recent-learning.md\` to tailor your feedback to this learner.`,
     `2. Read \`${root}/agent-inbox.md\` for pending review tasks.`,
     `3. Each annotation lives in its own file under \`${root}/annotations/\`.`,
     `4. Memory cells live under \`${root}/memory-cells/\`.`,
@@ -23663,14 +23715,22 @@ function spawnEnv() {
   if (present) return process.env;
   return { ...process.env, [pathKey]: `${npmBin};${current2}` };
 }
-function buildReviewPrompt(record2, reviewLanguage = "") {
+function buildReviewPrompt(record2, reviewLanguage = "", profileSummary = "") {
   const note = record2.userNote ?? record2.userNoteSummary ?? "";
   const target = reviewLanguage.trim() || detectLanguageName(note);
+  const profile = profileSummary.trim();
   return [
     "You are a warm, knowledgeable learning assistant leaving a short note in the margin of a learner's book.",
     "Read the selected source text and the learner's note, then reply as a helpful tutor would.",
     "Reply with the note and nothing else \u2014 no preamble, no tool use, no headings, no bullet lists.",
     reviewLanguageInstruction(target),
+    ...profile ? [
+      "",
+      "What you know about this learner (tailor depth, examples, and tone to them):",
+      '"""',
+      profile,
+      '"""'
+    ] : [],
     "",
     "Use exactly these three labels, each starting on its own line, and write nothing else:",
     "Correctness: one of correct, partially_correct, incorrect, uncertain (judge the note; use uncertain when the note is purely a question).",
@@ -24211,6 +24271,184 @@ async function listApiModels(opts, request) {
 
 // src/store.ts
 var import_obsidian = require("obsidian");
+
+// src/markdown/notebook.ts
+function buildNotebook(records, options) {
+  const base = `${options.memoryRoot}/${options.folder ?? "Notebook"}`;
+  const byDoc = /* @__PURE__ */ new Map();
+  for (const record2 of records) {
+    const list = byDoc.get(record2.sourceFile);
+    if (list) list.push(record2);
+    else byDoc.set(record2.sourceFile, [record2]);
+  }
+  const pages = [...byDoc.entries()].map(([sourceFile, recs]) => {
+    const sorted = [...recs].sort(
+      (a, b) => a.createdAt.localeCompare(b.createdAt)
+    );
+    const slug = slugify2(sourceFile);
+    return {
+      sourceFile,
+      title: basename(sourceFile),
+      slug,
+      path: `${base}/pages/${slug}.md`,
+      records: sorted,
+      concepts: unique2(sorted.flatMap((record2) => record2.concepts))
+    };
+  }).sort((a, b) => a.title.localeCompare(b.title));
+  const conceptPages = /* @__PURE__ */ new Map();
+  for (const page of pages) {
+    for (const concept of page.concepts) {
+      const list = conceptPages.get(concept);
+      if (list) list.push(page);
+      else conceptPages.set(concept, [page]);
+    }
+  }
+  const chapters = [...conceptPages.entries()].filter(([, ps]) => ps.length >= 2).map(([concept, ps]) => ({ concept, slug: slugify2(concept), pages: ps })).sort((a, b) => a.concept.localeCompare(b.concept));
+  const files = [
+    { path: `${base}/Notebook.md`, content: renderIndex(pages, chapters, base, options) }
+  ];
+  for (const page of pages) {
+    files.push({ path: page.path, content: renderPage(page, base, options) });
+  }
+  for (const chapter of chapters) {
+    files.push({
+      path: `${base}/chapters/${chapter.slug}.md`,
+      content: renderChapter(chapter, base, options)
+    });
+  }
+  return files;
+}
+function renderIndex(pages, chapters, base, options) {
+  const lines = header("Notebook", options.generatedAt);
+  lines.push(
+    "> Your study notebook, built from annotations and tutor dialogue.",
+    "> Rebuildable from the **Build notebook** command \u2014 edits here are overwritten.",
+    "",
+    "## Chapters",
+    ""
+  );
+  if (chapters.length === 0) {
+    lines.push("- No related-document chapters yet.");
+  } else {
+    for (const chapter of chapters) {
+      lines.push(
+        `- ${link(`${base}/chapters/${chapter.slug}`, chapter.concept)} \u2014 ${chapter.pages.length} documents`
+      );
+      for (const page of chapter.pages) {
+        lines.push(`  - ${pageLink(page)}`);
+      }
+    }
+  }
+  lines.push("", "## Pages", "");
+  if (pages.length === 0) {
+    lines.push("- No studied documents yet. Annotate a note to begin.");
+  } else {
+    for (const page of pages) {
+      lines.push(
+        `- ${pageLink(page)} \u2014 \`${page.sourceFile}\` \u2014 ${page.records.length} annotations`
+      );
+    }
+  }
+  if (options.generatedAt) lines.push("", `Updated: ${options.generatedAt}`);
+  lines.push("");
+  return lines.join("\n");
+}
+function renderPage(page, base, options) {
+  const lines = header(page.title, options.generatedAt);
+  const synthesis = options.synthesis?.get(page.sourceFile)?.trim();
+  if (synthesis) lines.push("## Synthesis", "", synthesis, "");
+  lines.push("## Document context", "");
+  lines.push(`- Source: ${link(stripMd2(page.sourceFile), page.title)}`);
+  lines.push(`- Concepts: ${page.concepts.length ? page.concepts.join(", ") : "None"}`);
+  lines.push(`- Annotations: ${page.records.length}`);
+  lines.push("", "## Original text index", "");
+  for (const record2 of page.records) {
+    const excerpt = truncate(record2.selectedText ?? "", 160) || "(no excerpt)";
+    lines.push(`- ${blockLink(page.sourceFile, record2.anchor, excerpt)}`);
+  }
+  lines.push("", "## Annotation content", "");
+  for (const record2 of page.records) {
+    lines.push(`### ${record2.annotationId}`, "");
+    lines.push(toQuote(record2.selectedText ?? ""), "");
+    const note = record2.userNote ?? record2.userNoteSummary;
+    if (note?.trim()) lines.push(`**Note:** ${oneLine(note)}`, "");
+    const review = record2.reviewSummary ?? record2.reviewText;
+    if (review?.trim()) lines.push(`**Review:** ${oneLine(review)}`, "");
+  }
+  const withDialogue = page.records.filter((r) => (r.dialogue?.length ?? 0) > 0);
+  if (withDialogue.length > 0) {
+    lines.push("## Dialogue context", "");
+    for (const record2 of withDialogue) {
+      lines.push(`### ${record2.annotationId}`, "");
+      for (const turn of record2.dialogue ?? []) {
+        lines.push(`**${turnLabel(turn)}:** ${oneLine(turn.text)}`, "");
+      }
+    }
+  }
+  lines.push(`See also: ${link(`${base}/Notebook`, "Notebook")}`, "");
+  return lines.join("\n");
+}
+function renderChapter(chapter, base, options) {
+  const lines = header(chapter.concept, options.generatedAt);
+  lines.push(
+    `> Documents related through the concept **${chapter.concept}**.`,
+    "",
+    "## Documents",
+    ""
+  );
+  for (const page of chapter.pages) {
+    lines.push(
+      `- ${pageLink(page)} \u2014 \`${page.sourceFile}\` \u2014 ${page.records.length} annotations`
+    );
+  }
+  lines.push("", `See also: ${link(`${base}/Notebook`, "Notebook")}`, "");
+  return lines.join("\n");
+}
+function header(title, generatedAt) {
+  return [
+    `# ${title}`,
+    "",
+    "> Generated by Annotation Tutor Lite. Rebuildable; do not maintain manually.",
+    ...generatedAt ? [`> Updated: ${generatedAt}`] : [],
+    ""
+  ];
+}
+function link(path, label) {
+  return `[[${path}|${label}]]`;
+}
+function pageLink(page) {
+  return link(stripMd2(page.path), page.title);
+}
+function blockLink(sourceFile, anchor, label) {
+  const caret = anchor.startsWith("^") ? anchor : `^${anchor}`;
+  return `[[${stripMd2(sourceFile)}#${caret}|${label}]]`;
+}
+function toQuote(text) {
+  const trimmed = text.trim();
+  if (!trimmed) return ">";
+  return trimmed.split(/\r?\n/).map((line) => line.length > 0 ? `> ${line}` : ">").join("\n");
+}
+function turnLabel(turn) {
+  return turn.role === "agent" ? "Tutor" : "You";
+}
+function oneLine(text) {
+  return text.replace(/\s+/g, " ").trim();
+}
+function basename(path) {
+  return stripMd2(path.split("/").pop() ?? path);
+}
+function stripMd2(path) {
+  return path.replace(/\.md$/i, "");
+}
+function slugify2(value) {
+  const slug = stripMd2(value).replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "");
+  return slug || "untitled";
+}
+function unique2(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+// src/store.ts
 var SELF_WRITE_WINDOW_MS = 1500;
 var VaultStore = class {
   constructor(app, manifestId, getSettings) {
@@ -24279,6 +24517,9 @@ var VaultStore = class {
   }
   agentsPath() {
     return `${this.memoryRoot()}/AGENTS.md`;
+  }
+  notebookIndexPath() {
+    return `${this.memoryRoot()}/Notebook/Notebook.md`;
   }
   indexPath() {
     return `${this.app.vault.configDir}/plugins/${this.manifestId}/index.json`;
@@ -24384,6 +24625,33 @@ var VaultStore = class {
         review: parsed,
         reviewHistory: mergeReviewHistory(existing.reviewHistory, existing.reviewText),
         status: preserved ? existing.status : parsed ? "reviewed" : "reviewed_unstructured",
+        updatedAt: nowIso()
+      };
+      const out = serializeAnnotation(next, this.memoryRoot());
+      result = parseAnnotationFile(out);
+      return out;
+    });
+    this.markWritten(path);
+    return result;
+  }
+  /**
+   * Append in-annotation dialogue turns to the file's `## Dialogue` section,
+   * preserving every other (plugin- and agent-owned) section. Self-write is
+   * suppressed via `markWritten`, so the margin card's interaction is not torn
+   * down by the watcher mid-conversation. Returns the re-parsed annotation.
+   */
+  async appendDialogueTurns(id, turns) {
+    if (turns.length === 0) return null;
+    const path = this.annotationPath(id);
+    const file2 = this.fileAt(path);
+    if (!file2) return null;
+    let result = null;
+    await this.app.vault.process(file2, (data) => {
+      const existing = parseAnnotationFile(data);
+      if (!existing) return data;
+      const next = {
+        ...existing,
+        dialogue: [...existing.dialogue ?? [], ...turns],
         updatedAt: nowIso()
       };
       const out = serializeAnnotation(next, this.memoryRoot());
@@ -24579,6 +24847,26 @@ var VaultStore = class {
       );
     }
   }
+  /**
+   * Build and write the whole per-Vault notebook (index + per-document pages +
+   * related-document chapters) from the current annotation index. Returns the
+   * index path plus counts for the completion notice.
+   */
+  async writeNotebook(records, synthesis) {
+    const files = buildNotebook(records, {
+      memoryRoot: this.memoryRoot(),
+      generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      ...synthesis ? { synthesis } : {}
+    });
+    for (const file2 of files) {
+      await this.writeVaultFile(file2.path, file2.content);
+    }
+    return {
+      path: this.notebookIndexPath(),
+      pages: files.filter((file2) => file2.path.includes("/pages/")).length,
+      chapters: files.filter((file2) => file2.path.includes("/chapters/")).length
+    };
+  }
   async archiveProposal(pendingPath, proposal) {
     const archivePath = `${this.archivedProposalsDir()}/${proposal.id}.md`;
     await this.writeVaultFile(archivePath, serializeProposal(proposal));
@@ -24709,6 +24997,13 @@ var en = {
   "cmd.cleanInbox": "Clean agent inbox",
   "cmd.rebuildIndex": "Rebuild Annotation Tutor index",
   "cmd.toggleMarks": "Toggle annotation marks",
+  "cmd.buildNotebook": "Build notebook",
+  "cmd.enrichNotebook": "Enrich notebook with agent",
+  "notice.notebookEmpty": "No annotations yet \u2014 annotate a note to build a notebook.",
+  "notice.notebookBuilding": "Building notebook\u2026",
+  "notice.notebookEnriching": "Enriching notebook\u2026 {done}/{total}",
+  "notice.notebookDone": "Notebook ready: {pages} pages, {chapters} chapters.",
+  "notice.notebookFailed": "Notebook failed: {detail}",
   "cmd.openChat": "Open tutor chat",
   "cmd.translate": "Translate selection (inline gloss)",
   "notice.cardBuild": "Opening Build chat to edit {id}\u2026",
@@ -24952,6 +25247,11 @@ var en = {
   "card.ask": "Ask agent to review",
   "card.discuss": "Discuss in tutor chat",
   "card.delete": "Delete",
+  "card.reply.placeholder": "Reply to the tutor\u2026 (Enter to send)",
+  "card.reply.send": "Send reply",
+  "card.reply.thinking": "Thinking\u2026",
+  "card.reply.empty": "(no reply)",
+  "card.reply.error": "Couldn't reach the tutor. Check the engine/API settings.",
   "hl.dotted": "Dotted underline",
   "hl.wavy": "Wavy underline",
   "hl.bg": "Background tint",
@@ -24992,6 +25292,13 @@ var zhCn = {
   "cmd.cleanInbox": "\u6E05\u7406\u4EE3\u7406\u6536\u4EF6\u7BB1",
   "cmd.rebuildIndex": "\u91CD\u5EFA\u6279\u6CE8\u7D22\u5F15",
   "cmd.toggleMarks": "\u5207\u6362\u6279\u6CE8\u6807\u8BB0",
+  "cmd.buildNotebook": "\u751F\u6210\u7B14\u8BB0\u672C",
+  "cmd.enrichNotebook": "\u7528\u52A9\u624B\u4E30\u5BCC\u7B14\u8BB0\u672C",
+  "notice.notebookEmpty": "\u8FD8\u6CA1\u6709\u6279\u6CE8\u2014\u2014\u5148\u6279\u6CE8\u4E00\u7BC7\u7B14\u8BB0\u518D\u751F\u6210\u7B14\u8BB0\u672C\u3002",
+  "notice.notebookBuilding": "\u6B63\u5728\u751F\u6210\u7B14\u8BB0\u672C\u2026\u2026",
+  "notice.notebookEnriching": "\u6B63\u5728\u4E30\u5BCC\u7B14\u8BB0\u672C\u2026\u2026 {done}/{total}",
+  "notice.notebookDone": "\u7B14\u8BB0\u672C\u5DF2\u751F\u6210\uFF1A{pages} \u9875\uFF0C{chapters} \u7AE0\u3002",
+  "notice.notebookFailed": "\u7B14\u8BB0\u672C\u751F\u6210\u5931\u8D25\uFF1A{detail}",
   "ribbon.open": "\u6253\u5F00 Annotation Tutor Lite",
   "ribbon.openChat": "\u6253\u5F00\u5B66\u4E60\u52A9\u624B\u5BF9\u8BDD",
   "chat.title": "\u5B66\u4E60\u52A9\u624B",
@@ -25210,6 +25517,11 @@ var zhCn = {
   "card.ask": "\u8BF7\u4EE3\u7406\u5BA1\u9605",
   "card.discuss": "\u5728\u52A9\u624B\u5BF9\u8BDD\u4E2D\u8BA8\u8BBA",
   "card.delete": "\u5220\u9664",
+  "card.reply.placeholder": "\u56DE\u590D\u52A9\u624B\u2026\u2026\uFF08\u56DE\u8F66\u53D1\u9001\uFF09",
+  "card.reply.send": "\u53D1\u9001\u56DE\u590D",
+  "card.reply.thinking": "\u601D\u8003\u4E2D\u2026\u2026",
+  "card.reply.empty": "\uFF08\u65E0\u56DE\u590D\uFF09",
+  "card.reply.error": "\u65E0\u6CD5\u8FDE\u63A5\u52A9\u624B\uFF0C\u8BF7\u68C0\u67E5\u5F15\u64CE/API \u8BBE\u7F6E\u3002",
   "hl.dotted": "\u70B9\u72B6\u4E0B\u5212\u7EBF",
   "hl.wavy": "\u6CE2\u6D6A\u4E0B\u5212\u7EBF",
   "hl.bg": "\u80CC\u666F\u5E95\u8272",
@@ -25250,6 +25562,13 @@ var zhTw = {
   "cmd.cleanInbox": "\u6E05\u7406\u4EE3\u7406\u6536\u4EF6\u5323",
   "cmd.rebuildIndex": "\u91CD\u5EFA\u8A3B\u89E3\u7D22\u5F15",
   "cmd.toggleMarks": "\u5207\u63DB\u8A3B\u89E3\u6A19\u8A18",
+  "cmd.buildNotebook": "\u7522\u751F\u7B46\u8A18\u672C",
+  "cmd.enrichNotebook": "\u7528\u52A9\u624B\u8C50\u5BCC\u7B46\u8A18\u672C",
+  "notice.notebookEmpty": "\u9084\u6C92\u6709\u8A3B\u89E3\u2014\u2014\u5148\u8A3B\u89E3\u4E00\u7BC7\u7B46\u8A18\u518D\u7522\u751F\u7B46\u8A18\u672C\u3002",
+  "notice.notebookBuilding": "\u6B63\u5728\u7522\u751F\u7B46\u8A18\u672C\u2026\u2026",
+  "notice.notebookEnriching": "\u6B63\u5728\u8C50\u5BCC\u7B46\u8A18\u672C\u2026\u2026 {done}/{total}",
+  "notice.notebookDone": "\u7B46\u8A18\u672C\u5DF2\u7522\u751F\uFF1A{pages} \u9801\uFF0C{chapters} \u7AE0\u3002",
+  "notice.notebookFailed": "\u7B46\u8A18\u672C\u7522\u751F\u5931\u6557\uFF1A{detail}",
   "ribbon.open": "\u958B\u555F Annotation Tutor Lite",
   "ribbon.openChat": "\u958B\u555F\u5B78\u7FD2\u52A9\u624B\u5C0D\u8A71",
   "chat.title": "\u5B78\u7FD2\u52A9\u624B",
@@ -25412,6 +25731,11 @@ var zhTw = {
   "card.ask": "\u8ACB\u4EE3\u7406\u5BE9\u95B1",
   "card.discuss": "\u5728\u52A9\u624B\u5C0D\u8A71\u4E2D\u8A0E\u8AD6",
   "card.delete": "\u522A\u9664",
+  "card.reply.placeholder": "\u56DE\u8986\u52A9\u624B\u2026\u2026\uFF08Enter \u9001\u51FA\uFF09",
+  "card.reply.send": "\u9001\u51FA\u56DE\u8986",
+  "card.reply.thinking": "\u601D\u8003\u4E2D\u2026\u2026",
+  "card.reply.empty": "\uFF08\u7121\u56DE\u8986\uFF09",
+  "card.reply.error": "\u7121\u6CD5\u9023\u7DDA\u52A9\u624B\uFF0C\u8ACB\u6AA2\u67E5\u5F15\u64CE/API \u8A2D\u5B9A\u3002",
   "hl.dotted": "\u9EDE\u72C0\u5E95\u7DDA",
   "hl.wavy": "\u6CE2\u6D6A\u5E95\u7DDA",
   "hl.bg": "\u80CC\u666F\u8272",
@@ -25452,6 +25776,13 @@ var ja = {
   "cmd.cleanInbox": "\u30A8\u30FC\u30B8\u30A7\u30F3\u30C8\u53D7\u4FE1\u7BB1\u3092\u6574\u7406",
   "cmd.rebuildIndex": "\u6CE8\u91C8\u30A4\u30F3\u30C7\u30C3\u30AF\u30B9\u3092\u518D\u69CB\u7BC9",
   "cmd.toggleMarks": "\u6CE8\u91C8\u30DE\u30FC\u30AF\u306E\u8868\u793A\u5207\u308A\u66FF\u3048",
+  "cmd.buildNotebook": "\u30CE\u30FC\u30C8\u30D6\u30C3\u30AF\u3092\u4F5C\u6210",
+  "cmd.enrichNotebook": "\u30A8\u30FC\u30B8\u30A7\u30F3\u30C8\u3067\u30CE\u30FC\u30C8\u30D6\u30C3\u30AF\u3092\u5145\u5B9F",
+  "notice.notebookEmpty": "\u6CE8\u91C8\u304C\u307E\u3060\u3042\u308A\u307E\u305B\u3093\u3002\u307E\u305A\u30CE\u30FC\u30C8\u306B\u6CE8\u91C8\u3092\u4ED8\u3051\u3066\u304F\u3060\u3055\u3044\u3002",
+  "notice.notebookBuilding": "\u30CE\u30FC\u30C8\u30D6\u30C3\u30AF\u3092\u4F5C\u6210\u4E2D\u2026",
+  "notice.notebookEnriching": "\u30CE\u30FC\u30C8\u30D6\u30C3\u30AF\u3092\u5145\u5B9F\u4E2D\u2026 {done}/{total}",
+  "notice.notebookDone": "\u30CE\u30FC\u30C8\u30D6\u30C3\u30AF\u5B8C\u6210\uFF1A{pages} \u30DA\u30FC\u30B8\u3001{chapters} \u7AE0\u3002",
+  "notice.notebookFailed": "\u30CE\u30FC\u30C8\u30D6\u30C3\u30AF\u306E\u4F5C\u6210\u306B\u5931\u6557\u3057\u307E\u3057\u305F\uFF1A{detail}",
   "ribbon.open": "Annotation Tutor Lite \u3092\u958B\u304F",
   "ribbon.openChat": "\u30C1\u30E5\u30FC\u30BF\u30FC\u30C1\u30E3\u30C3\u30C8\u3092\u958B\u304F",
   "chat.title": "\u30C1\u30E5\u30FC\u30BF\u30FC",
@@ -25614,6 +25945,11 @@ var ja = {
   "card.ask": "\u30EC\u30D3\u30E5\u30FC\u3092\u4F9D\u983C",
   "card.discuss": "\u30C1\u30E5\u30FC\u30BF\u30FC\u30C1\u30E3\u30C3\u30C8\u3067\u76F8\u8AC7",
   "card.delete": "\u524A\u9664",
+  "card.reply.placeholder": "\u30C1\u30E5\u30FC\u30BF\u30FC\u306B\u8FD4\u4FE1\u2026\uFF08Enter\u3067\u9001\u4FE1\uFF09",
+  "card.reply.send": "\u8FD4\u4FE1\u3092\u9001\u4FE1",
+  "card.reply.thinking": "\u8003\u3048\u4E2D\u2026",
+  "card.reply.empty": "\uFF08\u5FDC\u7B54\u306A\u3057\uFF09",
+  "card.reply.error": "\u30C1\u30E5\u30FC\u30BF\u30FC\u306B\u63A5\u7D9A\u3067\u304D\u307E\u305B\u3093\u3002\u30A8\u30F3\u30B8\u30F3/API\u8A2D\u5B9A\u3092\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044\u3002",
   "hl.dotted": "\u70B9\u7DDA\u306E\u4E0B\u7DDA",
   "hl.wavy": "\u6CE2\u7DDA\u306E\u4E0B\u7DDA",
   "hl.bg": "\u80CC\u666F\u306E\u8272\u4ED8\u3051",
@@ -26700,29 +27036,17 @@ function planDecorations(doc, marks, style, showMarker) {
     for (const mark of blockMarks) {
       if (!mark.selectedText) continue;
       const start = cursor.get(mark.selectedText) ?? { line: blockStart, ch: 0 };
-      for (let ln = start.line; ln <= lineNumber; ln += 1) {
-        const lineObj = doc.line(ln);
-        const index = lineObj.text.indexOf(
-          mark.selectedText,
-          ln === start.line ? start.ch : 0
-        );
-        if (index < 0) continue;
-        cursor.set(mark.selectedText, {
-          line: ln,
-          ch: index + mark.selectedText.length
-        });
-        const from = lineObj.from + index;
-        const to = from + mark.selectedText.length;
-        if (className) {
-          plans.push({ kind: "style", from, to, className, id: mark.id });
-        }
-        if (showMarker) {
-          const pos = Math.min(to, suffixStart);
-          plans.push({ kind: "marker", pos, id: mark.id, side: to >= suffixStart ? -1 : 1 });
-        }
-        anyMatched = true;
-        break;
+      const span = locateSpan(doc, start.line, start.ch, lineNumber, mark.selectedText);
+      if (!span) continue;
+      cursor.set(mark.selectedText, { line: span.endLine, ch: span.endCh });
+      if (className) {
+        plans.push({ kind: "style", from: span.from, to: span.to, className, id: mark.id });
       }
+      if (showMarker) {
+        const pos = Math.min(span.to, suffixStart);
+        plans.push({ kind: "marker", pos, id: mark.id, side: span.to >= suffixStart ? -1 : 1 });
+      }
+      anyMatched = true;
     }
     if (!anyMatched) {
       if (className && suffixStart > line.from) {
@@ -26741,6 +27065,45 @@ function planDecorations(doc, marks, style, showMarker) {
 }
 function planStart(plan) {
   return plan.kind === "marker" ? plan.pos : plan.from;
+}
+function locateSpan(doc, startLine, startCh, lastLine3, selectedText) {
+  const parts = selectedText.split("\n");
+  if (parts.length === 1) {
+    for (let ln = startLine; ln <= lastLine3; ln += 1) {
+      const lineObj = doc.line(ln);
+      const index = lineObj.text.indexOf(selectedText, ln === startLine ? startCh : 0);
+      if (index < 0) continue;
+      const endCh = index + selectedText.length;
+      return { from: lineObj.from + index, to: lineObj.from + endCh, endLine: ln, endCh };
+    }
+    return null;
+  }
+  const span = parts.length;
+  const first = parts[0] ?? "";
+  const last = parts[span - 1] ?? "";
+  for (let ln = startLine; ln + span - 1 <= lastLine3; ln += 1) {
+    const firstLine = doc.line(ln);
+    const c = firstLine.text.length - first.length;
+    if (c < (ln === startLine ? startCh : 0)) continue;
+    if (firstLine.text.slice(c) !== first) continue;
+    let ok = true;
+    for (let k = 1; k < span - 1; k += 1) {
+      if (doc.line(ln + k).text !== (parts[k] ?? "")) {
+        ok = false;
+        break;
+      }
+    }
+    if (!ok) continue;
+    const lastLineObj = doc.line(ln + span - 1);
+    if (lastLineObj.text.slice(0, last.length) !== last) continue;
+    return {
+      from: firstLine.from + c,
+      to: lastLineObj.from + last.length,
+      endLine: ln + span - 1,
+      endCh: last.length
+    };
+  }
+  return null;
 }
 
 // src/decorations.ts
@@ -26957,6 +27320,7 @@ function buildMarginCard(mark, options) {
       card.appendChild(question);
     }
   }
+  renderDialogue(card, mark);
   let applying = true;
   if (options.geom.w) card.style.width = `${options.geom.w}px`;
   if (options.geom.h) card.style.height = `${options.geom.h}px`;
@@ -26982,6 +27346,111 @@ function buildMarginCard(mark, options) {
   });
   observer.observe(card);
   return { card, observer };
+}
+function renderDialogue(card, mark) {
+  const wrap = document.createElement("div");
+  wrap.className = "atl-rail-dialogue";
+  const thread = document.createElement("div");
+  thread.className = "atl-rail-thread";
+  for (const turn of mark.dialogue ?? []) appendTurn(thread, turn.role, turn.text);
+  wrap.appendChild(thread);
+  const row = document.createElement("div");
+  row.className = "atl-rail-reply-row";
+  const input = document.createElement("textarea");
+  input.className = "atl-rail-reply";
+  input.placeholder = t("card.reply.placeholder");
+  input.rows = 1;
+  input.addEventListener("mousedown", (event) => event.stopPropagation());
+  const send = document.createElement("button");
+  send.className = "atl-iconbtn atl-rail-reply-send";
+  (0, import_obsidian5.setIcon)(send, "send-horizontal");
+  (0, import_obsidian5.setTooltip)(send, t("card.reply.send"));
+  row.appendChild(input);
+  row.appendChild(send);
+  wrap.appendChild(row);
+  const submit = async () => {
+    const message = input.value.trim();
+    const cardHandlers = getMarginCardHandlers();
+    if (!message || !cardHandlers) return;
+    input.value = "";
+    appendTurn(thread, "user", message);
+    const thinking = appendNotice(thread, t("card.reply.thinking"));
+    send.disabled = true;
+    input.disabled = true;
+    try {
+      const result = await cardHandlers.reply(mark.id, message);
+      thinking.remove();
+      if (!result.ok) {
+        appendNotice(thread, result.error ?? t("card.reply.error"));
+      } else {
+        appendTurn(thread, "agent", result.agentText || t("card.reply.empty"));
+        if (result.edit) appendEditCard(thread, result.edit);
+      }
+    } catch (error51) {
+      thinking.remove();
+      appendNotice(thread, error51 instanceof Error ? error51.message : String(error51));
+    } finally {
+      send.disabled = false;
+      input.disabled = false;
+      input.focus();
+    }
+  };
+  send.onclick = () => void submit();
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      void submit();
+    }
+  });
+  card.appendChild(wrap);
+}
+function appendTurn(thread, role, text) {
+  const el = document.createElement("div");
+  el.className = `atl-rail-turn atl-rail-turn--${role}`;
+  el.textContent = text;
+  thread.appendChild(el);
+}
+function appendNotice(thread, text) {
+  const el = document.createElement("div");
+  el.className = "atl-rail-turn atl-rail-turn--notice";
+  el.textContent = text;
+  thread.appendChild(el);
+  return el;
+}
+function appendEditCard(thread, edit) {
+  const card = document.createElement("div");
+  card.className = "atl-rail-editcard";
+  const title = document.createElement("div");
+  title.className = "atl-rail-editcard-title";
+  title.textContent = t("chat.edit.title");
+  card.appendChild(title);
+  const pre = document.createElement("pre");
+  pre.className = "atl-diff";
+  for (const line of edit.diff.split("\n")) {
+    const div = document.createElement("div");
+    div.className = line.startsWith("+") ? "atl-diff-add" : line.startsWith("-") ? "atl-diff-del" : "atl-diff-ctx";
+    div.textContent = line;
+    pre.appendChild(div);
+  }
+  card.appendChild(pre);
+  const actions = document.createElement("div");
+  actions.className = "atl-actions";
+  const apply = document.createElement("button");
+  apply.className = "mod-cta";
+  apply.textContent = t("chat.edit.apply");
+  apply.onclick = () => {
+    if (edit.apply()) {
+      apply.disabled = true;
+      apply.textContent = t("chat.edit.applied");
+    }
+  };
+  const dismiss = document.createElement("button");
+  dismiss.textContent = t("chat.edit.dismiss");
+  dismiss.onclick = () => card.remove();
+  actions.appendChild(apply);
+  actions.appendChild(dismiss);
+  card.appendChild(actions);
+  thread.appendChild(card);
 }
 function headButton(container, icon, tooltip, handler) {
   const button = container.createEl("button", { cls: "atl-iconbtn" });
@@ -27390,9 +27859,9 @@ var DashboardView = class extends import_obsidian6.ItemView {
   render() {
     this.contentEl.empty();
     const root = this.contentEl.createDiv({ cls: "atl-root" });
-    const header = root.createDiv({ cls: "atl-dash-header" });
-    header.createEl("h3", { text: t("dash.title") });
-    const gear = header.createEl("button", { cls: "atl-iconbtn" });
+    const header2 = root.createDiv({ cls: "atl-dash-header" });
+    header2.createEl("h3", { text: t("dash.title") });
+    const gear = header2.createEl("button", { cls: "atl-iconbtn" });
     (0, import_obsidian6.setIcon)(gear, "settings");
     (0, import_obsidian6.setTooltip)(gear, t("panel.settings"));
     gear.onclick = () => this.plugin.openSettings();
@@ -27456,12 +27925,19 @@ function tutorSystemPrompt(languageTarget) {
   return [
     "You are a warm, knowledgeable learning assistant embedded in the reader's Obsidian vault.",
     "You help the learner understand what they are reading, answer their questions directly and completely, and discuss their margin annotations.",
+    "When you know things about this learner (their profile, recent learning, or earlier turns), tailor your depth, examples, and tone to them.",
     "Be concise and conversational. Never refuse to answer or tell the learner to work it out alone; if a Socratic nudge helps, add it after a real answer.",
     reviewLanguageInstruction(languageTarget)
   ].join(" ");
 }
 function contextBlock(ctx, includeContent) {
   const lines = [];
+  if (ctx.profileSummary && ctx.profileSummary.trim()) {
+    lines.push(`What you know about this learner:
+"""
+${ctx.profileSummary.trim()}
+"""`);
+  }
   if (ctx.notePath) lines.push(`Current note: ${ctx.notePath}`);
   if (ctx.selection && ctx.selection.trim()) {
     lines.push(`Selected text:
@@ -27552,19 +28028,19 @@ var ChatView = class extends import_obsidian7.ItemView {
   render() {
     this.contentEl.empty();
     const root = this.contentEl.createDiv({ cls: "atl-chat" });
-    const header = root.createDiv({ cls: "atl-chat-header" });
-    header.createEl("h3", { text: t("chat.title") });
-    const badge = header.createEl("button", {
+    const header2 = root.createDiv({ cls: "atl-chat-header" });
+    header2.createEl("h3", { text: t("chat.title") });
+    const badge = header2.createEl("button", {
       cls: "atl-chat-badge",
       text: this.engineLabel()
     });
     (0, import_obsidian7.setTooltip)(badge, t("chat.engineTip"));
     badge.onclick = () => void this.toggleEngine();
-    const spacer2 = header.createSpan({ cls: "atl-spacer" });
+    const spacer2 = header2.createSpan({ cls: "atl-spacer" });
     spacer2.style.flex = "1";
-    this.iconButton(header, "plus", t("chat.new"), () => this.newChat());
+    this.iconButton(header2, "plus", t("chat.new"), () => this.newChat());
     this.iconButton(
-      header,
+      header2,
       "settings",
       t("panel.settings"),
       () => this.plugin.openSettings()
@@ -27677,11 +28153,13 @@ var ChatView = class extends import_obsidian7.ItemView {
   /** The note context for this turn: the pinned annotation, else the active note. */
   async resolveContext() {
     if (this.pinned) {
+      const profileSummary = this.plugin.learnerProfileSummary();
       return {
         notePath: this.pinned.notePath,
         noteTitle: this.pinned.noteTitle,
         selection: this.pinned.selection,
-        content: await this.plugin.noteContent(this.pinned.notePath)
+        content: await this.plugin.noteContent(this.pinned.notePath),
+        ...profileSummary ? { profileSummary } : {}
       };
     }
     return await this.plugin.chatContext() ?? {};
@@ -28420,10 +28898,10 @@ function buildFileGlossary(hash2, entries, complete = true) {
     const key = normalizeKey(entry.surface);
     if (key && !byKey.has(key)) byKey.set(key, entry);
   }
-  const unique2 = [...byKey.values()].sort(
+  const unique3 = [...byKey.values()].sort(
     (a, b) => b.surface.length - a.surface.length
   );
-  return { hash: hash2, entries: unique2, byKey, complete };
+  return { hash: hash2, entries: unique3, byKey, complete };
 }
 function mergeGlossaryEntry(glossary, entry) {
   const key = normalizeKey(entry.surface);
@@ -28901,6 +29379,7 @@ var AnnotationTutorLitePlugin = class extends import_obsidian11.Plugin {
       save: (id, note) => void this.saveNoteInline(id, note),
       ask: (id, note) => void this.askFromCard(id, note),
       discuss: (id) => void this.openChatForAnnotation(id),
+      reply: (id, message) => this.replyInAnnotation(id, message),
       remove: (id) => this.confirmDeleteById(id),
       settings: () => this.openSettings()
     });
@@ -29214,6 +29693,16 @@ var AnnotationTutorLitePlugin = class extends import_obsidian11.Plugin {
       name: t("cmd.toggleMarks"),
       callback: () => void this.toggleMarks()
     });
+    this.addCommand({
+      id: "build-notebook",
+      name: t("cmd.buildNotebook"),
+      callback: () => void this.buildNotebook()
+    });
+    this.addCommand({
+      id: "enrich-notebook",
+      name: t("cmd.enrichNotebook"),
+      callback: () => void this.enrichNotebook()
+    });
   }
   addEditorMenuItems(menu, editor, info) {
     menu.addItem(
@@ -29441,7 +29930,11 @@ var AnnotationTutorLitePlugin = class extends import_obsidian11.Plugin {
       0
     );
     try {
-      const prompt = buildReviewPrompt(record2, this.settings.reviewLanguage);
+      const prompt = buildReviewPrompt(
+        record2,
+        this.settings.reviewLanguage,
+        this.learnerProfileSummary()
+      );
       const timeoutMs = Math.max(MIN_AGENT_TIMEOUT_SECONDS, this.settings.agentTimeoutSeconds) * 1e3;
       const outcome = useApi ? await this.captureApiReview(prompt, timeoutMs) : await this.captureOpenCodeReview(prompt, timeoutMs);
       const id = record2.annotationId;
@@ -29911,6 +30404,140 @@ var AnnotationTutorLitePlugin = class extends import_obsidian11.Plugin {
     }
     await this.askAgent(this.indexTable.get(id) ?? record2);
   }
+  /**
+   * One in-card dialogue turn. Builds the conversation context from the
+   * annotation (selected text, note, prior review + dialogue turns), sends it to
+   * the chat engine, persists both turns into the annotation file, and — when
+   * the learner asked to change the original text — returns a diff + an apply
+   * closure so the card can offer a preview-then-apply edit (Phase 3).
+   */
+  async replyInAnnotation(id, message) {
+    const record2 = this.indexTable.get(id);
+    if (!record2) return { ok: false, error: t("card.reply.error") };
+    const trimmed = message.trim();
+    if (!trimmed) return { ok: false };
+    const lang = this.settings.reviewLanguage.trim() || detectLanguageName(trimmed);
+    const wantsEdit = classifyIntent(trimmed) === "write";
+    const target = wantsEdit ? this.captureEditTarget(record2.selectedText) : null;
+    const engineText = wantsEdit ? `${buildEditInstruction(target?.hasSelection ?? false)}
+
+${trimmed}` : trimmed;
+    const system = this.dialogueSystemPrompt(record2, lang);
+    const history = (record2.dialogue ?? []).map((turn2) => ({
+      role: turn2.role === "agent" ? "assistant" : "user",
+      content: turn2.text
+    }));
+    const messages = [
+      { role: "system", content: system },
+      ...history,
+      { role: "user", content: engineText }
+    ];
+    const openCodePrompt = [
+      system,
+      "--- Conversation so far ---",
+      ...(record2.dialogue ?? []).map(
+        (turn2) => `${turn2.role === "agent" ? "Tutor" : "Learner"}: ${turn2.text}`
+      ),
+      `Learner: ${engineText}`
+    ].join("\n\n");
+    const turn = await this.runDialogueTurn(messages, openCodePrompt);
+    if (!turn.ok || !turn.text) {
+      return { ok: false, ...turn.error ? { error: turn.error } : {} };
+    }
+    let agentText = turn.text;
+    let edit;
+    if (wantsEdit) {
+      const parsed = extractEdit(turn.text);
+      agentText = parsed.explanation || turn.text;
+      if (parsed.edit && target) {
+        const before = target.hasSelection ? target.original : "";
+        const diff = before ? lineDiff(before, parsed.edit) : parsed.edit.split(/\r?\n/).map((line) => `+ ${line}`).join("\n");
+        const captured = target;
+        const replacement = parsed.edit;
+        agentText = parsed.explanation || t("chat.edit.proposed");
+        edit = { diff, apply: () => this.applyNoteEdit(captured, replacement) };
+      }
+    }
+    const turns = [
+      { role: "user", text: trimmed, at: nowIso() },
+      { role: "agent", text: agentText, at: nowIso() }
+    ];
+    const updated = await this.store.appendDialogueTurns(id, turns);
+    if (updated) {
+      this.indexTable.upsert(
+        recordFromAnnotation(updated, this.store.annotationPath(id))
+      );
+    }
+    return { ok: true, agentText, ...edit ? { edit } : {} };
+  }
+  /** System prompt for an in-annotation dialogue turn (persona + the annotation). */
+  dialogueSystemPrompt(record2, lang) {
+    const profile = this.learnerProfileSummary();
+    const parts = [
+      tutorSystemPrompt(lang),
+      [
+        "You are talking with the learner in the margin beside one of their annotations.",
+        `Annotation ${record2.annotationId} in ${record2.sourceFile}.`,
+        `Selected text:
+"""
+${record2.selectedText ?? ""}
+"""`,
+        `Learner's note:
+"""
+${record2.userNote ?? record2.userNoteSummary ?? ""}
+"""`,
+        ...record2.reviewText ? [`Your earlier review:
+"""
+${record2.reviewText}
+"""`] : [],
+        ...profile ? [`What you know about this learner:
+"""
+${profile}
+"""`] : [],
+        "Answer the learner's follow-up about this passage, using the conversation so far."
+      ].join("\n")
+    ];
+    return parts.join("\n\n");
+  }
+  /**
+   * Run one conversational turn through the chat engine. Uses the chat engine
+   * setting (OpenCode → API fallback, mirroring the sidebar) so dialogue and the
+   * sidebar behave the same.
+   */
+  async runDialogueTurn(messages, openCodePrompt) {
+    if (this.settings.chatEngine === "opencode") {
+      const command = this.settings.agentCommand.trim() || "opencode";
+      const result = await runAcpReview({
+        command,
+        model: this.settings.agentModel,
+        prompt: openCodePrompt,
+        timeoutMs: this.chatTimeoutMs()
+      });
+      if (!result.timedOut && (result.ok || result.reviewText)) {
+        return { ok: true, text: result.reviewText };
+      }
+      if (this.settings.apiKey.trim()) {
+        return this.dialogueApiTurn(messages);
+      }
+      return {
+        ok: false,
+        text: "",
+        error: result.error ?? (result.timedOut ? t("notice.agentTimeout", { id: "" }) : t("chat.empty"))
+      };
+    }
+    return this.dialogueApiTurn(messages);
+  }
+  async dialogueApiTurn(messages) {
+    if (!this.settings.apiKey.trim()) {
+      return { ok: false, text: "", error: t("notice.apiKeyMissing") };
+    }
+    const api = await this.chatApiTurn(messages);
+    return {
+      ok: api.ok,
+      text: api.reviewText,
+      ...api.error ? { error: api.error } : {}
+    };
+  }
   confirmDeleteById(id) {
     const record2 = this.indexTable.get(id);
     if (record2) this.confirmDelete(record2);
@@ -30138,6 +30765,112 @@ var AnnotationTutorLitePlugin = class extends import_obsidian11.Plugin {
     );
     await this.rebuildIndex(false);
   }
+  // --- notebook --------------------------------------------------------------
+  /**
+   * Build the per-Vault study notebook (index + per-document pages + related-
+   * document chapters) from the current annotations and dialogue, then open it.
+   * Deterministic and instant — no model calls (see {@link enrichNotebook}).
+   */
+  async buildNotebook() {
+    const records = this.indexTable.all();
+    if (records.length === 0) {
+      new import_obsidian11.Notice(t("notice.notebookEmpty"));
+      return;
+    }
+    const progress = new import_obsidian11.Notice(t("notice.notebookBuilding"), 0);
+    try {
+      const result = await this.store.writeNotebook(records);
+      progress.hide();
+      new import_obsidian11.Notice(
+        t("notice.notebookDone", { pages: result.pages, chapters: result.chapters })
+      );
+      await this.openLibraryPath(result.path);
+    } catch (error51) {
+      progress.hide();
+      new import_obsidian11.Notice(
+        t("notice.notebookFailed", {
+          detail: error51 instanceof Error ? error51.message : String(error51)
+        })
+      );
+    }
+  }
+  /**
+   * Hybrid enrichment: build the notebook, but first ask the engine to write a
+   * short synthesis for each studied document (sequential, free-model safe), so
+   * the pages gain prose summaries on top of the deterministic structure.
+   */
+  async enrichNotebook() {
+    const records = this.indexTable.all();
+    if (records.length === 0) {
+      new import_obsidian11.Notice(t("notice.notebookEmpty"));
+      return;
+    }
+    const byDoc = /* @__PURE__ */ new Map();
+    for (const record2 of records) {
+      const list = byDoc.get(record2.sourceFile);
+      if (list) list.push(record2);
+      else byDoc.set(record2.sourceFile, [record2]);
+    }
+    const docs = [...byDoc.entries()];
+    const progress = new import_obsidian11.Notice(
+      t("notice.notebookEnriching", { done: 0, total: docs.length }),
+      0
+    );
+    const synthesis = /* @__PURE__ */ new Map();
+    try {
+      let done = 0;
+      for (const [sourceFile, recs] of docs) {
+        const text = await this.synthesizeDocument(sourceFile, recs);
+        if (text) synthesis.set(sourceFile, text);
+        done += 1;
+        progress.setMessage(
+          t("notice.notebookEnriching", { done, total: docs.length })
+        );
+      }
+      const result = await this.store.writeNotebook(records, synthesis);
+      progress.hide();
+      new import_obsidian11.Notice(
+        t("notice.notebookDone", { pages: result.pages, chapters: result.chapters })
+      );
+      await this.openLibraryPath(result.path);
+    } catch (error51) {
+      progress.hide();
+      new import_obsidian11.Notice(
+        t("notice.notebookFailed", {
+          detail: error51 instanceof Error ? error51.message : String(error51)
+        })
+      );
+    }
+  }
+  /** One engine call: synthesize a learner's annotations on one document. */
+  async synthesizeDocument(sourceFile, records) {
+    const title = sourceFile.split("/").pop()?.replace(/\.md$/i, "") ?? sourceFile;
+    const lang = this.settings.reviewLanguage.trim() || detectLanguageName(records.map((r) => r.userNote ?? "").join(" "));
+    const items = records.map((record2, index) => {
+      const excerpt = (record2.selectedText ?? "").replace(/\s+/g, " ").trim();
+      const note = (record2.userNote ?? record2.userNoteSummary ?? "").trim();
+      const review = (record2.reviewSummary ?? record2.reviewText ?? "").trim();
+      return [
+        `(${index + 1}) Excerpt: ${excerpt.slice(0, 200)}`,
+        note ? `    Learner's note: ${note}` : "",
+        review ? `    Your review: ${review}` : ""
+      ].filter(Boolean).join("\n");
+    }).join("\n");
+    const system = `${tutorSystemPrompt(lang)}
+
+You are writing a short synthesis for the learner's study notebook page about "${title}".`;
+    const user = `Below are the learner's annotations on ${sourceFile}. Write 2-4 sentences synthesizing what they engaged with and what to revisit. Plain prose \u2014 no headings, no lists.
+
+${items}`;
+    const messages = [
+      { role: "system", content: system },
+      { role: "user", content: user }
+    ];
+    const turn = await this.runDialogueTurn(messages, `${system}
+
+${user}`);
+    return turn.ok ? turn.text.trim() : "";
+  }
   // --- view helpers ----------------------------------------------------------
   async openChat() {
     const existing = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)[0];
@@ -30186,12 +30919,27 @@ var AnnotationTutorLitePlugin = class extends import_obsidian11.Plugin {
     } catch {
       selection = "";
     }
+    const profileSummary = this.learnerProfileSummary();
     return {
       notePath: view.file.path,
       noteTitle: view.file.basename,
       selection,
-      content: await this.noteContent(view.file.path)
+      content: await this.noteContent(view.file.path),
+      ...profileSummary ? { profileSummary } : {}
     };
+  }
+  /**
+   * A short summary of the learner from their profile (`Agent Memory/profiles/
+   * learner-profile.md`), already parsed into the library snapshot. Fed into chat,
+   * dialogue, and review prompts so the agent tailors feedback to this learner.
+   */
+  learnerProfileSummary() {
+    const profile = this.librarySnapshot.profiles.find(
+      (item) => item.kind === "learner-profile"
+    );
+    const summary = profile?.summary?.trim();
+    if (!summary) return "";
+    return summary.length > 600 ? `${summary.slice(0, 600)}\u2026` : summary;
   }
   /** Read a note's full text by Vault path (for chat context / pinned annotation). */
   async noteContent(path) {
@@ -30404,7 +31152,8 @@ var AnnotationTutorLitePlugin = class extends import_obsidian11.Plugin {
         note: record2.userNote ?? record2.userNoteSummary ?? "",
         status: record2.status,
         review: comment,
-        reviewQuestion: question
+        reviewQuestion: question,
+        ...record2.dialogue ? { dialogue: record2.dialogue } : {}
       };
     });
   }

@@ -86,6 +86,56 @@ describe("annotation file", () => {
     expect(updateAnnotationMarkdown("not an annotation", { status: "archived" })).toBeNull();
   });
 
+  it("round-trips dialogue turns through the ## Dialogue section", () => {
+    const withDialogue = sample({
+      dialogue: [
+        { role: "user", text: "Why does this matter?", at: "2026-06-06T11:00:00.000Z" },
+        {
+          role: "agent",
+          text: "Because it lets the model attend to several positions at once.\n\nWant an example?",
+          at: "2026-06-06T11:00:05.000Z"
+        }
+      ]
+    });
+    const serialized = serializeAnnotation(withDialogue);
+    expect(serialized).toContain("## Dialogue");
+    expect(serialized).toContain("### You — 2026-06-06T11:00:00.000Z");
+    expect(serialized).toContain("### Tutor — 2026-06-06T11:00:05.000Z");
+
+    const parsed = parseAnnotationFile(serialized);
+    expect(parsed?.dialogue).toHaveLength(2);
+    expect(parsed?.dialogue?.[0]).toMatchObject({
+      role: "user",
+      text: "Why does this matter?"
+    });
+    expect(parsed?.dialogue?.[1]?.role).toBe("agent");
+    // The blank line inside the multi-paragraph agent turn survives the round trip.
+    expect(parsed?.dialogue?.[1]?.text).toBe(
+      "Because it lets the model attend to several positions at once.\n\nWant an example?"
+    );
+    // Idempotent serialize → parse → serialize.
+    expect(serializeAnnotation(parsed!)).toBe(serialized);
+  });
+
+  it("preserves dialogue when the plugin patches the note", () => {
+    const withDialogue = serializeAnnotation(
+      sample({
+        dialogue: [{ role: "user", text: "Quick question", at: "2026-06-06T11:00:00.000Z" }]
+      })
+    );
+    const updated = updateAnnotationMarkdown(withDialogue, {
+      userNote: "Edited note."
+    });
+    const parsed = parseAnnotationFile(updated!);
+    expect(parsed?.userNote).toBe("Edited note.");
+    expect(parsed?.dialogue).toHaveLength(1);
+    expect(parsed?.dialogue?.[0]?.text).toBe("Quick question");
+  });
+
+  it("omits the Dialogue section when there are no turns", () => {
+    expect(serializeAnnotation(sample())).not.toContain("## Dialogue");
+  });
+
   it("reads the legacy sentinel format and upgrades it on edit", () => {
     const legacy = [
       "<!-- annotation-tutor:annotation:start ANN-20260606-001 -->",

@@ -86,15 +86,26 @@ export function spawnEnv(): NodeJS.ProcessEnv {
  */
 export function buildReviewPrompt(
   record: IndexRecord,
-  reviewLanguage = ""
+  reviewLanguage = "",
+  profileSummary = ""
 ): string {
   const note = record.userNote ?? record.userNoteSummary ?? "";
   const target = reviewLanguage.trim() || detectLanguageName(note);
+  const profile = profileSummary.trim();
   return [
     "You are a warm, knowledgeable learning assistant leaving a short note in the margin of a learner's book.",
     "Read the selected source text and the learner's note, then reply as a helpful tutor would.",
     "Reply with the note and nothing else — no preamble, no tool use, no headings, no bullet lists.",
     reviewLanguageInstruction(target),
+    ...(profile
+      ? [
+          "",
+          "What you know about this learner (tailor depth, examples, and tone to them):",
+          '"""',
+          profile,
+          '"""'
+        ]
+      : []),
     "",
     "Use exactly these three labels, each starting on its own line, and write nothing else:",
     "Correctness: one of correct, partially_correct, incorrect, uncertain (judge the note; use uncertain when the note is purely a question).",

@@ -12,6 +12,8 @@ export type ChatContext = {
   noteTitle?: string;
   selection?: string;
   content?: string;
+  /** A short summary of the learner (from their profile), to personalize replies. */
+  profileSummary?: string;
 };
 
 /** How many characters of the note body to inline for the API engine. */
@@ -21,6 +23,7 @@ export function tutorSystemPrompt(languageTarget: string): string {
   return [
     "You are a warm, knowledgeable learning assistant embedded in the reader's Obsidian vault.",
     "You help the learner understand what they are reading, answer their questions directly and completely, and discuss their margin annotations.",
+    "When you know things about this learner (their profile, recent learning, or earlier turns), tailor your depth, examples, and tone to them.",
     "Be concise and conversational. Never refuse to answer or tell the learner to work it out alone; if a Socratic nudge helps, add it after a real answer.",
     reviewLanguageInstruction(languageTarget)
   ].join(" ");
@@ -29,6 +32,9 @@ export function tutorSystemPrompt(languageTarget: string): string {
 /** A block describing what the learner is currently reading. */
 export function contextBlock(ctx: ChatContext, includeContent: boolean): string {
   const lines: string[] = [];
+  if (ctx.profileSummary && ctx.profileSummary.trim()) {
+    lines.push(`What you know about this learner:\n"""\n${ctx.profileSummary.trim()}\n"""`);
+  }
   if (ctx.notePath) lines.push(`Current note: ${ctx.notePath}`);
   if (ctx.selection && ctx.selection.trim()) {
     lines.push(`Selected text:\n"""\n${ctx.selection.trim()}\n"""`);

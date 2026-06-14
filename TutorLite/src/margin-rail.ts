@@ -28,7 +28,8 @@ import {
 export {
   setMarginCardHandlers,
   setCardGeomStore,
-  type MarginCardHandlers
+  type MarginCardHandlers,
+  type DialogueReplyResult
 } from "./margin-card.js";
 
 class MarginRail {

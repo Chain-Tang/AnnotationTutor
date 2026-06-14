@@ -12,6 +12,7 @@ describe("tutorSystemPrompt", () => {
     const sys = tutorSystemPrompt("Chinese");
     expect(sys).toContain("learning assistant");
     expect(sys).toContain("Never refuse to answer");
+    expect(sys).toContain("tailor your depth");
     expect(sys).toContain("Write the review content in Chinese.");
   });
 });
@@ -36,6 +37,19 @@ describe("contextBlock", () => {
     expect(block).toContain("…(truncated)");
     expect(block.length).toBeLessThan(content.length);
   });
+
+  it("surfaces the learner profile when provided", () => {
+    const block = contextBlock(
+      { notePath: "A.md", profileSummary: "Prefers worked examples." },
+      false
+    );
+    expect(block).toContain("What you know about this learner:");
+    expect(block).toContain("Prefers worked examples.");
+    // Absent when no profile is known.
+    expect(contextBlock({ notePath: "A.md" }, false)).not.toContain(
+      "What you know about this learner:"
+    );
+  });
 });
 
 describe("opencodePreamble", () => {
@@ -43,6 +57,14 @@ describe("opencodePreamble", () => {
     const preamble = opencodePreamble({ notePath: "A.md", selection: "s" }, "");
     expect(preamble).toContain("read the full note with your file tools");
     expect(preamble).toContain("path: A.md");
+  });
+
+  it("carries the learner profile into the preamble", () => {
+    const preamble = opencodePreamble(
+      { notePath: "A.md", profileSummary: "Beginner in statistics." },
+      ""
+    );
+    expect(preamble).toContain("Beginner in statistics.");
   });
 });
 

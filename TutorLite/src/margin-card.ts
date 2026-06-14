@@ -8,6 +8,19 @@
 import { setIcon, setTooltip } from "obsidian";
 import { t } from "./i18n.js";
 import type { AnchorMark } from "./decorations-plan.js";
+import type { DialogueTurn } from "./model.js";
+
+/**
+ * The outcome of one in-card dialogue turn. `edit` is present only when the
+ * tutor proposed a change to the source text (Phase 3): `diff` is the rendered
+ * before/after and `apply` writes it into the note, returning whether it landed.
+ */
+export type DialogueReplyResult = {
+  ok: boolean;
+  agentText?: string;
+  error?: string;
+  edit?: { diff: string; apply: () => boolean };
+};
 
 export type MarginCardHandlers = {
   save: (id: string, note: string) => void;
@@ -15,6 +28,8 @@ export type MarginCardHandlers = {
   ask: (id: string, note: string) => void;
   /** Open the sidebar chat seeded with this annotation as context. */
   discuss: (id: string) => void;
+  /** Send one in-card dialogue turn; resolves with the tutor's reply (+ any edit). */
+  reply: (id: string, message: string) => Promise<DialogueReplyResult>;
   remove: (id: string) => void;
   settings: () => void;
 };
@@ -135,6 +150,11 @@ export function buildMarginCard(
     }
   }
 
+  // A continuous dialogue: the learner can reply right under the comment (e.g.
+  // below the Socratic question), the tutor remembers the thread (persisted in
+  // the annotation file), and a "rewrite the original" request surfaces a diff.
+  renderDialogue(card, mark);
+
   // Apply remembered size, then ignore the resize events that applying it fires.
   let applying = true;
   if (options.geom.w) card.style.width = `${options.geom.w}px`;
@@ -167,6 +187,135 @@ export function buildMarginCard(
   observer.observe(card);
 
   return { card, observer };
+}
+
+/** Build the dialogue thread + reply input under a card's note/review. */
+function renderDialogue(card: HTMLElement, mark: AnchorMark): void {
+  const wrap = document.createElement("div");
+  wrap.className = "atl-rail-dialogue";
+
+  const thread = document.createElement("div");
+  thread.className = "atl-rail-thread";
+  for (const turn of mark.dialogue ?? []) appendTurn(thread, turn.role, turn.text);
+  wrap.appendChild(thread);
+
+  const row = document.createElement("div");
+  row.className = "atl-rail-reply-row";
+  const input = document.createElement("textarea");
+  input.className = "atl-rail-reply";
+  input.placeholder = t("card.reply.placeholder");
+  input.rows = 1;
+  input.addEventListener("mousedown", (event) => event.stopPropagation());
+  const send = document.createElement("button");
+  send.className = "atl-iconbtn atl-rail-reply-send";
+  setIcon(send, "send-horizontal");
+  setTooltip(send, t("card.reply.send"));
+  row.appendChild(input);
+  row.appendChild(send);
+  wrap.appendChild(row);
+
+  const submit = async (): Promise<void> => {
+    const message = input.value.trim();
+    const cardHandlers = getMarginCardHandlers();
+    if (!message || !cardHandlers) return;
+    input.value = "";
+    appendTurn(thread, "user", message);
+    const thinking = appendNotice(thread, t("card.reply.thinking"));
+    send.disabled = true;
+    input.disabled = true;
+    try {
+      const result = await cardHandlers.reply(mark.id, message);
+      thinking.remove();
+      if (!result.ok) {
+        appendNotice(thread, result.error ?? t("card.reply.error"));
+      } else {
+        appendTurn(thread, "agent", result.agentText || t("card.reply.empty"));
+        if (result.edit) appendEditCard(thread, result.edit);
+      }
+    } catch (error) {
+      thinking.remove();
+      appendNotice(thread, error instanceof Error ? error.message : String(error));
+    } finally {
+      send.disabled = false;
+      input.disabled = false;
+      input.focus();
+    }
+  };
+  send.onclick = () => void submit();
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      void submit();
+    }
+  });
+
+  card.appendChild(wrap);
+}
+
+function appendTurn(
+  thread: HTMLElement,
+  role: DialogueTurn["role"],
+  text: string
+): void {
+  const el = document.createElement("div");
+  el.className = `atl-rail-turn atl-rail-turn--${role}`;
+  el.textContent = text;
+  thread.appendChild(el);
+}
+
+function appendNotice(thread: HTMLElement, text: string): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "atl-rail-turn atl-rail-turn--notice";
+  el.textContent = text;
+  thread.appendChild(el);
+  return el;
+}
+
+/** A diff preview + Apply/Dismiss for a tutor-proposed change to the source. */
+function appendEditCard(
+  thread: HTMLElement,
+  edit: { diff: string; apply: () => boolean }
+): void {
+  const card = document.createElement("div");
+  card.className = "atl-rail-editcard";
+  const title = document.createElement("div");
+  title.className = "atl-rail-editcard-title";
+  title.textContent = t("chat.edit.title");
+  card.appendChild(title);
+
+  const pre = document.createElement("pre");
+  pre.className = "atl-diff";
+  for (const line of edit.diff.split("\n")) {
+    const div = document.createElement("div");
+    div.className = line.startsWith("+")
+      ? "atl-diff-add"
+      : line.startsWith("-")
+        ? "atl-diff-del"
+        : "atl-diff-ctx";
+    div.textContent = line;
+    pre.appendChild(div);
+  }
+  card.appendChild(pre);
+
+  const actions = document.createElement("div");
+  actions.className = "atl-actions";
+  const apply = document.createElement("button");
+  apply.className = "mod-cta";
+  apply.textContent = t("chat.edit.apply");
+  apply.onclick = () => {
+    if (edit.apply()) {
+      apply.disabled = true;
+      apply.textContent = t("chat.edit.applied");
+    }
+  };
+  const dismiss = document.createElement("button");
+  dismiss.textContent = t("chat.edit.dismiss");
+  dismiss.onclick = () => card.remove();
+  actions.appendChild(apply);
+  actions.appendChild(dismiss);
+  card.appendChild(actions);
+
+  thread.appendChild(card);
 }
 
 function headButton(

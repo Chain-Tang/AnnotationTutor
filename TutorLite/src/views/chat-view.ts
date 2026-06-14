@@ -241,11 +241,13 @@ export class ChatView extends ItemView {
   /** The note context for this turn: the pinned annotation, else the active note. */
   private async resolveContext(): Promise<ChatContext> {
     if (this.pinned) {
+      const profileSummary = this.plugin.learnerProfileSummary();
       return {
         notePath: this.pinned.notePath,
         noteTitle: this.pinned.noteTitle,
         selection: this.pinned.selection,
-        content: await this.plugin.noteContent(this.pinned.notePath)
+        content: await this.plugin.noteContent(this.pinned.notePath),
+        ...(profileSummary ? { profileSummary } : {})
       };
     }
     return (await this.plugin.chatContext()) ?? {};

@@ -46,6 +46,9 @@ export function recordFromAnnotation(
       ? truncate(annotation.userNote)
       : undefined,
     userNote: annotation.userNote,
+    ...(annotation.dialogue && annotation.dialogue.length > 0
+      ? { dialogue: annotation.dialogue }
+      : {}),
     createdAt: annotation.createdAt,
     updatedAt: annotation.updatedAt
   };

@@ -453,6 +453,100 @@
   white-space: pre-wrap;
 }
 
+/* --- in-card dialogue: a thread the learner can continue inline ----------- */
+
+.atl-rail-dialogue {
+  flex: none;
+  margin-top: var(--size-2-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-2);
+}
+
+.atl-rail-thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-1);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.atl-rail-turn {
+  border-radius: var(--radius-s);
+  padding: var(--size-2-1) var(--size-2-2);
+  font-size: var(--font-smaller);
+  line-height: var(--line-height-tight);
+  white-space: pre-wrap;
+}
+
+.atl-rail-turn--user {
+  align-self: flex-end;
+  max-width: 90%;
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.atl-rail-turn--agent {
+  align-self: flex-start;
+  max-width: 95%;
+  color: var(--text-muted);
+}
+
+.atl-rail-turn--notice {
+  align-self: flex-start;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.atl-rail-reply-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--size-2-1);
+}
+
+.atl-rail-reply {
+  flex: 1;
+  min-height: 28px;
+  max-height: 120px;
+  resize: none;
+  padding: var(--size-2-1) var(--size-2-2);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  line-height: var(--line-height-tight);
+}
+
+.atl-rail-reply-send {
+  flex: none;
+}
+
+/* The tutor-proposed edit preview, shown inline in the thread. */
+.atl-rail-editcard {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: var(--size-2-2);
+  background: var(--background-secondary);
+}
+
+.atl-rail-editcard-title {
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+  margin-bottom: var(--size-2-1);
+}
+
+.atl-rail-editcard .atl-diff {
+  max-height: 200px;
+  overflow: auto;
+  margin: 0 0 var(--size-2-2);
+}
+
+.atl-rail-editcard .atl-actions {
+  display: flex;
+  gap: var(--size-2-2);
+}
+
 /* --- dashboard / modals -------------------------------------------------- */
 
 .atl-root {

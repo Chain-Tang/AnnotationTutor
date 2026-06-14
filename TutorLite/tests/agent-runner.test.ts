@@ -76,6 +76,13 @@ describe("buildReviewPrompt", () => {
     expect(prompt).toContain("answer it clearly and completely");
     expect(prompt).toContain("never tell the learner to work it out alone");
   });
+
+  it("inlines a learner profile summary when provided, and omits it otherwise", () => {
+    const withProfile = buildReviewPrompt(record, "", "Visual learner; new to ML.");
+    expect(withProfile).toContain("What you know about this learner");
+    expect(withProfile).toContain("Visual learner; new to ML.");
+    expect(buildReviewPrompt(record)).not.toContain("What you know about this learner");
+  });
 });
 
 describe("buildCaptureArgs", () => {

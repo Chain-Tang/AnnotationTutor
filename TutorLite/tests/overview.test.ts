@@ -56,6 +56,9 @@ describe("overview generation", () => {
     expect(instructions).toContain("Never overwrite");
     expect(instructions).toContain("proposals/pending");
     expect(instructions).toContain("Do not read or update `profiles/preferences.md`");
+    // The agent is now told to read the learner profile + recent learning.
+    expect(instructions).toContain("Agent Memory/profiles/learner-profile.md");
+    expect(instructions).toContain("Agent Memory/recent-learning.md");
   });
 
   it("builds a copyable per-annotation prompt", () => {

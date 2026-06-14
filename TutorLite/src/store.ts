@@ -6,6 +6,8 @@
 import { type App, TFile, TFolder, normalizePath } from "obsidian";
 import type {
   Annotation,
+  DialogueTurn,
+  IndexRecord,
   LearnerProfile,
   MemoryProposal,
   Task
@@ -49,6 +51,7 @@ import {
   type LibrarySnapshot
 } from "./library-index.js";
 import { validateProposalCandidate } from "./memory-policy.js";
+import { buildNotebook } from "./markdown/notebook.js";
 
 const SELF_WRITE_WINDOW_MS = 1500;
 
@@ -137,6 +140,10 @@ export class VaultStore {
 
   public agentsPath(): string {
     return `${this.memoryRoot()}/AGENTS.md`;
+  }
+
+  public notebookIndexPath(): string {
+    return `${this.memoryRoot()}/Notebook/Notebook.md`;
   }
 
   public indexPath(): string {
@@ -265,6 +272,37 @@ export class VaultStore {
           : parsed
             ? "reviewed"
             : "reviewed_unstructured",
+        updatedAt: nowIso()
+      };
+      const out = serializeAnnotation(next, this.memoryRoot());
+      result = parseAnnotationFile(out);
+      return out;
+    });
+    this.markWritten(path);
+    return result;
+  }
+
+  /**
+   * Append in-annotation dialogue turns to the file's `## Dialogue` section,
+   * preserving every other (plugin- and agent-owned) section. Self-write is
+   * suppressed via `markWritten`, so the margin card's interaction is not torn
+   * down by the watcher mid-conversation. Returns the re-parsed annotation.
+   */
+  public async appendDialogueTurns(
+    id: string,
+    turns: DialogueTurn[]
+  ): Promise<Annotation | null> {
+    if (turns.length === 0) return null;
+    const path = this.annotationPath(id);
+    const file = this.fileAt(path);
+    if (!file) return null;
+    let result: Annotation | null = null;
+    await this.app.vault.process(file, (data) => {
+      const existing = parseAnnotationFile(data);
+      if (!existing) return data;
+      const next: Annotation = {
+        ...existing,
+        dialogue: [...(existing.dialogue ?? []), ...turns],
         updatedAt: nowIso()
       };
       const out = serializeAnnotation(next, this.memoryRoot());
@@ -491,6 +529,30 @@ export class VaultStore {
         renderAgentInstructions(options)
       );
     }
+  }
+
+  /**
+   * Build and write the whole per-Vault notebook (index + per-document pages +
+   * related-document chapters) from the current annotation index. Returns the
+   * index path plus counts for the completion notice.
+   */
+  public async writeNotebook(
+    records: IndexRecord[],
+    synthesis?: Map<string, string>
+  ): Promise<{ path: string; pages: number; chapters: number }> {
+    const files = buildNotebook(records, {
+      memoryRoot: this.memoryRoot(),
+      generatedAt: new Date().toISOString(),
+      ...(synthesis ? { synthesis } : {})
+    });
+    for (const file of files) {
+      await this.writeVaultFile(file.path, file.content);
+    }
+    return {
+      path: this.notebookIndexPath(),
+      pages: files.filter((file) => file.path.includes("/pages/")).length,
+      chapters: files.filter((file) => file.path.includes("/chapters/")).length
+    };
   }
 
   private async archiveProposal(

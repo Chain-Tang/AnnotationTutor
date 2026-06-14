@@ -10,6 +10,7 @@ import {
   type Anchor,
   type Annotation,
   type AnnotationStatus,
+  type DialogueTurn,
   annotationStatuses,
   bareBlockId,
   caretId
@@ -40,8 +41,59 @@ export type AnnotationPatch = {
   concepts?: string[];
   relatedMemoryCells?: string[];
   anchor?: Partial<Anchor>;
+  dialogue?: DialogueTurn[];
   updatedAt?: string;
 };
+
+// File labels are fixed English so parsing is locale-independent; the card UI
+// shows localized labels separately.
+const DIALOGUE_LABEL: Record<DialogueTurn["role"], string> = {
+  user: "You",
+  agent: "Tutor"
+};
+
+/** Render dialogue turns as `### You — <ts>` / `### Tutor — <ts>` blockquotes. */
+export function serializeDialogue(turns: DialogueTurn[]): string {
+  return turns
+    .map((turn) => {
+      const label = DIALOGUE_LABEL[turn.role];
+      const head = turn.at ? `### ${label} — ${turn.at}` : `### ${label}`;
+      return `${head}\n\n${toBlockquote(turn.text)}`;
+    })
+    .join("\n\n");
+}
+
+/** Parse the `## Dialogue` section body back into ordered turns (tolerant). */
+export function parseDialogue(sectionBody: string): DialogueTurn[] {
+  if (!sectionBody.trim()) return [];
+  const lines = sectionBody.split(/\r?\n/);
+  const turns: DialogueTurn[] = [];
+  let role: DialogueTurn["role"] | null = null;
+  let at = "";
+  let buffer: string[] = [];
+  const flush = (): void => {
+    if (role !== null) {
+      const text = fromBlockquote(buffer.join("\n"));
+      if (text) turns.push({ role, text, at });
+    }
+    buffer = [];
+  };
+  for (const line of lines) {
+    const heading = /^###\s+(.+?)\s*$/.exec(line);
+    if (heading) {
+      flush();
+      const title = heading[1] ?? "";
+      const parts = title.split(" — ");
+      const label = (parts[0] ?? "").trim().toLowerCase();
+      at = parts.length > 1 ? parts.slice(1).join(" — ").trim() : "";
+      role = label.startsWith("you") || label.startsWith("user") ? "user" : "agent";
+    } else {
+      buffer.push(line);
+    }
+  }
+  flush();
+  return turns;
+}
 
 export function serializeAnnotation(
   annotation: Annotation,
@@ -52,6 +104,10 @@ export function serializeAnnotation(
       ? annotation.reviewText.trim()
       : reviewPlaceholder();
   const historyBody = annotation.reviewHistory?.trim() ?? "";
+  const dialogueBody =
+    annotation.dialogue && annotation.dialogue.length > 0
+      ? serializeDialogue(annotation.dialogue)
+      : "";
 
   const body = [
     `# ${annotation.id}`,
@@ -60,7 +116,8 @@ export function serializeAnnotation(
     `## Agent Review\n\n${reviewBody}`,
     historyBody
       ? `## Review History\n\n${historyBody}`
-      : "## Review History"
+      : "## Review History",
+    ...(dialogueBody ? [`## Dialogue\n\n${dialogueBody}`] : [])
   ].join("\n\n");
 
   return renderFrontmatter(
@@ -123,6 +180,7 @@ function parseV2Annotation(
   const review = reviewText
     ? (parseAgentReview(reviewText, updatedAt) ?? undefined)
     : undefined;
+  const dialogue = parseDialogue(section(document.body, "Dialogue"));
   const origin = document.data.anchor_origin;
 
   return {
@@ -151,6 +209,7 @@ function parseV2Annotation(
     review,
     reviewText,
     reviewHistory,
+    ...(dialogue.length > 0 ? { dialogue } : {}),
     createdAt,
     updatedAt
   };
@@ -223,6 +282,7 @@ export function updateAnnotationMarkdown(
     anchor: patch.anchor
       ? { ...existing.anchor, ...patch.anchor }
       : existing.anchor,
+    dialogue: patch.dialogue ?? existing.dialogue,
     updatedAt: patch.updatedAt ?? new Date().toISOString()
   };
   return serializeAnnotation(updated, memoryRoot);

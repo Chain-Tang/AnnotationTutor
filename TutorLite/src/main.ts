@@ -16,6 +16,7 @@ import {
 import type { EditorView } from "@codemirror/view";
 import {
   type Annotation,
+  type DialogueTurn,
   type IndexRecord,
   type Task,
   bareBlockId
@@ -79,7 +80,8 @@ import {
 import {
   marginRailExtension,
   setMarginCardHandlers,
-  setCardGeomStore
+  setCardGeomStore,
+  type DialogueReplyResult
 } from "./margin-rail.js";
 import { ReadingRail } from "./reading-rail.js";
 import { getLocale, setLanguage, t } from "./i18n.js";
@@ -89,8 +91,10 @@ import {
 } from "./views/dashboard-view.js";
 import { CHAT_VIEW_TYPE, ChatView, type ChatMode } from "./views/chat-view.js";
 import { startAcpSession, type AcpSessionHandle, type AcpStreamEvent } from "./acp-session.js";
-import { type ChatContext } from "./chat-prompt.js";
+import { tutorSystemPrompt, type ChatContext } from "./chat-prompt.js";
 import { classifyIntent, extractAnnotationId } from "./intent.js";
+import { buildEditInstruction, extractEdit } from "./edit-parse.js";
+import { detectLanguageName } from "./lang.js";
 import {
   buildPassageGlossPrompt,
   buildWordGlossPrompt,
@@ -223,6 +227,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       save: (id, note) => void this.saveNoteInline(id, note),
       ask: (id, note) => void this.askFromCard(id, note),
       discuss: (id) => void this.openChatForAnnotation(id),
+      reply: (id, message) => this.replyInAnnotation(id, message),
       remove: (id) => this.confirmDeleteById(id),
       settings: () => this.openSettings()
     });
@@ -568,6 +573,16 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       name: t("cmd.toggleMarks"),
       callback: () => void this.toggleMarks()
     });
+    this.addCommand({
+      id: "build-notebook",
+      name: t("cmd.buildNotebook"),
+      callback: () => void this.buildNotebook()
+    });
+    this.addCommand({
+      id: "enrich-notebook",
+      name: t("cmd.enrichNotebook"),
+      callback: () => void this.enrichNotebook()
+    });
   }
 
   private addEditorMenuItems(
@@ -876,7 +891,11 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       0
     );
     try {
-      const prompt = buildReviewPrompt(record, this.settings.reviewLanguage);
+      const prompt = buildReviewPrompt(
+        record,
+        this.settings.reviewLanguage,
+        this.learnerProfileSummary()
+      );
       const timeoutMs =
         Math.max(MIN_AGENT_TIMEOUT_SECONDS, this.settings.agentTimeoutSeconds) *
         1000;
@@ -1429,6 +1448,156 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     await this.askAgent(this.indexTable.get(id) ?? record);
   }
 
+  /**
+   * One in-card dialogue turn. Builds the conversation context from the
+   * annotation (selected text, note, prior review + dialogue turns), sends it to
+   * the chat engine, persists both turns into the annotation file, and — when
+   * the learner asked to change the original text — returns a diff + an apply
+   * closure so the card can offer a preview-then-apply edit (Phase 3).
+   */
+  public async replyInAnnotation(
+    id: string,
+    message: string
+  ): Promise<DialogueReplyResult> {
+    const record = this.indexTable.get(id);
+    if (!record) return { ok: false, error: t("card.reply.error") };
+    const trimmed = message.trim();
+    if (!trimmed) return { ok: false };
+
+    const lang = this.settings.reviewLanguage.trim() || detectLanguageName(trimmed);
+    // The learner wants the original rewritten → capture where the edit lands and
+    // ask the engine to wrap a drop-in replacement so we can preview it.
+    const wantsEdit = classifyIntent(trimmed) === "write";
+    const target = wantsEdit ? this.captureEditTarget(record.selectedText) : null;
+    const engineText = wantsEdit
+      ? `${buildEditInstruction(target?.hasSelection ?? false)}\n\n${trimmed}`
+      : trimmed;
+
+    const system = this.dialogueSystemPrompt(record, lang);
+    const history: ChatMessage[] = (record.dialogue ?? []).map((turn) => ({
+      role: turn.role === "agent" ? "assistant" : "user",
+      content: turn.text
+    }));
+    const messages: ChatMessage[] = [
+      { role: "system", content: system },
+      ...history,
+      { role: "user", content: engineText }
+    ];
+    const openCodePrompt = [
+      system,
+      "--- Conversation so far ---",
+      ...(record.dialogue ?? []).map(
+        (turn) => `${turn.role === "agent" ? "Tutor" : "Learner"}: ${turn.text}`
+      ),
+      `Learner: ${engineText}`
+    ].join("\n\n");
+
+    const turn = await this.runDialogueTurn(messages, openCodePrompt);
+    if (!turn.ok || !turn.text) {
+      return { ok: false, ...(turn.error ? { error: turn.error } : {}) };
+    }
+
+    let agentText = turn.text;
+    let edit: DialogueReplyResult["edit"];
+    if (wantsEdit) {
+      const parsed = extractEdit(turn.text);
+      agentText = parsed.explanation || turn.text;
+      if (parsed.edit && target) {
+        const before = target.hasSelection ? target.original : "";
+        const diff = before
+          ? lineDiff(before, parsed.edit)
+          : parsed.edit.split(/\r?\n/).map((line) => `+ ${line}`).join("\n");
+        const captured = target;
+        const replacement = parsed.edit;
+        agentText = parsed.explanation || t("chat.edit.proposed");
+        edit = { diff, apply: () => this.applyNoteEdit(captured, replacement) };
+      }
+    }
+
+    const turns: DialogueTurn[] = [
+      { role: "user", text: trimmed, at: nowIso() },
+      { role: "agent", text: agentText, at: nowIso() }
+    ];
+    const updated = await this.store.appendDialogueTurns(id, turns);
+    if (updated) {
+      // Keep the in-memory index in step so the next natural refresh shows the
+      // thread, without tearing down the card the learner is using right now.
+      this.indexTable.upsert(
+        recordFromAnnotation(updated, this.store.annotationPath(id))
+      );
+    }
+    return { ok: true, agentText, ...(edit ? { edit } : {}) };
+  }
+
+  /** System prompt for an in-annotation dialogue turn (persona + the annotation). */
+  private dialogueSystemPrompt(record: IndexRecord, lang: string): string {
+    const profile = this.learnerProfileSummary();
+    const parts = [
+      tutorSystemPrompt(lang),
+      [
+        "You are talking with the learner in the margin beside one of their annotations.",
+        `Annotation ${record.annotationId} in ${record.sourceFile}.`,
+        `Selected text:\n"""\n${record.selectedText ?? ""}\n"""`,
+        `Learner's note:\n"""\n${record.userNote ?? record.userNoteSummary ?? ""}\n"""`,
+        ...(record.reviewText
+          ? [`Your earlier review:\n"""\n${record.reviewText}\n"""`]
+          : []),
+        ...(profile
+          ? [`What you know about this learner:\n"""\n${profile}\n"""`]
+          : []),
+        "Answer the learner's follow-up about this passage, using the conversation so far."
+      ].join("\n")
+    ];
+    return parts.join("\n\n");
+  }
+
+  /**
+   * Run one conversational turn through the chat engine. Uses the chat engine
+   * setting (OpenCode → API fallback, mirroring the sidebar) so dialogue and the
+   * sidebar behave the same.
+   */
+  private async runDialogueTurn(
+    messages: ChatMessage[],
+    openCodePrompt: string
+  ): Promise<{ ok: boolean; text: string; error?: string }> {
+    if (this.settings.chatEngine === "opencode") {
+      const command = this.settings.agentCommand.trim() || "opencode";
+      const result = await runAcpReview({
+        command,
+        model: this.settings.agentModel,
+        prompt: openCodePrompt,
+        timeoutMs: this.chatTimeoutMs()
+      });
+      if (!result.timedOut && (result.ok || result.reviewText)) {
+        return { ok: true, text: result.reviewText };
+      }
+      // OpenCode could not answer — fall back to the API when a key is set.
+      if (this.settings.apiKey.trim()) {
+        return this.dialogueApiTurn(messages);
+      }
+      return {
+        ok: false,
+        text: "",
+        error: result.error ?? (result.timedOut ? t("notice.agentTimeout", { id: "" }) : t("chat.empty"))
+      };
+    }
+    return this.dialogueApiTurn(messages);
+  }
+
+  private async dialogueApiTurn(
+    messages: ChatMessage[]
+  ): Promise<{ ok: boolean; text: string; error?: string }> {
+    if (!this.settings.apiKey.trim()) {
+      return { ok: false, text: "", error: t("notice.apiKeyMissing") };
+    }
+    const api = await this.chatApiTurn(messages);
+    return {
+      ok: api.ok,
+      text: api.reviewText,
+      ...(api.error ? { error: api.error } : {})
+    };
+  }
+
   private confirmDeleteById(id: string): void {
     const record = this.indexTable.get(id);
     if (record) this.confirmDelete(record);
@@ -1709,6 +1878,119 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     await this.rebuildIndex(false);
   }
 
+  // --- notebook --------------------------------------------------------------
+
+  /**
+   * Build the per-Vault study notebook (index + per-document pages + related-
+   * document chapters) from the current annotations and dialogue, then open it.
+   * Deterministic and instant — no model calls (see {@link enrichNotebook}).
+   */
+  public async buildNotebook(): Promise<void> {
+    const records = this.indexTable.all();
+    if (records.length === 0) {
+      new Notice(t("notice.notebookEmpty"));
+      return;
+    }
+    const progress = new Notice(t("notice.notebookBuilding"), 0);
+    try {
+      const result = await this.store.writeNotebook(records);
+      progress.hide();
+      new Notice(
+        t("notice.notebookDone", { pages: result.pages, chapters: result.chapters })
+      );
+      await this.openLibraryPath(result.path);
+    } catch (error) {
+      progress.hide();
+      new Notice(
+        t("notice.notebookFailed", {
+          detail: error instanceof Error ? error.message : String(error)
+        })
+      );
+    }
+  }
+
+  /**
+   * Hybrid enrichment: build the notebook, but first ask the engine to write a
+   * short synthesis for each studied document (sequential, free-model safe), so
+   * the pages gain prose summaries on top of the deterministic structure.
+   */
+  public async enrichNotebook(): Promise<void> {
+    const records = this.indexTable.all();
+    if (records.length === 0) {
+      new Notice(t("notice.notebookEmpty"));
+      return;
+    }
+    const byDoc = new Map<string, IndexRecord[]>();
+    for (const record of records) {
+      const list = byDoc.get(record.sourceFile);
+      if (list) list.push(record);
+      else byDoc.set(record.sourceFile, [record]);
+    }
+    const docs = [...byDoc.entries()];
+    const progress = new Notice(
+      t("notice.notebookEnriching", { done: 0, total: docs.length }),
+      0
+    );
+    const synthesis = new Map<string, string>();
+    try {
+      let done = 0;
+      for (const [sourceFile, recs] of docs) {
+        const text = await this.synthesizeDocument(sourceFile, recs);
+        if (text) synthesis.set(sourceFile, text);
+        done += 1;
+        progress.setMessage(
+          t("notice.notebookEnriching", { done, total: docs.length })
+        );
+      }
+      const result = await this.store.writeNotebook(records, synthesis);
+      progress.hide();
+      new Notice(
+        t("notice.notebookDone", { pages: result.pages, chapters: result.chapters })
+      );
+      await this.openLibraryPath(result.path);
+    } catch (error) {
+      progress.hide();
+      new Notice(
+        t("notice.notebookFailed", {
+          detail: error instanceof Error ? error.message : String(error)
+        })
+      );
+    }
+  }
+
+  /** One engine call: synthesize a learner's annotations on one document. */
+  private async synthesizeDocument(
+    sourceFile: string,
+    records: IndexRecord[]
+  ): Promise<string> {
+    const title = sourceFile.split("/").pop()?.replace(/\.md$/i, "") ?? sourceFile;
+    const lang =
+      this.settings.reviewLanguage.trim() ||
+      detectLanguageName(records.map((r) => r.userNote ?? "").join(" "));
+    const items = records
+      .map((record, index) => {
+        const excerpt = (record.selectedText ?? "").replace(/\s+/g, " ").trim();
+        const note = (record.userNote ?? record.userNoteSummary ?? "").trim();
+        const review = (record.reviewSummary ?? record.reviewText ?? "").trim();
+        return [
+          `(${index + 1}) Excerpt: ${excerpt.slice(0, 200)}`,
+          note ? `    Learner's note: ${note}` : "",
+          review ? `    Your review: ${review}` : ""
+        ]
+          .filter(Boolean)
+          .join("\n");
+      })
+      .join("\n");
+    const system = `${tutorSystemPrompt(lang)}\n\nYou are writing a short synthesis for the learner's study notebook page about "${title}".`;
+    const user = `Below are the learner's annotations on ${sourceFile}. Write 2-4 sentences synthesizing what they engaged with and what to revisit. Plain prose — no headings, no lists.\n\n${items}`;
+    const messages: ChatMessage[] = [
+      { role: "system", content: system },
+      { role: "user", content: user }
+    ];
+    const turn = await this.runDialogueTurn(messages, `${system}\n\n${user}`);
+    return turn.ok ? turn.text.trim() : "";
+  }
+
   // --- view helpers ----------------------------------------------------------
 
   public async openChat(): Promise<ChatView | null> {
@@ -1775,12 +2057,28 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     } catch {
       selection = "";
     }
+    const profileSummary = this.learnerProfileSummary();
     return {
       notePath: view.file.path,
       noteTitle: view.file.basename,
       selection,
-      content: await this.noteContent(view.file.path)
+      content: await this.noteContent(view.file.path),
+      ...(profileSummary ? { profileSummary } : {})
     };
+  }
+
+  /**
+   * A short summary of the learner from their profile (`Agent Memory/profiles/
+   * learner-profile.md`), already parsed into the library snapshot. Fed into chat,
+   * dialogue, and review prompts so the agent tailors feedback to this learner.
+   */
+  public learnerProfileSummary(): string {
+    const profile = this.librarySnapshot.profiles.find(
+      (item) => item.kind === "learner-profile"
+    );
+    const summary = profile?.summary?.trim();
+    if (!summary) return "";
+    return summary.length > 600 ? `${summary.slice(0, 600)}…` : summary;
   }
 
   /** Read a note's full text by Vault path (for chat context / pinned annotation). */
@@ -2024,7 +2322,8 @@ export default class AnnotationTutorLitePlugin extends Plugin {
           note: record.userNote ?? record.userNoteSummary ?? "",
           status: record.status,
           review: comment,
-          reviewQuestion: question
+          reviewQuestion: question,
+          ...(record.dialogue ? { dialogue: record.dialogue } : {})
         };
       });
   }

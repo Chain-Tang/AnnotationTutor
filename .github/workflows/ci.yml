@@ -7,6 +7,7 @@ on:
 jobs:
   verify:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
@@ -17,7 +18,8 @@ jobs:
           version: 10.33.2
       - uses: actions/setup-node@v4
         with:
-          node-version: 22.13.0
+          # 22.17.x: node:sqlite ships FTS5 on Linux/macOS (22.13 did not).
+          node-version: 22.17.1
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check

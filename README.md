@@ -32,6 +32,34 @@
 
 ---
 
+## 🔌 Get the plugin (Annotation Tutor Lite)
+
+The fastest way in is the **Lite** plugin — a single, self-contained Obsidian
+plugin with **no server, SQLite, or required API key**. Pull it straight from this
+repo and build it:
+
+```bash
+git clone https://github.com/Chain-Tang/PriveTutor.git
+cd PriveTutor/TutorLite
+pnpm install
+pnpm build                                          # -> dist/main.js
+pnpm install:dev-plugin -- --vault "C:\path\to\YourVault"
+```
+
+The last command copies `manifest.json`, `main.js`, and `styles.css` into
+`<YourVault>/.obsidian/plugins/annotation-tutor-lite/`. Then open Obsidian, enable
+**Annotation Tutor Lite** under *Settings → Community plugins*, and reload
+(`Ctrl/Cmd+R`). To install by hand instead, copy those three files yourself
+(`main.js` is `dist/main.js` renamed).
+
+**Connect OpenCode:** in *Settings → General*, set the engine to **OpenCode** and
+make sure the [`opencode`](https://opencode.ai) CLI is installed and logged in —
+the plugin drives your already-authenticated CLI directly, so no API key is
+stored. Prefer a direct API? Choose **API** (defaults to DeepSeek). Full details
+in [**`TutorLite/README.md`**](TutorLite/README.md).
+
+---
+
 ## 🏗️ Architecture
 
 ```text
@@ -51,7 +79,10 @@ ui ---------------------> apps/obsidian-plugin
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Full MVP (server + CLI)
+
+> Most users want the **Lite** plugin above. This section is for the full,
+> server-backed MVP (REST/MCP server, SQLite index, and CLI).
 
 ### Prerequisites
 

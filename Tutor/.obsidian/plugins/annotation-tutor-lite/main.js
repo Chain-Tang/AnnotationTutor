@@ -24718,6 +24718,19 @@ var en = {
   "notice.translateFailed": "Translation failed: {detail}",
   "notice.translateEmpty": "the model returned no translation",
   "notice.translateTimeout": "timed out",
+  "cmd.pretranslate": "Pre-translate current document",
+  "notice.pretranslateStart": 'Pre-translating "{name}"\u2026',
+  "notice.pretranslateProgress": "Pre-translating\u2026 {done}/{total}",
+  "notice.pretranslateDone": "Pre-translation ready: {count} terms cached.",
+  "notice.pretranslateEmpty": "Nothing to pre-translate in this document.",
+  "notice.pretranslateUpToDate": "Pre-translation already up to date ({count} terms).",
+  "notice.pretranslatePartial": "Pre-translation ready: {count} terms ({failed} sections failed).",
+  "notice.pretranslateFailed": "Pre-translation failed \u2014 the model returned no usable glossary.",
+  "notice.pretranslateBusy": "Pre-translation is already running for this document\u2026",
+  "set.pretranslate": "Pre-translate on open (Alt+T cache)",
+  "set.pretranslateDesc": "When a document opens, gloss it in the background into a cached dictionary so Alt+T answers instantly. Each open may make a few model calls. The live Alt+T translation is kept as a fallback for words this misses.",
+  "set.pretranslateChunk": "Pre-translate chunk size (characters)",
+  "set.pretranslateChunkDesc": "Source characters sent per pre-translation call (~3000 \u2248 500 words). Larger = fewer calls and more context; a short note becomes a single call. Very large values can make the model truncate its glossary on long documents \u2014 the limit is output length, not the model's input context. Words that get cut off still translate live on Alt+T.",
   "set.dictionaryLanguage": "Dictionary language (Alt+T)",
   "set.dictionaryLanguageDesc": 'Your native language for the Alt+T inline dictionary. Words foreign to it are glossed right after the text, like "word (\u8BD1\u6587)". Empty = follow the plugin display language.',
   "set.dictionaryLanguagePlaceholder": "Auto (display language)",
@@ -24956,6 +24969,19 @@ var zhCn = {
   "notice.translateFailed": "\u7FFB\u8BD1\u5931\u8D25\uFF1A{detail}",
   "notice.translateEmpty": "\u6A21\u578B\u672A\u8FD4\u56DE\u7FFB\u8BD1",
   "notice.translateTimeout": "\u8D85\u65F6",
+  "cmd.pretranslate": "\u9884\u7FFB\u8BD1\u5F53\u524D\u6587\u6863",
+  "notice.pretranslateStart": "\u6B63\u5728\u9884\u7FFB\u8BD1\u300A{name}\u300B\u2026",
+  "notice.pretranslateProgress": "\u9884\u7FFB\u8BD1\u4E2D\u2026 {done}/{total}",
+  "notice.pretranslateDone": "\u9884\u7FFB\u8BD1\u5B8C\u6210\uFF1A\u5DF2\u7F13\u5B58 {count} \u4E2A\u8BCD\u6761\u3002",
+  "notice.pretranslateEmpty": "\u672C\u6587\u6863\u6CA1\u6709\u53EF\u9884\u7FFB\u8BD1\u7684\u5185\u5BB9\u3002",
+  "notice.pretranslateUpToDate": "\u9884\u7FFB\u8BD1\u5DF2\u662F\u6700\u65B0\uFF08{count} \u4E2A\u8BCD\u6761\uFF09\u3002",
+  "notice.pretranslatePartial": "\u9884\u7FFB\u8BD1\u5B8C\u6210\uFF1A\u5DF2\u7F13\u5B58 {count} \u4E2A\u8BCD\u6761\uFF08{failed} \u4E2A\u6BB5\u843D\u5931\u8D25\uFF09\u3002",
+  "notice.pretranslateFailed": "\u9884\u7FFB\u8BD1\u5931\u8D25\u2014\u2014\u6A21\u578B\u672A\u8FD4\u56DE\u53EF\u7528\u7684\u8BCD\u6C47\u8868\u3002",
+  "notice.pretranslateBusy": "\u8BE5\u6587\u6863\u6B63\u5728\u9884\u7FFB\u8BD1\u4E2D\u2026",
+  "set.pretranslate": "\u6253\u5F00\u65F6\u9884\u7FFB\u8BD1\uFF08Alt+T \u7F13\u5B58\uFF09",
+  "set.pretranslateDesc": "\u6253\u5F00\u6587\u6863\u65F6\u5728\u540E\u53F0\u5C06\u5176\u7FFB\u8BD1\u6210\u7F13\u5B58\u8BCD\u5178\uFF0C\u8BA9 Alt+T \u5373\u65F6\u7ED9\u51FA\u8BD1\u6587\u3002\u6BCF\u6B21\u6253\u5F00\u53EF\u80FD\u4F1A\u53D1\u8D77\u51E0\u6B21\u6A21\u578B\u8C03\u7528\u3002\u5BF9\u4E8E\u672A\u8986\u76D6\u5230\u7684\u8BCD\uFF0C\u4ECD\u53EF\u7528 Alt+T \u5B9E\u65F6\u7FFB\u8BD1\u4F5C\u4E3A\u8865\u5145\u3002",
+  "set.pretranslateChunk": "\u9884\u7FFB\u8BD1\u5206\u5757\u5927\u5C0F\uFF08\u5B57\u7B26\uFF09",
+  "set.pretranslateChunkDesc": "\u6BCF\u6B21\u9884\u7FFB\u8BD1\u8C03\u7528\u53D1\u9001\u7684\u539F\u6587\u5B57\u7B26\u6570\uFF08\u7EA6 3000 \u2248 500 \u8BCD\uFF09\u3002\u503C\u8D8A\u5927\uFF0C\u8C03\u7528\u6B21\u6570\u8D8A\u5C11\u3001\u4E0A\u4E0B\u6587\u8D8A\u5B8C\u6574\uFF1B\u8F83\u77ED\u7684\u6587\u6863\u4F1A\u4E00\u6B21\u6027\u7FFB\u5B8C\u3002\u6570\u503C\u8FC7\u5927\u53EF\u80FD\u5BFC\u81F4\u6A21\u578B\u5728\u957F\u6587\u6863\u4E0A\u622A\u65AD\u8BCD\u6C47\u8868\u2014\u2014\u74F6\u9888\u662F\u8F93\u51FA\u957F\u5EA6\uFF0C\u800C\u975E\u6A21\u578B\u7684\u8F93\u5165\u4E0A\u4E0B\u6587\u3002\u88AB\u622A\u65AD\u7684\u8BCD\u4ECD\u53EF\u5728 Alt+T \u65F6\u5B9E\u65F6\u7FFB\u8BD1\u3002",
   "set.dictionaryLanguage": "\u8BCD\u5178\u8BED\u8A00\uFF08Alt+T\uFF09",
   "set.dictionaryLanguageDesc": "Alt+T \u884C\u5185\u8BCD\u5178\u6240\u7528\u7684\u6BCD\u8BED\u3002\u975E\u8BE5\u8BED\u8A00\u7684\u8BCD\u4F1A\u5728\u539F\u6587\u540E\u9762\u52A0\u6CE8\u91CA\uFF0C\u5982\u201Cword\uFF08\u8BD1\u6587\uFF09\u201D\u3002\u7559\u7A7A\u5219\u8DDF\u968F\u63D2\u4EF6\u663E\u793A\u8BED\u8A00\u3002",
   "set.dictionaryLanguagePlaceholder": "\u81EA\u52A8\uFF08\u8DDF\u968F\u663E\u793A\u8BED\u8A00\uFF09",
@@ -25201,6 +25227,19 @@ var zhTw = {
   "notice.translateFailed": "\u7FFB\u8B6F\u5931\u6557\uFF1A{detail}",
   "notice.translateEmpty": "\u6A21\u578B\u672A\u56DE\u50B3\u7FFB\u8B6F",
   "notice.translateTimeout": "\u903E\u6642",
+  "cmd.pretranslate": "\u9810\u7FFB\u8B6F\u76EE\u524D\u6587\u4EF6",
+  "notice.pretranslateStart": "\u6B63\u5728\u9810\u7FFB\u8B6F\u300A{name}\u300B\u2026",
+  "notice.pretranslateProgress": "\u9810\u7FFB\u8B6F\u4E2D\u2026 {done}/{total}",
+  "notice.pretranslateDone": "\u9810\u7FFB\u8B6F\u5B8C\u6210\uFF1A\u5DF2\u5FEB\u53D6 {count} \u500B\u8A5E\u689D\u3002",
+  "notice.pretranslateEmpty": "\u672C\u6587\u4EF6\u6C92\u6709\u53EF\u9810\u7FFB\u8B6F\u7684\u5167\u5BB9\u3002",
+  "notice.pretranslateUpToDate": "\u9810\u7FFB\u8B6F\u5DF2\u662F\u6700\u65B0\uFF08{count} \u500B\u8A5E\u689D\uFF09\u3002",
+  "notice.pretranslatePartial": "\u9810\u7FFB\u8B6F\u5B8C\u6210\uFF1A\u5DF2\u5FEB\u53D6 {count} \u500B\u8A5E\u689D\uFF08{failed} \u500B\u6BB5\u843D\u5931\u6557\uFF09\u3002",
+  "notice.pretranslateFailed": "\u9810\u7FFB\u8B6F\u5931\u6557\u2014\u2014\u6A21\u578B\u672A\u50B3\u56DE\u53EF\u7528\u7684\u8A5E\u5F59\u8868\u3002",
+  "notice.pretranslateBusy": "\u8A72\u6587\u4EF6\u6B63\u5728\u9810\u7FFB\u8B6F\u4E2D\u2026",
+  "set.pretranslate": "\u958B\u555F\u6642\u9810\u7FFB\u8B6F\uFF08Alt+T \u5FEB\u53D6\uFF09",
+  "set.pretranslateDesc": "\u958B\u555F\u6587\u4EF6\u6642\u5728\u80CC\u666F\u5C07\u5176\u7FFB\u8B6F\u6210\u5FEB\u53D6\u8A5E\u5178\uFF0C\u8B93 Alt+T \u7ACB\u5373\u986F\u793A\u8B6F\u6587\u3002\u6BCF\u6B21\u958B\u555F\u53EF\u80FD\u6703\u767C\u8D77\u6578\u6B21\u6A21\u578B\u547C\u53EB\u3002\u5C0D\u65BC\u672A\u6DB5\u84CB\u7684\u5B57\u8A5E\uFF0C\u4ECD\u53EF\u7528 Alt+T \u5373\u6642\u7FFB\u8B6F\u4F5C\u70BA\u88DC\u5145\u3002",
+  "set.pretranslateChunk": "\u9810\u7FFB\u8B6F\u5206\u584A\u5927\u5C0F\uFF08\u5B57\u5143\uFF09",
+  "set.pretranslateChunkDesc": "\u6BCF\u6B21\u9810\u7FFB\u8B6F\u547C\u53EB\u50B3\u9001\u7684\u539F\u6587\u5B57\u5143\u6578\uFF08\u7D04 3000 \u2248 500 \u5B57\uFF09\u3002\u503C\u8D8A\u5927\uFF0C\u547C\u53EB\u6B21\u6578\u8D8A\u5C11\u3001\u4E0A\u4E0B\u6587\u8D8A\u5B8C\u6574\uFF1B\u8F03\u77ED\u7684\u6587\u4EF6\u6703\u4E00\u6B21\u7FFB\u5B8C\u3002\u6578\u503C\u904E\u5927\u53EF\u80FD\u5C0E\u81F4\u6A21\u578B\u5728\u9577\u6587\u4EF6\u4E0A\u622A\u65B7\u8A5E\u5F59\u8868\u2014\u2014\u74F6\u9838\u662F\u8F38\u51FA\u9577\u5EA6\uFF0C\u800C\u975E\u6A21\u578B\u7684\u8F38\u5165\u4E0A\u4E0B\u6587\u3002\u88AB\u622A\u65B7\u7684\u5B57\u8A5E\u4ECD\u53EF\u5728 Alt+T \u6642\u5373\u6642\u7FFB\u8B6F\u3002",
   "set.dictionaryLanguage": "\u8A5E\u5178\u8A9E\u8A00\uFF08Alt+T\uFF09",
   "set.dictionaryLanguageDesc": "Alt+T \u884C\u5167\u8A5E\u5178\u6240\u7528\u7684\u6BCD\u8A9E\u3002\u975E\u8A72\u8A9E\u8A00\u7684\u5B57\u8A5E\u6703\u5728\u539F\u6587\u5F8C\u52A0\u8A3B\uFF0C\u5982\u300Cword\uFF08\u8B6F\u6587\uFF09\u300D\u3002\u7559\u7A7A\u5247\u8DDF\u96A8\u5916\u639B\u986F\u793A\u8A9E\u8A00\u3002",
   "set.dictionaryLanguagePlaceholder": "\u81EA\u52D5\uFF08\u8DDF\u96A8\u986F\u793A\u8A9E\u8A00\uFF09",
@@ -25390,6 +25429,19 @@ var ja = {
   "notice.translateFailed": "\u7FFB\u8A33\u306B\u5931\u6557\u3057\u307E\u3057\u305F\uFF1A{detail}",
   "notice.translateEmpty": "\u30E2\u30C7\u30EB\u304C\u7FFB\u8A33\u3092\u8FD4\u3057\u307E\u305B\u3093\u3067\u3057\u305F",
   "notice.translateTimeout": "\u30BF\u30A4\u30E0\u30A2\u30A6\u30C8",
+  "cmd.pretranslate": "\u73FE\u5728\u306E\u6587\u66F8\u3092\u4E8B\u524D\u7FFB\u8A33",
+  "notice.pretranslateStart": "\u300C{name}\u300D\u3092\u4E8B\u524D\u7FFB\u8A33\u4E2D\u2026",
+  "notice.pretranslateProgress": "\u4E8B\u524D\u7FFB\u8A33\u4E2D\u2026 {done}/{total}",
+  "notice.pretranslateDone": "\u4E8B\u524D\u7FFB\u8A33\u304C\u5B8C\u4E86\uFF1A{count} \u4EF6\u306E\u7528\u8A9E\u3092\u30AD\u30E3\u30C3\u30B7\u30E5\u3057\u307E\u3057\u305F\u3002",
+  "notice.pretranslateEmpty": "\u3053\u306E\u6587\u66F8\u306B\u306F\u4E8B\u524D\u7FFB\u8A33\u3067\u304D\u308B\u5185\u5BB9\u304C\u3042\u308A\u307E\u305B\u3093\u3002",
+  "notice.pretranslateUpToDate": "\u4E8B\u524D\u7FFB\u8A33\u306F\u6700\u65B0\u3067\u3059\uFF08{count} \u4EF6\uFF09\u3002",
+  "notice.pretranslatePartial": "\u4E8B\u524D\u7FFB\u8A33\u304C\u5B8C\u4E86\uFF1A{count} \u4EF6\u3092\u30AD\u30E3\u30C3\u30B7\u30E5\u3057\u307E\u3057\u305F\uFF08{failed} \u4EF6\u306E\u30BB\u30AF\u30B7\u30E7\u30F3\u304C\u5931\u6557\uFF09\u3002",
+  "notice.pretranslateFailed": "\u4E8B\u524D\u7FFB\u8A33\u306B\u5931\u6557\u3057\u307E\u3057\u305F \u2014 \u30E2\u30C7\u30EB\u304C\u6709\u52B9\u306A\u7528\u8A9E\u96C6\u3092\u8FD4\u3057\u307E\u305B\u3093\u3067\u3057\u305F\u3002",
+  "notice.pretranslateBusy": "\u3053\u306E\u6587\u66F8\u306F\u73FE\u5728\u4E8B\u524D\u7FFB\u8A33\u4E2D\u3067\u3059\u2026",
+  "set.pretranslate": "\u958B\u3044\u305F\u3068\u304D\u306B\u4E8B\u524D\u7FFB\u8A33\uFF08Alt+T \u30AD\u30E3\u30C3\u30B7\u30E5\uFF09",
+  "set.pretranslateDesc": "\u6587\u66F8\u3092\u958B\u3044\u305F\u3068\u304D\u306B\u30D0\u30C3\u30AF\u30B0\u30E9\u30A6\u30F3\u30C9\u3067\u7528\u8A9E\u96C6\u3068\u3057\u3066\u30AD\u30E3\u30C3\u30B7\u30E5\u3057\u3001Alt+T \u304C\u5373\u5EA7\u306B\u8A33\u3092\u8868\u793A\u3067\u304D\u308B\u3088\u3046\u306B\u3057\u307E\u3059\u3002\u958B\u304F\u305F\u3073\u306B\u30E2\u30C7\u30EB\u547C\u3073\u51FA\u3057\u304C\u6570\u56DE\u767A\u751F\u3059\u308B\u5834\u5408\u304C\u3042\u308A\u307E\u3059\u3002\u53D6\u308A\u3053\u307C\u3057\u305F\u8A9E\u306B\u306F\u3001\u5F93\u6765\u306E Alt+T \u5373\u6642\u7FFB\u8A33\u304C\u5F15\u304D\u7D9A\u304D\u4F7F\u3048\u307E\u3059\u3002",
+  "set.pretranslateChunk": "\u4E8B\u524D\u7FFB\u8A33\u306E\u30C1\u30E3\u30F3\u30AF\u30B5\u30A4\u30BA\uFF08\u6587\u5B57\u6570\uFF09",
+  "set.pretranslateChunkDesc": "1 \u56DE\u306E\u4E8B\u524D\u7FFB\u8A33\u547C\u3073\u51FA\u3057\u3067\u9001\u308B\u539F\u6587\u306E\u6587\u5B57\u6570\uFF08\u7D04 3000 \u2248 500 \u8A9E\uFF09\u3002\u5927\u304D\u3044\u307B\u3069\u547C\u3073\u51FA\u3057\u56DE\u6570\u304C\u6E1B\u308A\u6587\u8108\u3082\u5897\u3048\u3001\u77ED\u3044\u6587\u66F8\u306F 1 \u56DE\u3067\u5B8C\u4E86\u3057\u307E\u3059\u3002\u5927\u304D\u3059\u304E\u308B\u3068\u9577\u3044\u6587\u66F8\u3067\u7528\u8A9E\u96C6\u304C\u9014\u4E2D\u3067\u5207\u308C\u308B\u3053\u3068\u304C\u3042\u308A\u307E\u3059\u2014\u2014\u5236\u7D04\u306F\u51FA\u529B\u9577\u3067\u3042\u308A\u3001\u30E2\u30C7\u30EB\u306E\u5165\u529B\u30B3\u30F3\u30C6\u30AD\u30B9\u30C8\u3067\u306F\u3042\u308A\u307E\u305B\u3093\u3002\u5207\u308C\u305F\u8A9E\u306F Alt+T \u5B9F\u884C\u6642\u306B\u30E9\u30A4\u30D6\u3067\u7FFB\u8A33\u3055\u308C\u307E\u3059\u3002",
   "set.dictionaryLanguage": "\u8F9E\u66F8\u306E\u8A00\u8A9E\uFF08Alt+T\uFF09",
   "set.dictionaryLanguageDesc": "Alt+T \u306E\u30A4\u30F3\u30E9\u30A4\u30F3\u8F9E\u66F8\u3067\u4F7F\u3046\u6BCD\u8A9E\u3002\u3053\u308C\u3068\u7570\u306A\u308B\u8A00\u8A9E\u306E\u8A9E\u306F\u672C\u6587\u306E\u5F8C\u308D\u306B\u300Cword\uFF08\u8A33\uFF09\u300D\u306E\u3088\u3046\u306B\u6CE8\u91C8\u3055\u308C\u307E\u3059\u3002\u7A7A\u6B04\u306A\u3089\u30D7\u30E9\u30B0\u30A4\u30F3\u306E\u8868\u793A\u8A00\u8A9E\u306B\u5F93\u3044\u307E\u3059\u3002",
   "set.dictionaryLanguagePlaceholder": "\u81EA\u52D5\uFF08\u8868\u793A\u8A00\u8A9E\u306B\u5F93\u3046\uFF09",
@@ -25851,6 +25903,7 @@ var highlightStyles = [
   "none"
 ];
 var MIN_AGENT_TIMEOUT_SECONDS = 30;
+var MIN_PRETRANSLATE_CHUNK_CHARS = 800;
 var DEFAULT_SETTINGS = {
   language: "auto",
   memoryRoot: "Agent Memory",
@@ -25878,6 +25931,8 @@ var DEFAULT_SETTINGS = {
   agentTimeoutSeconds: 240,
   reviewLanguage: "",
   dictionaryLanguage: "",
+  pretranslateOnOpen: true,
+  pretranslateChunkChars: 3e3,
   cardGeom: {}
 };
 function normalizeMemoryRoot(value) {
@@ -25937,6 +25992,14 @@ function migrateSettings(loaded) {
   }
   if (typeof settings.dictionaryLanguage !== "string") {
     settings.dictionaryLanguage = DEFAULT_SETTINGS.dictionaryLanguage;
+  }
+  if (typeof settings.pretranslateOnOpen !== "boolean") {
+    settings.pretranslateOnOpen = DEFAULT_SETTINGS.pretranslateOnOpen;
+  }
+  if (typeof settings.pretranslateChunkChars !== "number" || !Number.isFinite(settings.pretranslateChunkChars) || settings.pretranslateChunkChars < MIN_PRETRANSLATE_CHUNK_CHARS) {
+    settings.pretranslateChunkChars = DEFAULT_SETTINGS.pretranslateChunkChars;
+  } else {
+    settings.pretranslateChunkChars = Math.floor(settings.pretranslateChunkChars);
   }
   settings.cardGeom = settings.cardGeom && typeof settings.cardGeom === "object" && !Array.isArray(settings.cardGeom) ? { ...settings.cardGeom } : {};
   if (typeof settings.agentTimeoutSeconds !== "number" || !Number.isFinite(settings.agentTimeoutSeconds) || settings.agentTimeoutSeconds < MIN_AGENT_TIMEOUT_SECONDS) {
@@ -26079,6 +26142,18 @@ var AnnotationTutorLiteSettingTab = class extends import_obsidian3.PluginSetting
       this.plugin.settings.dictionaryLanguage,
       t("set.dictionaryLanguagePlaceholder")
     );
+    this.addToggle(container, "set.pretranslate", "pretranslateOnOpen");
+    new import_obsidian3.Setting(container).setName(t("set.pretranslateChunk")).setDesc(t("set.pretranslateChunkDesc")).addText((text) => {
+      text.inputEl.type = "number";
+      text.setValue(String(this.plugin.settings.pretranslateChunkChars));
+      text.inputEl.addEventListener("blur", () => {
+        const parsed = Number.parseInt(text.getValue(), 10);
+        const next = Number.isFinite(parsed) && parsed >= MIN_PRETRANSLATE_CHUNK_CHARS ? parsed : DEFAULT_SETTINGS.pretranslateChunkChars;
+        this.plugin.settings.pretranslateChunkChars = next;
+        text.setValue(String(next));
+        void this.plugin.persistSettings();
+      });
+    });
     this.renderAgentRunner(container);
     const stats = container.createDiv({ cls: "atl-library-stats" });
     stats.createEl("h3", { text: t("settings.libraryStats") });
@@ -28286,6 +28361,161 @@ function formatWordGloss(word, gloss) {
   return `${word} (${clean})`;
 }
 
+// src/pretranslate.ts
+var MAX_PRETRANSLATE_BATCHES = 30;
+var DEFAULT_BATCH_CHARS = 1600;
+var HARD_BATCH_CHARS = 6e3;
+var ALPHA = /[A-Za-zÀ-ɏ]/;
+var CJK = /[぀-ヿ㐀-鿿가-힯]/;
+var ALPHANUM = /[A-Za-z0-9À-ɏ]/;
+var ENTRY_SEP = /(::|：：|=>|->|→|\|\||\t)/;
+function normalizeKey(surface) {
+  return surface.trim().toLowerCase();
+}
+function needsWordBoundary(surface) {
+  return ALPHA.test(surface) && !CJK.test(surface);
+}
+function isAlphaNum(ch) {
+  return ch !== void 0 && ALPHANUM.test(ch);
+}
+function hasLetters(text) {
+  return ALPHA.test(text) || CJK.test(text);
+}
+function buildGlossaryPrompt(passage, nativeLanguage) {
+  return [
+    "You are building a study glossary for an immersive language learner.",
+    `The reader's native language is ${nativeLanguage}.`,
+    `From the passage below, list every word or phrase that is NOT in ${nativeLanguage} \u2014 the same words a ${nativeLanguage} reader would want glossed while reading. Be thorough: include each foreign content word, not only the rare ones.`,
+    `For each, give its meaning in ${nativeLanguage} as it is used in this context.`,
+    "Output one entry per line in EXACTLY this format:",
+    "term :: meaning",
+    "Use the term exactly as it appears in the passage (same spelling and case).",
+    "List individual words as their own entries so each can be looked up alone; you may ALSO add a multi-word phrase as a separate entry when it carries its own meaning.",
+    `Give only the ${nativeLanguage} meaning \u2014 no pinyin, romanisation, part of speech, quotes, or explanation.`,
+    "List each distinct term once. Output nothing else: no numbering, headings, commentary, or blank lines.",
+    "",
+    "Passage:",
+    '"""',
+    passage,
+    '"""'
+  ].join("\n");
+}
+function parseGlossary(reply) {
+  const out = [];
+  for (const raw of reply.split(/\r?\n/)) {
+    const line = raw.trim().replace(/^[-*•]\s+/, "").replace(/^\d+[.)]\s+/, "");
+    if (!line) continue;
+    const match = ENTRY_SEP.exec(line);
+    if (!match || match.index === 0) continue;
+    const surface = line.slice(0, match.index).trim().replace(/^["'“”‘’（(【「『\s]+/, "").replace(/["'“”‘’）)】」』\s]+$/, "").trim();
+    const gloss = cleanGloss(line.slice(match.index + match[0].length));
+    if (!surface || !gloss || surface === gloss) continue;
+    out.push({ surface, gloss });
+  }
+  return out;
+}
+function buildFileGlossary(hash2, entries, complete = true) {
+  const byKey = /* @__PURE__ */ new Map();
+  for (const entry of entries) {
+    const key = normalizeKey(entry.surface);
+    if (key && !byKey.has(key)) byKey.set(key, entry);
+  }
+  const unique2 = [...byKey.values()].sort(
+    (a, b) => b.surface.length - a.surface.length
+  );
+  return { hash: hash2, entries: unique2, byKey, complete };
+}
+function mergeGlossaryEntry(glossary, entry) {
+  const key = normalizeKey(entry.surface);
+  if (!key || glossary.byKey.has(key)) return glossary;
+  return buildFileGlossary(
+    glossary.hash,
+    [...glossary.entries, entry],
+    glossary.complete
+  );
+}
+function lookupGloss(glossary, selection) {
+  return glossary.byKey.get(normalizeKey(selection))?.gloss;
+}
+function applyGlossary(passage, glossary) {
+  if (glossary.entries.length === 0) return passage;
+  const lower = passage.toLowerCase();
+  let out = "";
+  let i = 0;
+  while (i < passage.length) {
+    let matched;
+    for (const entry of glossary.entries) {
+      const len = entry.surface.length;
+      if (len === 0) continue;
+      if (!lower.startsWith(entry.surface.toLowerCase(), i)) continue;
+      if (needsWordBoundary(entry.surface)) {
+        const before = i > 0 ? passage[i - 1] : void 0;
+        const after = passage[i + len];
+        if (isAlphaNum(before) || isAlphaNum(after)) continue;
+      }
+      matched = entry;
+      break;
+    }
+    if (matched) {
+      const surfaceInText = passage.slice(i, i + matched.surface.length);
+      out += `${surfaceInText} (${matched.gloss})`;
+      i += matched.surface.length;
+    } else {
+      out += passage[i];
+      i += 1;
+    }
+  }
+  return out;
+}
+function segmentDocument(text, maxBatchChars = DEFAULT_BATCH_CHARS) {
+  const body = text.replace(/^﻿/, "").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "").replace(/```[\s\S]*?```/g, " ").replace(/~~~[\s\S]*?~~~/g, " ");
+  const hardCap = Math.max(maxBatchChars, HARD_BATCH_CHARS);
+  const paragraphs = [];
+  for (const block of body.split(/\n\s*\n/)) {
+    const trimmed = block.trim();
+    if (!hasLetters(trimmed)) continue;
+    if (trimmed.length <= hardCap) {
+      paragraphs.push(trimmed);
+    } else {
+      paragraphs.push(...sliceLongBlock(trimmed, hardCap));
+    }
+  }
+  const batches = [];
+  let current2 = "";
+  for (const paragraph of paragraphs) {
+    if (current2 && current2.length + 2 + paragraph.length > maxBatchChars) {
+      batches.push(current2);
+      current2 = paragraph;
+    } else {
+      current2 = current2 ? `${current2}
+
+${paragraph}` : paragraph;
+    }
+  }
+  if (current2) batches.push(current2);
+  return batches;
+}
+function sliceLongBlock(block, cap) {
+  const pieces = [];
+  let rest = block;
+  while (rest.length > cap) {
+    const window2 = rest.slice(0, cap);
+    const cut = window2.lastIndexOf(" ");
+    const at = cut > cap * 0.5 ? cut : cap;
+    pieces.push(rest.slice(0, at).trim());
+    rest = rest.slice(at).trim();
+  }
+  if (rest) pieces.push(rest);
+  return pieces.filter(hasLetters);
+}
+function contentHash(text) {
+  let hash2 = 5381;
+  for (let i = 0; i < text.length; i++) {
+    hash2 = (hash2 << 5) + hash2 + text.charCodeAt(i) | 0;
+  }
+  return (hash2 >>> 0).toString(36);
+}
+
 // src/main.ts
 var import_node_path2 = require("node:path");
 var import_promises = require("node:fs/promises");
@@ -28623,6 +28853,11 @@ var AnnotationTutorLitePlugin = class extends import_obsidian11.Plugin {
   stashedStyle = "dotted-underline";
   // Debounce handle for persisting margin-card geometry as it is dragged/resized.
   cardGeomTimer = null;
+  // Per-file pre-translation glossaries, keyed by Vault path, so Alt+T can gloss
+  // a selection instantly. Rebuilt when the file's content hash changes.
+  glossaryCache = /* @__PURE__ */ new Map();
+  // File paths with a pre-translation pass in flight, to avoid duplicate runs.
+  pretranslating = /* @__PURE__ */ new Set();
   /**
    * HTTP transport for the direct-API engine. Routes through Obsidian's
    * `requestUrl` (which bypasses CORS, unlike a renderer `fetch`), and races a
@@ -28704,6 +28939,7 @@ var AnnotationTutorLitePlugin = class extends import_obsidian11.Plugin {
         const view = leaf?.view;
         if (view instanceof import_obsidian11.MarkdownView && view.file) {
           this.lastMarkdownView = view;
+          if (view.file.extension === "md") void this.maybePretranslate(view.file);
         }
         void this.refreshDecorations();
       })
@@ -28717,16 +28953,29 @@ var AnnotationTutorLitePlugin = class extends import_obsidian11.Plugin {
       (event) => this.onReadingContextMenu(event)
     );
     this.registerEvent(
+      this.app.workspace.on("file-open", (file2) => {
+        if (file2 instanceof import_obsidian11.TFile && file2.extension === "md") {
+          void this.maybePretranslate(file2);
+        }
+      })
+    );
+    this.registerEvent(
       this.app.vault.on("modify", (file2) => this.watcher.notify(file2.path))
     );
     this.registerEvent(
       this.app.vault.on("create", (file2) => this.watcher.notify(file2.path))
     );
     this.registerEvent(
-      this.app.vault.on("delete", (file2) => this.watcher.notify(file2.path))
+      this.app.vault.on("delete", (file2) => {
+        this.glossaryCache.delete(file2.path);
+        this.watcher.notify(file2.path);
+      })
     );
     this.registerEvent(
       this.app.vault.on("rename", (file2, oldPath) => {
+        const moved = this.glossaryCache.get(oldPath);
+        this.glossaryCache.delete(oldPath);
+        if (moved) this.glossaryCache.set(file2.path, moved);
         this.watcher.notify(file2.path);
         this.watcher.notify(oldPath);
       })
@@ -28807,6 +29056,8 @@ var AnnotationTutorLitePlugin = class extends import_obsidian11.Plugin {
     if (this.settings.autoRunAgent && this.settings.reviewEngine === "opencode") {
       void this.refreshAvailableModels();
     }
+    const active = this.app.workspace.getActiveFile();
+    if (active && active.extension === "md") void this.maybePretranslate(active);
   }
   /**
    * Query the agent CLI for its models and cache them for the picker. Also
@@ -28921,6 +29172,12 @@ var AnnotationTutorLitePlugin = class extends import_obsidian11.Plugin {
       name: t("cmd.translate"),
       hotkeys: [{ modifiers: ["Alt"], key: "t" }],
       editorCallback: (editor) => void this.translateSelection(editor)
+    });
+    this.addCommand({
+      id: "pretranslate-document",
+      name: t("cmd.pretranslate"),
+      hotkeys: [{ modifiers: ["Mod", "Alt"], key: "t" }],
+      callback: () => void this.pretranslateActiveFile()
     });
     this.addCommand({
       id: "open-annotation-dashboard",
@@ -29291,6 +29548,159 @@ var AnnotationTutorLitePlugin = class extends import_obsidian11.Plugin {
   dictionaryLanguageName() {
     return this.settings.dictionaryLanguage.trim() || nativeLanguageName(getLocale());
   }
+  /**
+   * Try to gloss the selection from the active file's cached pre-translation.
+   * Returns true when it answered (cache hit); false to fall back to a live call.
+   */
+  translateFromCache(editor, from, to, selection, mode) {
+    const file2 = this.app.workspace.getActiveFile();
+    const glossary = file2 ? this.glossaryCache.get(file2.path) : void 0;
+    if (!glossary) return false;
+    let replacement = null;
+    if (mode === "word") {
+      const gloss = lookupGloss(glossary, selection);
+      if (gloss) {
+        replacement = formatWordGloss(selection, gloss);
+      } else {
+        const glossed = applyGlossary(selection, glossary);
+        if (glossed !== selection) replacement = glossed;
+      }
+    } else {
+      const glossed = applyGlossary(selection, glossary);
+      if (glossed !== selection) replacement = glossed;
+    }
+    if (!replacement || replacement === selection) return false;
+    if (!this.replaceSelection(editor, from, to, selection, replacement)) {
+      return false;
+    }
+    new import_obsidian11.Notice(t("notice.translateDone"));
+    return true;
+  }
+  /**
+   * Add a live word gloss to the active file's cached glossary so a repeat Alt+T
+   * on the same term answers from cache. No-op when the file has no glossary yet
+   * (pre-translation off / not started) or the term is already cached.
+   */
+  cacheWordGloss(surface, gloss) {
+    if (!surface || !gloss) return;
+    const file2 = this.app.workspace.getActiveFile();
+    if (!file2) return;
+    const glossary = this.glossaryCache.get(file2.path);
+    if (!glossary) return;
+    this.glossaryCache.set(
+      file2.path,
+      mergeGlossaryEntry(glossary, { surface, gloss })
+    );
+  }
+  /** File-open hook: pre-translate the document when the feature is enabled. */
+  async maybePretranslate(file2) {
+    if (!this.settings.pretranslateOnOpen) return;
+    const root = this.settings.memoryRoot;
+    if (root && (file2.path === root || file2.path.startsWith(`${root}/`))) return;
+    await this.pretranslateFile(file2, false);
+  }
+  /** Manual command: (re)build the pre-translation glossary for the active note. */
+  async pretranslateActiveFile() {
+    const file2 = this.app.workspace.getActiveFile();
+    if (!file2 || file2.extension !== "md") {
+      new import_obsidian11.Notice(t("notice.openMdFirst"));
+      return;
+    }
+    await this.pretranslateFile(file2, true);
+  }
+  /**
+   * Gloss a document in the background into a cached word→meaning glossary so
+   * Alt+T can answer instantly. Skips work when the cache already matches the
+   * file's content, and aborts quietly when the engine needs a key (unless the
+   * user invoked it manually). The live Alt+T path covers anything this misses.
+   */
+  async pretranslateFile(file2, manual) {
+    if (this.pretranslating.has(file2.path)) {
+      if (manual) new import_obsidian11.Notice(t("notice.pretranslateBusy"));
+      return;
+    }
+    const content = await this.app.vault.cachedRead(file2);
+    const hash2 = contentHash(content);
+    const existing = this.glossaryCache.get(file2.path);
+    if (existing && existing.hash === hash2 && existing.complete) {
+      if (manual) {
+        new import_obsidian11.Notice(
+          t("notice.pretranslateUpToDate", { count: existing.entries.length })
+        );
+      }
+      return;
+    }
+    const batches = segmentDocument(
+      content,
+      this.settings.pretranslateChunkChars
+    ).slice(0, MAX_PRETRANSLATE_BATCHES);
+    if (batches.length === 0) {
+      this.glossaryCache.set(file2.path, buildFileGlossary(hash2, []));
+      if (manual) new import_obsidian11.Notice(t("notice.pretranslateEmpty"));
+      return;
+    }
+    this.pretranslating.add(file2.path);
+    const target = this.dictionaryLanguageName();
+    const progress = new import_obsidian11.Notice(
+      t("notice.pretranslateStart", { name: file2.basename }),
+      0
+    );
+    const entries = [];
+    let done = 0;
+    let failed = 0;
+    let needsKey = false;
+    try {
+      for (const batch of batches) {
+        let outcome;
+        try {
+          outcome = await this.captureText(
+            buildGlossaryPrompt(batch, target),
+            this.chatTimeoutMs()
+          );
+        } catch (error51) {
+          console.error("[Annotation Tutor Lite] pre-translate batch error", error51);
+          outcome = {
+            kind: "failed",
+            detail: error51 instanceof Error ? error51.message : String(error51)
+          };
+        }
+        if (outcome.kind === "needs-key") {
+          needsKey = true;
+          break;
+        }
+        if (outcome.kind === "ok") {
+          entries.push(...parseGlossary(outcome.reviewText));
+        } else {
+          failed += 1;
+        }
+        done += 1;
+        this.glossaryCache.set(file2.path, buildFileGlossary(hash2, entries, false));
+        progress.setMessage(
+          t("notice.pretranslateProgress", { done, total: batches.length })
+        );
+      }
+    } finally {
+      progress.hide();
+      this.pretranslating.delete(file2.path);
+    }
+    if (needsKey) {
+      this.glossaryCache.set(file2.path, buildFileGlossary(hash2, entries));
+      new import_obsidian11.Notice(t("notice.apiKeyMissing"));
+      return;
+    }
+    const glossary = buildFileGlossary(hash2, entries);
+    this.glossaryCache.set(file2.path, glossary);
+    const count = glossary.entries.length;
+    if (count > 0) {
+      new import_obsidian11.Notice(
+        failed > 0 ? t("notice.pretranslatePartial", { count, failed }) : t("notice.pretranslateDone", { count })
+      );
+    } else if (failed > 0) {
+      new import_obsidian11.Notice(t("notice.pretranslateFailed"));
+    } else {
+      new import_obsidian11.Notice(t("notice.pretranslateEmpty"));
+    }
+  }
   /** Run one one-shot text generation through the configured review engine. */
   async captureText(prompt, timeoutMs) {
     return this.settings.reviewEngine === "api" ? this.captureApiReview(prompt, timeoutMs) : this.captureOpenCodeReview(prompt, timeoutMs);
@@ -29311,6 +29721,7 @@ var AnnotationTutorLitePlugin = class extends import_obsidian11.Plugin {
     const to = editor.getCursor("to");
     const target = this.dictionaryLanguageName();
     const mode = classifyTranslateSelection(selection);
+    if (this.translateFromCache(editor, from, to, selection, mode)) return;
     const progress = new import_obsidian11.Notice(t("notice.translating"), 0);
     try {
       const prompt = mode === "word" ? buildWordGlossPrompt(
@@ -29323,7 +29734,8 @@ var AnnotationTutorLitePlugin = class extends import_obsidian11.Plugin {
         this.noticeForTranslate(outcome);
         return;
       }
-      const replacement = mode === "word" ? formatWordGloss(selection, cleanGloss(outcome.reviewText)) : stripWrapper(outcome.reviewText);
+      const wordGloss = mode === "word" ? cleanGloss(outcome.reviewText) : "";
+      const replacement = mode === "word" ? formatWordGloss(selection, wordGloss) : stripWrapper(outcome.reviewText);
       if (!replacement.trim() || replacement === selection) {
         new import_obsidian11.Notice(
           t("notice.translateFailed", { detail: t("notice.translateEmpty") })
@@ -29335,6 +29747,9 @@ var AnnotationTutorLitePlugin = class extends import_obsidian11.Plugin {
           t("notice.translateFailed", { detail: t("chat.edit.notLocated") })
         );
         return;
+      }
+      if (mode === "word" && wordGloss) {
+        this.cacheWordGloss(selection.trim(), wordGloss);
       }
       new import_obsidian11.Notice(t("notice.translateDone"));
     } catch (error51) {

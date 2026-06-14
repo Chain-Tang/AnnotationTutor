@@ -1,0 +1,4 @@
+# Standalone project: this empty workspace root isolates TutorLite from the
+# parent Annotation Tutor monorepo so `pnpm install` here installs only the
+# Lite plugin's own dependencies.
+packages: []

@@ -1,0 +1,36 @@
+{
+  "name": "annotation-tutor-lite",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "install:dev-plugin": "node scripts/install-dev-plugin.mjs",
+    "install:vault": "node scripts/build.mjs && node scripts/install-dev-plugin.mjs"
+  },
+  "devDependencies": {
+    "@codemirror/state": "6.5.0",
+    "@codemirror/view": "6.38.6",
+    "@types/node": "^22.15.0",
+    "esbuild": "^0.28.0",
+    "obsidian": "^1.13.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.8"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "dependencies": {
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
+  }
+}

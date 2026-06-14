@@ -1,0 +1,9 @@
+{
+  "id": "annotation-tutor-lite",
+  "name": "Annotation Tutor Lite",
+  "version": "0.1.0",
+  "minAppVersion": "1.12.4",
+  "description": "Turn your annotations into agent-readable learning memory. File-based, no server or model API required.",
+  "author": "Annotation Tutor contributors",
+  "isDesktopOnly": true
+}

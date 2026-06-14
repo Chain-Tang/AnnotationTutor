@@ -1,15 +1,15 @@
 # 🎓 Annotation Tutor
 
 <p align="center">
-  <img src="Screenshots/Screenshot 2026-06-08 033945.png" alt="Annotation Tutor Dashboard" width="800">
+  <img src="Screenshots/Screenshot 2026-06-08 033945.png" alt="Annotation Tutor" width="800">
 </p>
 
 <p align="center">
-  <b>Turn Obsidian learning annotations into local, agent-readable learning memory.</b>
+  <b>Turn your Obsidian highlights into a private, AI-reviewed learning memory — fully local.</b>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/node-%3E%3D22.13.0-blue?logo=node.js" alt="Node.js Version">
+  <img src="https://img.shields.io/badge/node-%3E%3D22.17.0-blue?logo=node.js" alt="Node.js Version">
   <img src="https://img.shields.io/badge/pnpm-%3E%3D10-orange?logo=pnpm" alt="pnpm Version">
   <img src="https://img.shields.io/github/actions/workflow/status/Chain-Tang/PriveTutor/ci.yml?branch=main&label=build&logo=github" alt="Build Status">
   <img src="https://img.shields.io/github/stars/Chain-Tang/PriveTutor?style=social" alt="GitHub Stars">
@@ -17,26 +17,39 @@
 
 ---
 
-## 🌟 Overview
+## What is this?
 
-**Annotation Tutor** is a powerful tool for learners who use Obsidian. It bridges the gap between manual note-taking and AI-assisted learning by turning your Markdown annotations into a structured "Learning Memory" that local agents (like OpenCode or Codex) can understand and review.
+**Annotation Tutor** is an Obsidian tool for active learners. Highlight a passage,
+write what you think it means, and a local AI agent — **OpenCode**, Codex, or
+Claude Code — reviews your understanding: correcting mistakes, filling gaps, and
+building a durable, searchable *learning memory* in plain Markdown. It can also
+translate and pre-gloss foreign-language notes inline as you read.
 
-### Key Features
+Everything runs on your machine. **No cloud, no vector DB, no required API keys** —
+agents authenticate through their own CLIs, and your notes never leave your Vault.
 
-- 📝 **Smart Annotations**: Select text, write explanations, and tag them for review.
-- 🤖 **Agent Integration**: Seamlessly connect with authenticated **OpenCode** or **Codex** for deep reviews.
-- 📂 **Dual Implementations**:
-  - **Full MVP**: Complete with sidecar JSON, SQLite/FTS index, REST/MCP servers, and a CLI.
-  - [**TutorLite**](TutorLite/README.md): A lightweight, Markdown-only version for quick use without server dependencies.
-- 🔍 **Local-First**: All data stays on your machine. Authoritative JSON and Markdown files with a rebuildable SQLite index.
+It comes in two editions:
+
+- 🪶 **TutorLite** — a single, self-contained Obsidian plugin. Markdown-only, zero
+  infrastructure. **This is the one most people want.**
+- 🧰 **Full MVP** — a server-backed build (local REST + MCP server, SQLite/FTS5
+  index, CLI) for power users and integrations.
 
 ---
 
-## 🔌 Get the plugin (Annotation Tutor Lite)
+## ✨ Features
 
-The fastest way in is the **Lite** plugin — a single, self-contained Obsidian
-plugin with **no server, SQLite, or required API key**. Pull it straight from this
-repo and build it:
+- 📝 **Annotate → review** — highlight, write your understanding, get an AI review right beside your notes.
+- 🌐 **Inline translation** — `Alt+T` glosses a word or passage; `Ctrl+Alt+T` pre-translates the whole document into a per-file glossary so later lookups are instant.
+- 🤖 **Bring your own agent** — OpenCode (recommended), Codex, or Claude Code, already authenticated via their own CLI.
+- 🧠 **Memory as Markdown** — annotations, memory cells, and a learner profile you can read, edit, and `grep`.
+- 🔒 **Local-first & private** — your Vault is the source of truth; no keys are stored in this repo.
+
+---
+
+## 🚀 Install TutorLite (≈2 minutes)
+
+Requires **Node 22.13+** and **pnpm 10**.
 
 ```bash
 git clone https://github.com/Chain-Tang/PriveTutor.git
@@ -47,95 +60,85 @@ pnpm install:dev-plugin -- --vault "C:\path\to\YourVault"
 ```
 
 The last command copies `manifest.json`, `main.js`, and `styles.css` into
-`<YourVault>/.obsidian/plugins/annotation-tutor-lite/`. Then open Obsidian, enable
+`<YourVault>/.obsidian/plugins/annotation-tutor-lite/`. Open Obsidian, enable
 **Annotation Tutor Lite** under *Settings → Community plugins*, and reload
-(`Ctrl/Cmd+R`). To install by hand instead, copy those three files yourself
-(`main.js` is `dist/main.js` renamed).
+(`Ctrl/Cmd+R`). Prefer to install by hand? Copy those three files into that folder
+yourself (`main.js` is `dist/main.js` renamed).
 
-**Connect OpenCode:** in *Settings → General*, set the engine to **OpenCode** and
-make sure the [`opencode`](https://opencode.ai) CLI is installed and logged in —
-the plugin drives your already-authenticated CLI directly, so no API key is
-stored. Prefer a direct API? Choose **API** (defaults to DeepSeek). Full details
-in [**`TutorLite/README.md`**](TutorLite/README.md).
+> Full plugin details, the Vault layout, and the agent review protocol live in
+> [**`TutorLite/README.md`**](TutorLite/README.md).
 
 ---
 
-## 🏗️ Architecture
+## 🔌 Connect OpenCode (or a direct API)
 
-```text
-domain -> core -> service -> apps/obsidian-plugin
-                |       \-> apps/cli
-                +-> mcp
-                +-> agent-bridges
+Open *Settings → General* and pick the engine that powers reviews, chat, and translation:
 
-ui ---------------------> apps/obsidian-plugin
-```
-
-- **`packages/domain`**: Zod schemas and core domain types.
-- **`packages/core`**: Storage, indexing (SQLite/FTS), and document access control.
-- **`packages/service`**: REST and MCP handlers serving the same application logic.
-- **`packages/mcp`**: Tools for AI agents to interact with your learning vault.
-- **`packages/ui`**: Shared React components for the dashboard and editor.
+- **OpenCode** *(recommended)* — install and log in to the
+  [`opencode`](https://opencode.ai) CLI, then select **OpenCode**. The plugin
+  drives your already-authenticated CLI over ACP and can read your Vault directly.
+  **No API key is stored.** Default model: `opencode/mimo-v2.5-free` (change
+  **Agent model** to use another).
+- **Direct API** — any OpenAI-compatible endpoint. Defaults target DeepSeek
+  (`https://api.deepseek.com/v1`, model `deepseek-chat`); paste your key under
+  **API key**. It is saved only in your Vault's local plugin data.
 
 ---
 
-## 🚀 Full MVP (server + CLI)
+## 📖 How to use
 
-> Most users want the **Lite** plugin above. This section is for the full,
-> server-backed MVP (REST/MCP server, SQLite index, and CLI).
+1. **Annotate** — select text in a note, run **Add learning annotation**, and write your understanding.
+2. **Ask for a review** — run **Ask Agent**; your agent reads the annotation files, writes a review back into the note, and marks the task done. The plugin watches the files and refreshes the UI automatically.
+3. **Translate while reading** — `Alt+T` on a selection for an inline gloss, or `Ctrl+Alt+T` to pre-translate the open document so subsequent lookups are instant.
 
-### Prerequisites
-
-- **Node.js**: >= 22.13.0
-- **pnpm**: >= 10
-- **Obsidian**: Desktop version
-
-### Installation
-
-1. **Clone and Install Dependencies**:
-   ```bash
-   git clone https://github.com/Chain-Tang/PriveTutor.git
-   cd PriveTutor
-   pnpm install
-   ```
-
-2. **Setup Development Plugin**:
-   ```bash
-   pnpm install:dev-plugin
-   ```
-
-3. **Open in Obsidian**:
-   - Open the `Tutor` folder as an Obsidian Vault.
-   - Enable the **Annotation Tutor** community plugin.
-   - Reload Obsidian after the build finishes.
+Your annotations, reviews, and memory cells are all plain Markdown under your
+Vault's `Agent Memory/` folder — portable and future-proof.
 
 ---
 
-## 💻 CLI Usage
+## 🧰 Full MVP (advanced)
 
-The standalone CLI provides administrative tools for your vault:
+The server-backed edition adds a local REST + MCP server, a rebuildable
+SQLite/FTS5 index, and a CLI. Most users don't need it.
 
 ```bash
-# Check vault health
-node apps/cli/dist/index.js doctor --vault Tutor
+git clone https://github.com/Chain-Tang/PriveTutor.git
+cd PriveTutor
+pnpm install
+pnpm install:dev-plugin            # builds + installs the full plugin into ./Tutor
+```
 
-# Start the service
-node apps/cli/dist/index.js start --vault Tutor
+Open the `Tutor` folder as a Vault, enable **Annotation Tutor**, and reload. CLI tools:
 
-# Rebuild the search index
+```bash
+node apps/cli/dist/index.js doctor        --vault Tutor
+node apps/cli/dist/index.js start         --vault Tutor
 node apps/cli/dist/index.js rebuild-index --vault Tutor
 ```
 
+Architecture: `domain → core → service → apps/{obsidian-plugin, cli}`, with `mcp`
+and `agent-bridges` layered on `core`. See
+[`docs/project-status.md`](docs/project-status.md) for status and roadmap.
+
+> **Note:** the full MVP's SQLite search needs **Node 22.17+** — earlier
+> `node:sqlite` builds lack the FTS5 module on Linux/macOS. TutorLite has no such
+> requirement.
+
 ---
 
-## 📊 Project Status
+## 🛠️ Development
 
-The core MVP is substantially complete with automated tests. We are currently in the **Acceptance Testing** phase for real Obsidian environments.
+```bash
+# TutorLite (standalone — run from inside the folder)
+cd TutorLite && pnpm install && pnpm check     # typecheck + test + build
 
-For more details on features and roadmap, see [**`docs/project-status.md`**](docs/project-status.md).
+# Full MVP (workspace root)
+pnpm install && pnpm check
+```
+
+CI runs the same checks on **Linux, Windows, and macOS**.
 
 ---
 
-<p align="center">
-  Built with ❤️ for the Obsidian Community.
-</p>
+<p align="center">Built for the Obsidian community. Local-first, always.</p>
+```

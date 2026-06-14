@@ -24281,11 +24281,12 @@ function buildNotebook(records, options) {
     if (list) list.push(record2);
     else byDoc.set(record2.sourceFile, [record2]);
   }
-  const pages = [...byDoc.entries()].map(([sourceFile, recs]) => {
+  const usedPageSlugs = /* @__PURE__ */ new Set();
+  const pages = [...byDoc.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([sourceFile, recs]) => {
     const sorted = [...recs].sort(
       (a, b) => a.createdAt.localeCompare(b.createdAt)
     );
-    const slug = slugify2(sourceFile);
+    const slug = uniqueSlug(slugify2(sourceFile), usedPageSlugs);
     return {
       sourceFile,
       title: basename(sourceFile),
@@ -24303,7 +24304,12 @@ function buildNotebook(records, options) {
       else conceptPages.set(concept, [page]);
     }
   }
-  const chapters = [...conceptPages.entries()].filter(([, ps]) => ps.length >= 2).map(([concept, ps]) => ({ concept, slug: slugify2(concept), pages: ps })).sort((a, b) => a.concept.localeCompare(b.concept));
+  const usedChapterSlugs = /* @__PURE__ */ new Set();
+  const chapters = [...conceptPages.entries()].filter(([, ps]) => ps.length >= 2).sort(([a], [b]) => a.localeCompare(b)).map(([concept, ps]) => ({
+    concept,
+    slug: uniqueSlug(slugify2(concept), usedChapterSlugs),
+    pages: ps
+  })).sort((a, b) => a.concept.localeCompare(b.concept));
   const files = [
     { path: `${base}/Notebook.md`, content: renderIndex(pages, chapters, base, options) }
   ];
@@ -24369,7 +24375,7 @@ function renderPage(page, base, options) {
   lines.push("", "## Annotation content", "");
   for (const record2 of page.records) {
     lines.push(`### ${record2.annotationId}`, "");
-    lines.push(toQuote(record2.selectedText ?? ""), "");
+    lines.push(toBlockquote(record2.selectedText ?? ""), "");
     const note = record2.userNote ?? record2.userNoteSummary;
     if (note?.trim()) lines.push(`**Note:** ${oneLine(note)}`, "");
     const review = record2.reviewSummary ?? record2.reviewText;
@@ -24423,11 +24429,6 @@ function blockLink(sourceFile, anchor, label) {
   const caret = anchor.startsWith("^") ? anchor : `^${anchor}`;
   return `[[${stripMd2(sourceFile)}#${caret}|${label}]]`;
 }
-function toQuote(text) {
-  const trimmed = text.trim();
-  if (!trimmed) return ">";
-  return trimmed.split(/\r?\n/).map((line) => line.length > 0 ? `> ${line}` : ">").join("\n");
-}
 function turnLabel(turn) {
   return turn.role === "agent" ? "Tutor" : "You";
 }
@@ -24443,6 +24444,12 @@ function stripMd2(path) {
 function slugify2(value) {
   const slug = stripMd2(value).replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "");
   return slug || "untitled";
+}
+function uniqueSlug(base, used) {
+  let slug = base;
+  for (let n = 2; used.has(slug); n += 1) slug = `${base}-${n}`;
+  used.add(slug);
+  return slug;
 }
 function unique2(values) {
   return [...new Set(values.filter(Boolean))];
@@ -30519,11 +30526,7 @@ ${profile}
       if (this.settings.apiKey.trim()) {
         return this.dialogueApiTurn(messages);
       }
-      return {
-        ok: false,
-        text: "",
-        error: result.error ?? (result.timedOut ? t("notice.agentTimeout", { id: "" }) : t("chat.empty"))
-      };
+      return { ok: false, text: "", ...result.error ? { error: result.error } : {} };
     }
     return this.dialogueApiTurn(messages);
   }

@@ -1575,11 +1575,8 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       if (this.settings.apiKey.trim()) {
         return this.dialogueApiTurn(messages);
       }
-      return {
-        ok: false,
-        text: "",
-        error: result.error ?? (result.timedOut ? t("notice.agentTimeout", { id: "" }) : t("chat.empty"))
-      };
+      // No specific detail → the card shows its localized generic error.
+      return { ok: false, text: "", ...(result.error ? { error: result.error } : {}) };
     }
     return this.dialogueApiTurn(messages);
   }

@@ -14,7 +14,7 @@
 // https://www.goodnotes.com/blog/zettelkasten-method for the underlying model.
 
 import type { DialogueTurn, IndexRecord } from "../model.js";
-import { truncate } from "./blocks.js";
+import { toBlockquote, truncate } from "./blocks.js";
 
 export type NotebookFile = { path: string; content: string };
 
@@ -56,12 +56,16 @@ export function buildNotebook(
     else byDoc.set(record.sourceFile, [record]);
   }
 
+  // Assign slugs in a stable order (by source path) so two paths that slugify
+  // alike get distinct, deterministic filenames instead of silently colliding.
+  const usedPageSlugs = new Set<string>();
   const pages: Page[] = [...byDoc.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
     .map(([sourceFile, recs]) => {
       const sorted = [...recs].sort((a, b) =>
         a.createdAt.localeCompare(b.createdAt)
       );
-      const slug = slugify(sourceFile);
+      const slug = uniqueSlug(slugify(sourceFile), usedPageSlugs);
       return {
         sourceFile,
         title: basename(sourceFile),
@@ -82,9 +86,15 @@ export function buildNotebook(
       else conceptPages.set(concept, [page]);
     }
   }
+  const usedChapterSlugs = new Set<string>();
   const chapters: Chapter[] = [...conceptPages.entries()]
     .filter(([, ps]) => ps.length >= 2)
-    .map(([concept, ps]) => ({ concept, slug: slugify(concept), pages: ps }))
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([concept, ps]) => ({
+      concept,
+      slug: uniqueSlug(slugify(concept), usedChapterSlugs),
+      pages: ps
+    }))
     .sort((a, b) => a.concept.localeCompare(b.concept));
 
   const files: NotebookFile[] = [
@@ -169,7 +179,7 @@ function renderPage(page: Page, base: string, options: NotebookOptions): string 
   lines.push("", "## Annotation content", "");
   for (const record of page.records) {
     lines.push(`### ${record.annotationId}`, "");
-    lines.push(toQuote(record.selectedText ?? ""), "");
+    lines.push(toBlockquote(record.selectedText ?? ""), "");
     const note = record.userNote ?? record.userNoteSummary;
     if (note?.trim()) lines.push(`**Note:** ${oneLine(note)}`, "");
     const review = record.reviewSummary ?? record.reviewText;
@@ -240,15 +250,6 @@ function blockLink(sourceFile: string, anchor: string, label: string): string {
   return `[[${stripMd(sourceFile)}#${caret}|${label}]]`;
 }
 
-function toQuote(text: string): string {
-  const trimmed = text.trim();
-  if (!trimmed) return ">";
-  return trimmed
-    .split(/\r?\n/)
-    .map((line) => (line.length > 0 ? `> ${line}` : ">"))
-    .join("\n");
-}
-
 function turnLabel(turn: DialogueTurn): string {
   return turn.role === "agent" ? "Tutor" : "You";
 }
@@ -265,12 +266,20 @@ function stripMd(path: string): string {
   return path.replace(/\.md$/i, "");
 }
 
-/** A filesystem-safe, collision-resistant slug from a Vault path or concept. */
+/** A filesystem-safe slug from a Vault path or concept. */
 function slugify(value: string): string {
   const slug = stripMd(value)
     .replace(/[^\p{L}\p{N}]+/gu, "-")
     .replace(/^-+|-+$/g, "");
   return slug || "untitled";
+}
+
+/** Make `base` unique within `used` by appending -2, -3, … on collision. */
+function uniqueSlug(base: string, used: Set<string>): string {
+  let slug = base;
+  for (let n = 2; used.has(slug); n += 1) slug = `${base}-${n}`;
+  used.add(slug);
+  return slug;
 }
 
 function unique(values: string[]): string[] {

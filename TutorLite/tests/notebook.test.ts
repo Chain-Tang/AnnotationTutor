@@ -110,6 +110,17 @@ describe("buildNotebook", () => {
     expect(buildNotebook(records, options)).toEqual(buildNotebook(records, options));
   });
 
+  it("gives colliding slugs distinct page filenames", () => {
+    // "Notes/A B.md" and "Notes/A-B.md" both slugify to "Notes-A-B".
+    const collide: IndexRecord[] = [
+      record({ annotationId: "ANN-A", sourceFile: "Notes/A B.md", anchor: "^a" }),
+      record({ annotationId: "ANN-B", sourceFile: "Notes/A-B.md", anchor: "^b" })
+    ];
+    const paths = buildNotebook(collide, options).map((file) => file.path);
+    expect(paths).toContain("Agent Memory/Notebook/pages/Notes-A-B.md");
+    expect(paths).toContain("Agent Memory/Notebook/pages/Notes-A-B-2.md");
+  });
+
   it("still produces an index when there are no annotations", () => {
     const files = buildNotebook([], options);
     expect(files).toHaveLength(1);

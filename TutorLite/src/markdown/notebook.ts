@@ -1,28 +1,33 @@
 // Generator for the per-Vault "notebook": a Zettelkasten-style study notebook
 // built from the learner's annotations and dialogue. Pure and deterministic
 // (pass `generatedAt` for a stable timestamp) so it is unit-testable; the
-// Obsidian file I/O lives in store.ts#writeNotebook.
+// Obsidian file I/O lives in store.ts#writeNotebook. Structural strings are
+// localized via `notebook-labels.ts` (the locale is passed in).
 //
 // Structure (literature notes = pages, structure/index notes = chapters/MOC):
 //   Notebook/Notebook.md         index / map of content (the entry point)
-//   Notebook/pages/<doc>.md      one "literature note" per studied document:
-//                                document context + original-text index +
-//                                annotation content + dialogue context
+//   Notebook/pages/<doc>.md      one "literature note" per studied document
 //   Notebook/chapters/<topic>.md groups related documents that share a concept
 //
-// See https://en.wikipedia.org/wiki/Zettelkasten and
-// https://www.goodnotes.com/blog/zettelkasten-method for the underlying model.
+// See https://en.wikipedia.org/wiki/Zettelkasten for the underlying model.
 
-import type { DialogueTurn, IndexRecord } from "../model.js";
+import type { Locale } from "../i18n.js";
+import type { DialogueTurn, IndexRecord, MemoryCell } from "../model.js";
+import { classifyCells } from "../learning.js";
 import { toBlockquote, truncate } from "./blocks.js";
+import { notebookLabels, type NotebookLabels } from "./notebook-labels.js";
 
 export type NotebookFile = { path: string; content: string };
 
 export type NotebookOptions = {
   memoryRoot: string;
   generatedAt?: string;
+  /** UI language for the notebook's headings/labels. Defaults to English. */
+  locale?: Locale;
   /** Folder name under the memory root. Defaults to "Notebook". */
   folder?: string;
+  /** Memory cells, used for the learner summary + per-page strengths/weaknesses. */
+  cells?: MemoryCell[];
   /** Optional agent-written synthesis per source document, keyed by source path. */
   synthesis?: Map<string, string>;
 };
@@ -48,6 +53,8 @@ export function buildNotebook(
   options: NotebookOptions
 ): NotebookFile[] {
   const base = `${options.memoryRoot}/${options.folder ?? "Notebook"}`;
+  const labels = notebookLabels(options.locale);
+  const cells = options.cells ?? [];
 
   const byDoc = new Map<string, IndexRecord[]>();
   for (const record of records) {
@@ -97,17 +104,27 @@ export function buildNotebook(
     }))
     .sort((a, b) => a.concept.localeCompare(b.concept));
 
+  const hasSummary = cells.length > 0;
   const files: NotebookFile[] = [
-    { path: `${base}/Notebook.md`, content: renderIndex(pages, chapters, base, options) },
-    { path: `${base}/Declaration.md`, content: renderDeclaration(base, options) }
+    {
+      path: `${base}/Notebook.md`,
+      content: renderIndex(pages, chapters, base, options, labels, hasSummary)
+    },
+    { path: `${base}/Declaration.md`, content: renderDeclaration(options, labels) }
   ];
+  if (hasSummary) {
+    files.push({
+      path: `${base}/Learning summary.md`,
+      content: renderLearnerSummary(cells, options, labels)
+    });
+  }
   for (const page of pages) {
-    files.push({ path: page.path, content: renderPage(page, base, options) });
+    files.push({ path: page.path, content: renderPage(page, base, options, labels, cells) });
   }
   for (const chapter of chapters) {
     files.push({
       path: `${base}/chapters/${chapter.slug}.md`,
-      content: renderChapter(chapter, base, options)
+      content: renderChapter(chapter, base, options, labels)
     });
   }
   return files;
@@ -117,182 +134,201 @@ function renderIndex(
   pages: Page[],
   chapters: Chapter[],
   base: string,
-  options: NotebookOptions
+  options: NotebookOptions,
+  L: NotebookLabels,
+  hasSummary: boolean
 ): string {
-  const lines = header("Notebook", options.generatedAt);
+  const lines = header(L.notebookName, L, options.generatedAt);
   lines.push(
-    "> Your study notebook, built from annotations and tutor dialogue.",
-    "> Rebuildable from the **Build notebook** command — edits here are overwritten.",
-    `> New here? Open ${link(`${base}/Declaration`, "About this notebook")} for the format and the ideas behind it.`,
-    "",
-    "## Chapters",
-    ""
+    `> ${L.indexIntro}`,
+    `> ${L.rebuildNote}`,
+    `> ${L.newHerePrefix}${link(`${base}/Declaration`, L.aboutName)}${L.newHereSuffix}`
   );
+  if (hasSummary) {
+    lines.push(`> ${link(`${base}/Learning summary`, L.learningSummaryName)}`);
+  }
+  lines.push("", `## ${L.chapters}`, "");
   if (chapters.length === 0) {
-    lines.push("- No related-document chapters yet.");
+    lines.push(`- ${L.noChapters}`);
   } else {
     for (const chapter of chapters) {
       lines.push(
-        `- ${link(`${base}/chapters/${chapter.slug}`, chapter.concept)} — ${chapter.pages.length} documents`
+        `- ${link(`${base}/chapters/${chapter.slug}`, chapter.concept)} — ${fmt(L.documentsCount, { n: chapter.pages.length })}`
       );
-      for (const page of chapter.pages) {
-        lines.push(`  - ${pageLink(page)}`);
-      }
+      for (const page of chapter.pages) lines.push(`  - ${pageLink(page)}`);
     }
   }
 
-  lines.push("", "## Pages", "");
+  lines.push("", `## ${L.pages}`, "");
   if (pages.length === 0) {
-    lines.push("- No studied documents yet. Annotate a note to begin.");
+    lines.push(`- ${L.noPages}`);
   } else {
     for (const page of pages) {
       lines.push(
-        `- ${pageLink(page)} — \`${page.sourceFile}\` — ${page.records.length} annotations`
+        `- ${pageLink(page)} — \`${page.sourceFile}\` — ${fmt(L.annotationsCount, { n: page.records.length })}`
       );
     }
   }
 
-  if (options.generatedAt) lines.push("", `Updated: ${options.generatedAt}`);
+  if (options.generatedAt) lines.push("", `${L.updated}: ${options.generatedAt}`);
   lines.push("");
   return lines.join("\n");
 }
 
-function renderPage(page: Page, base: string, options: NotebookOptions): string {
-  const lines = header(page.title, options.generatedAt);
+function renderPage(
+  page: Page,
+  base: string,
+  options: NotebookOptions,
+  L: NotebookLabels,
+  cells: MemoryCell[]
+): string {
+  const lines = header(page.title, L, options.generatedAt);
 
   // Optional agent synthesis (hybrid "enrich" pass).
   const synthesis = options.synthesis?.get(page.sourceFile)?.trim();
-  if (synthesis) lines.push("## Synthesis", "", synthesis, "");
+  if (synthesis) lines.push(`## ${L.synthesis}`, "", synthesis, "");
 
   // 1. Document context.
-  lines.push("## Document context", "");
-  lines.push(`- Source: ${link(stripMd(page.sourceFile), page.title)}`);
-  lines.push(`- Concepts: ${page.concepts.length ? page.concepts.join(", ") : "None"}`);
-  lines.push(`- Annotations: ${page.records.length}`);
+  lines.push(`## ${L.documentContext}`, "");
+  lines.push(`- ${L.source}: ${link(stripMd(page.sourceFile), page.title)}`);
+  lines.push(`- ${L.concepts}: ${page.concepts.length ? page.concepts.join(", ") : L.none}`);
+  lines.push(`- ${L.annotationsLabel}: ${page.records.length}`);
+
+  // Real content (not just an index): what the cells from this document's
+  // annotations show the learner grasped vs. should revisit.
+  const ids = new Set(page.records.map((r) => r.annotationId));
+  const pageCells = cells.filter((c) => c.sourceAnnotations.some((a) => ids.has(a)));
+  if (pageCells.length > 0) {
+    const { strengths, weaknesses } = classifyCells(pageCells);
+    lines.push("", `## ${L.grasped} · ${L.revisit}`, "");
+    lines.push(`**${L.grasped}:**`);
+    pushCellBullets(lines, strengths, options.memoryRoot, L);
+    lines.push(`**${L.revisit}:**`);
+    pushCellBullets(lines, weaknesses, options.memoryRoot, L);
+  }
 
   // 2. Original-text index — the anchored excerpts, each a clickable block link.
-  lines.push("", "## Original text index", "");
+  lines.push("", `## ${L.originalTextIndex}`, "");
   for (const record of page.records) {
-    const excerpt = truncate(record.selectedText ?? "", 160) || "(no excerpt)";
+    const excerpt = truncate(record.selectedText ?? "", 160) || L.noExcerpt;
     lines.push(`- ${blockLink(page.sourceFile, record.anchor, excerpt)}`);
   }
 
   // 3. Annotation content — the learner's note and the tutor's review.
-  lines.push("", "## Annotation content", "");
+  lines.push("", `## ${L.annotationContent}`, "");
   for (const record of page.records) {
     lines.push(`### ${record.annotationId}`, "");
     lines.push(toBlockquote(record.selectedText ?? ""), "");
     const note = record.userNote ?? record.userNoteSummary;
-    if (note?.trim()) lines.push(`**Note:** ${oneLine(note)}`, "");
+    if (note?.trim()) lines.push(`**${L.note}:** ${oneLine(note)}`, "");
     const review = record.reviewSummary ?? record.reviewText;
-    if (review?.trim()) lines.push(`**Review:** ${oneLine(review)}`, "");
+    if (review?.trim()) lines.push(`**${L.review}:** ${oneLine(review)}`, "");
   }
 
   // 4. Dialogue context — the in-annotation conversations, if any.
   const withDialogue = page.records.filter((r) => (r.dialogue?.length ?? 0) > 0);
   if (withDialogue.length > 0) {
-    lines.push("## Dialogue context", "");
+    lines.push(`## ${L.dialogueContext}`, "");
     for (const record of withDialogue) {
       lines.push(`### ${record.annotationId}`, "");
       for (const turn of record.dialogue ?? []) {
-        lines.push(`**${turnLabel(turn)}:** ${oneLine(turn.text)}`, "");
+        lines.push(`**${turnLabel(turn, L)}:** ${oneLine(turn.text)}`, "");
       }
     }
   }
 
   // Backlink to the index for navigation.
-  lines.push(`See also: ${link(`${base}/Notebook`, "Notebook")}`, "");
+  lines.push(`${L.seeAlso}: ${link(`${base}/Notebook`, L.notebookName)}`, "");
   return lines.join("\n");
 }
 
 function renderChapter(
   chapter: Chapter,
   base: string,
-  options: NotebookOptions
+  options: NotebookOptions,
+  L: NotebookLabels
 ): string {
-  const lines = header(chapter.concept, options.generatedAt);
+  const lines = header(chapter.concept, L, options.generatedAt);
   lines.push(
-    `> Documents related through the concept **${chapter.concept}**.`,
+    `> ${fmt(L.relatedThrough, { concept: chapter.concept })}`,
     "",
-    "## Documents",
+    `## ${L.documents}`,
     ""
   );
   for (const page of chapter.pages) {
     lines.push(
-      `- ${pageLink(page)} — \`${page.sourceFile}\` — ${page.records.length} annotations`
+      `- ${pageLink(page)} — \`${page.sourceFile}\` — ${fmt(L.annotationsCount, { n: page.records.length })}`
     );
   }
-  lines.push("", `See also: ${link(`${base}/Notebook`, "Notebook")}`, "");
+  lines.push("", `${L.seeAlso}: ${link(`${base}/Notebook`, L.notebookName)}`, "");
   return lines.join("\n");
 }
 
 /**
- * A standing "declaration" page: what the notebook is, how to open it, its
- * format, the learning theories behind it, and why it helps. Static content, so
- * the notebook is self-explanatory even on first open.
+ * The learner summary: strengths, weaknesses, and problem-solving methods,
+ * classified from the memory cells (see learning.ts). Deterministic; the opt-in
+ * "learning summary" feature can layer agent prose on top later.
  */
-function renderDeclaration(base: string, options: NotebookOptions): string {
-  const lines = header("About This Notebook", options.generatedAt);
-  lines.push(
-    "> What this notebook is, the ideas behind it, and how to use it.",
-    "",
-    "## What it is",
-    "",
-    "A study companion built automatically from the notes you make while reading.",
-    "Nothing here is written by hand: it is assembled from your annotations, the",
-    "tutor's reviews, your in-margin dialogues, and the memory cells distilled from",
-    "them. Your source notes remain the source of truth — rebuild the notebook any",
-    "time and it reflects them.",
-    "",
-    "## How to open it",
-    "",
-    "- Click the **notebook icon** in the left ribbon (*Open study notebook*), or",
-    "- Open the command palette and run **Open study notebook**.",
-    "",
-    "The first time, it is built on the spot. Run **Build notebook** to refresh it,",
-    "or **Enrich notebook with agent** to add AI-written summaries.",
-    "",
-    "## Format",
-    "",
-    `- ${link(`${base}/Notebook`, "Notebook")} — the index / map of content; your entry point.`,
-    "- **pages/** — one page per document you have studied, in four parts: document",
-    "  context, an *original-text index* (links back to each highlighted passage),",
-    "  your annotations with the tutor's reviews, and the dialogue you had.",
-    "- **chapters/** — pages that group documents sharing a concept, so related",
-    "  reading sits together.",
-    "",
-    "## The ideas behind it",
-    "",
-    "- **Zettelkasten (slip-box).** Each studied document is a *literature note*;",
-    "  the chapters and index are *structure notes* that connect ideas across",
-    "  sources, turning scattered notes into a network of knowledge.",
-    "- **Active recall & the Feynman technique.** You write what a passage means in",
-    "  your own words; explaining it plainly exposes — and then closes — the gaps.",
-    "- **Socratic questioning.** The tutor often ends with a question rather than a",
-    "  verdict, nudging you one step further.",
-    "- **Spaced reinforcement.** Memory cells carry a status and a confidence, so",
-    "  what you have and haven't consolidated stays visible and ready for review.",
-    "",
-    "## Why it helps",
-    "",
-    "- One place to see everything you've engaged with, in your own words.",
-    "- Connections between sources surface on their own, prompting synthesis.",
-    "- Your learning memory is plain Markdown you own — searchable and portable.",
-    ""
-  );
+function renderLearnerSummary(
+  cells: MemoryCell[],
+  options: NotebookOptions,
+  L: NotebookLabels
+): string {
+  const lines = header(L.learningSummaryName, L, options.generatedAt);
+  const { strengths, weaknesses, methods } = classifyCells(cells);
+  lines.push(`> ${L.summaryIntro}`, "");
+  for (const [title, group] of [
+    [L.strengths, strengths],
+    [L.weaknesses, weaknesses],
+    [L.methods, methods]
+  ] as const) {
+    lines.push(`## ${title}`, "");
+    pushCellBullets(lines, group, options.memoryRoot, L);
+  }
   return lines.join("\n");
+}
+
+/** Append cell links as a bullet list, or a single "none" bullet when empty. */
+function pushCellBullets(
+  lines: string[],
+  cells: MemoryCell[],
+  memoryRoot: string,
+  L: NotebookLabels
+): void {
+  if (cells.length === 0) lines.push(`- ${L.none}`, "");
+  else {
+    for (const cell of cells) lines.push(`- ${cellLink(memoryRoot, cell)}`);
+    lines.push("");
+  }
+}
+
+function cellLink(memoryRoot: string, cell: MemoryCell): string {
+  return link(`${memoryRoot}/memory-cells/${cell.id}`, cell.concept);
+}
+
+/**
+ * A standing "declaration" page: what the notebook is, how to open it, its
+ * format, the learning theories behind it, and why it helps. Localized so the
+ * notebook is self-explanatory in the learner's language even on first open.
+ */
+function renderDeclaration(options: NotebookOptions, L: NotebookLabels): string {
+  return [...header(L.declarationTitle, L, options.generatedAt), ...L.declaration].join("\n");
 }
 
 // --- helpers ----------------------------------------------------------------
 
-function header(title: string, generatedAt?: string): string[] {
+function header(title: string, L: NotebookLabels, generatedAt?: string): string[] {
   return [
     `# ${title}`,
     "",
-    "> Generated by Annotation Tutor Lite. Rebuildable; do not maintain manually.",
-    ...(generatedAt ? [`> Updated: ${generatedAt}`] : []),
+    `> ${L.generatedNote}`,
+    ...(generatedAt ? [`> ${L.updated}: ${generatedAt}`] : []),
     ""
   ];
+}
+
+function fmt(template: string, vars: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (_, key) => String(vars[key] ?? ""));
 }
 
 function link(path: string, label: string): string {
@@ -309,8 +345,8 @@ function blockLink(sourceFile: string, anchor: string, label: string): string {
   return `[[${stripMd(sourceFile)}#${caret}|${label}]]`;
 }
 
-function turnLabel(turn: DialogueTurn): string {
-  return turn.role === "agent" ? "Tutor" : "You";
+function turnLabel(turn: DialogueTurn, L: NotebookLabels): string {
+  return turn.role === "agent" ? L.tutor : L.you;
 }
 
 function oneLine(text: string): string {

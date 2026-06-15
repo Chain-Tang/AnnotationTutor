@@ -2193,7 +2193,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     }
     const progress = new Notice(t("notice.notebookBuilding"), 0);
     try {
-      const result = await this.store.writeNotebook(records);
+      const result = await this.store.writeNotebook(records, this.librarySnapshot.cells);
       progress.hide();
       new Notice(
         t("notice.notebookDone", { pages: result.pages, chapters: result.chapters })
@@ -2242,7 +2242,11 @@ export default class AnnotationTutorLitePlugin extends Plugin {
           t("notice.notebookEnriching", { done, total: docs.length })
         );
       }
-      const result = await this.store.writeNotebook(records, synthesis);
+      const result = await this.store.writeNotebook(
+        records,
+        this.librarySnapshot.cells,
+        synthesis
+      );
       progress.hide();
       new Notice(
         t("notice.notebookDone", { pages: result.pages, chapters: result.chapters })

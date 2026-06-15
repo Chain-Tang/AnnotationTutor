@@ -60,6 +60,7 @@ import {
 } from "./markdown/memory-cell-file.js";
 import { parseSceneFile, serializeScene } from "./markdown/scene-file.js";
 import { deriveScenes } from "./memory-derive.js";
+import { getLocale } from "./i18n.js";
 
 const SELF_WRITE_WINDOW_MS = 1500;
 
@@ -601,11 +602,14 @@ export class VaultStore {
    */
   public async writeNotebook(
     records: IndexRecord[],
+    cells: MemoryCell[],
     synthesis?: Map<string, string>
   ): Promise<{ path: string; pages: number; chapters: number }> {
     const files = buildNotebook(records, {
       memoryRoot: this.memoryRoot(),
       generatedAt: new Date().toISOString(),
+      locale: getLocale(),
+      cells,
       ...(synthesis ? { synthesis } : {})
     });
     for (const file of files) {

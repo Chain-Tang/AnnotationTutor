@@ -141,6 +141,63 @@ describe("buildNotebook", () => {
     expect(declaration).toContain("Zettelkasten");
     expect(declaration).toContain("Feynman");
   });
+
+  it("adds a learner summary + per-page grasped/revisit from cells", () => {
+    const cells: import("../src/model.js").MemoryCell[] = [
+      {
+        id: "MEM-1",
+        type: "understanding",
+        concept: "Attention",
+        status: "stable",
+        summary: "Grasped attention.",
+        sourceAnnotations: ["ANN-1"],
+        tags: [],
+        confidence: 0.9,
+        createdAt: "2026-06-15T10:00:00.000Z",
+        updatedAt: "2026-06-15T10:00:00.000Z"
+      },
+      {
+        id: "MEM-2",
+        type: "misconception",
+        concept: "Recurrence",
+        status: "needs_review",
+        summary: "Confused about recurrence.",
+        sourceAnnotations: ["ANN-3"],
+        tags: [],
+        confidence: 0.3,
+        createdAt: "2026-06-15T10:00:00.000Z",
+        updatedAt: "2026-06-15T10:00:00.000Z"
+      }
+    ];
+    const files = buildNotebook(records, { ...options, cells });
+    const paths = files.map((f) => f.path);
+    expect(paths).toContain("Agent Memory/Notebook/Learning summary.md");
+
+    const summary = byPath(files, "Agent Memory/Notebook/Learning summary.md");
+    expect(summary).toContain("## Strengths");
+    expect(summary).toContain("[[Agent Memory/memory-cells/MEM-1|Attention]]");
+    expect(summary).toContain("## Weaknesses");
+    expect(summary).toContain("[[Agent Memory/memory-cells/MEM-2|Recurrence]]");
+
+    const page = byPath(files, "Agent Memory/Notebook/pages/Papers-Attention.md");
+    expect(page).toContain("What you grasped");
+    expect(page).toContain("[[Agent Memory/memory-cells/MEM-1|Attention]]");
+
+    const index = byPath(files, "Agent Memory/Notebook/Notebook.md");
+    expect(index).toContain("[[Agent Memory/Notebook/Learning summary|Learning summary]]");
+  });
+
+  it("localizes the notebook structure to the selected language", () => {
+    const files = buildNotebook(records, { ...options, locale: "zh-cn" });
+    const index = byPath(files, "Agent Memory/Notebook/Notebook.md");
+    expect(index).toContain("## 章节");
+    expect(index).toContain("## 页面");
+    const page = byPath(files, "Agent Memory/Notebook/pages/Papers-Attention.md");
+    expect(page).toContain("## 文档背景");
+    expect(page).toContain("## 原文索引");
+    // The agent's own prose stays as written; only structure is localized.
+    expect(page).toContain("### ANN-1");
+  });
 });
 
 function byPath(files: { path: string; content: string }[], path: string): string {

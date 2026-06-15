@@ -11,6 +11,7 @@ coverage/
 
 # Development vault runtime data and installed build artifacts.
 Tutor/.obsidian/plugins/annotation-tutor/
+Tutor/.obsidian/plugins/annotation-tutor-lite/
 Tutor/Agent Context/
 Tutor/Learning Memory/
 Tutor/.codex/

@@ -54,22 +54,12 @@ describe("setLanguage", () => {
 });
 
 describe("locale coverage", () => {
-  const enKeys = new Set(Object.keys(localeTables.en));
+  const enKeys = Object.keys(localeTables.en).sort();
 
-  it("no locale defines a key English lacks (catches typos/renames)", () => {
+  it("every locale has full key parity with English (no drift to fallback)", () => {
     for (const [locale, dict] of Object.entries(localeTables)) {
-      const orphans = Object.keys(dict).filter((key) => !enKeys.has(key));
-      expect({ locale, orphans }).toEqual({ locale, orphans: [] });
+      expect({ locale, keys: Object.keys(dict).sort() }).toEqual({ locale, keys: enKeys });
     }
-  });
-
-  it("English and Simplified Chinese stay in full parity (primary locales)", () => {
-    // The two fully-translated locales must not drift: every en key has a zh-cn
-    // value and vice-versa. (zh-tw / ja intentionally fall back to English.)
-    const zhCn = localeTables["zh-cn"];
-    const missingInZhCn = Object.keys(localeTables.en).filter((k) => !(k in zhCn));
-    const extraInZhCn = Object.keys(zhCn).filter((k) => !enKeys.has(k));
-    expect({ missingInZhCn, extraInZhCn }).toEqual({ missingInZhCn: [], extraInZhCn: [] });
   });
 
   it("has no empty translation values", () => {

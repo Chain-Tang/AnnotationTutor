@@ -19,12 +19,10 @@ import {
   type Annotation,
   type DialogueTurn,
   type IndexRecord,
-  type MemoryCell,
   type Task,
   bareBlockId
 } from "./model.js";
-import { memoryCellSchema } from "./schemas.js";
-import { blockIdForAnnotation, cellIdForAnnotation, makeId, nowIso } from "./ids.js";
+import { blockIdForAnnotation, makeId, nowIso } from "./ids.js";
 import { resolveAnchor } from "./anchors.js";
 import {
   crossesMarkdownBlocks,
@@ -98,23 +96,10 @@ import { tutorSystemPrompt, type ChatContext } from "./chat-prompt.js";
 import { classifyIntent, extractAnnotationId } from "./intent.js";
 import { buildEditInstruction, extractEdit } from "./edit-parse.js";
 import { detectLanguageName } from "./lang.js";
-import { dueCells, initReviewState, scheduleNext } from "./srs.js";
-import { classifyCells } from "./learning.js";
-import {
-  asCellType,
-  asConfidence,
-  asText,
-  cellTypeForCorrectness,
-  confidenceForCorrectness,
-  parseJsonObject
-} from "./cell-distill.js";
 import { TranslationController } from "./translation-controller.js";
+import { NotebookController } from "./notebook-controller.js";
+import { ReviewController } from "./review-controller.js";
 import type { ReviewOutcome } from "./review-outcome.js";
-import {
-  ReviewModal,
-  setDueBadge,
-  type ReviewCard
-} from "./views/review-modal.js";
 import { isAbsolute, relative as pathRelative, resolve as pathResolve } from "node:path";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -165,8 +150,10 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   private cardGeomTimer: ReturnType<typeof setTimeout> | null = null;
   // Inline translation + background pre-translation (Alt+T), wired in onload.
   private translation!: TranslationController;
-  // A "N due" spaced-repetition indicator in the status bar (when enabled).
-  private reviewStatusEl: HTMLElement | null = null;
+  // Study-notebook commands (build / enrich / open), wired in onload.
+  private notebook!: NotebookController;
+  // Memory cells, SM-2 spaced review, and opt-in feedback, wired in onload.
+  public review!: ReviewController;
 
   /**
    * HTTP transport for the direct-API engine. Routes through Obsidian's
@@ -219,7 +206,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       reply: (id, message) => this.replyInAnnotation(id, message),
       render: (el, markdown) =>
         MarkdownRenderer.render(this.app, markdown, el, "", this),
-      saveCell: (id) => void this.createCellFromAnnotation(id),
+      saveCell: (id) => void this.review.createCellFromAnnotation(id),
       remove: (id) => this.confirmDeleteById(id),
       settings: () => this.openSettings()
     });
@@ -249,7 +236,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       void this.openChat();
     });
     this.addRibbonIcon("notebook", t("ribbon.openNotebook"), () => {
-      void this.openNotebook();
+      void this.notebook.openNotebook();
     });
     const pretranslateStatus = this.addStatusBarItem();
     pretranslateStatus.addClass("atl-pretranslate-status");
@@ -260,8 +247,28 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       chatTimeoutMs: () => this.chatTimeoutMs(),
       captureText: (prompt, timeoutMs) => this.captureText(prompt, timeoutMs)
     });
-    this.reviewStatusEl = this.addStatusBarItem();
-    this.reviewStatusEl.addClass("atl-due-status");
+    this.notebook = new NotebookController({
+      app: this.app,
+      store: this.store,
+      records: () => this.indexTable.all(),
+      cells: () => this.librarySnapshot.cells,
+      reviewLanguage: () => this.settings.reviewLanguage,
+      openPath: (path) => this.openLibraryPath(path),
+      runTurn: (messages, openCodePrompt) => this.runDialogueTurn(messages, openCodePrompt)
+    });
+    const dueStatus = this.addStatusBarItem();
+    dueStatus.addClass("atl-due-status");
+    this.review = new ReviewController({
+      app: this.app,
+      store: this.store,
+      statusBar: dueStatus,
+      record: (id) => this.indexTable.get(id),
+      cells: () => this.librarySnapshot.cells,
+      settings: () => this.settings,
+      rebuild: () => this.rebuildIndex(false),
+      openPath: (path) => this.openLibraryPath(path),
+      runTurn: (messages, openCodePrompt) => this.runDialogueTurn(messages, openCodePrompt)
+    });
 
     this.registerCommands();
     this.registerEvent(
@@ -392,7 +399,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
    */
   public applyDisplaySettings(): void {
     void this.refreshDecorations();
-    this.refreshDueBadge();
+    this.review.refreshBadge();
   }
 
   // --- lifecycle -------------------------------------------------------------
@@ -581,46 +588,46 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     this.addCommand({
       id: "open-notebook",
       name: t("cmd.openNotebook"),
-      callback: () => void this.openNotebook()
+      callback: () => void this.notebook.openNotebook()
     });
     this.addCommand({
       id: "build-notebook",
       name: t("cmd.buildNotebook"),
-      callback: () => void this.buildNotebook()
+      callback: () => void this.notebook.buildNotebook()
     });
     this.addCommand({
       id: "enrich-notebook",
       name: t("cmd.enrichNotebook"),
-      callback: () => void this.enrichNotebook()
+      callback: () => void this.notebook.enrichNotebook()
     });
     this.addCommand({
       id: "create-memory-cell",
       name: t("cmd.createCell"),
       callback: () => {
         const record = this.getActiveRecord();
-        if (record) void this.createCellFromAnnotation(record.annotationId);
+        if (record) void this.review.createCellFromAnnotation(record.annotationId);
         else new Notice(t("notice.placeCursor"));
       }
     });
     this.addCommand({
       id: "review-due-cells",
       name: t("cmd.reviewDue"),
-      callback: () => void this.reviewDueCells()
+      callback: () => void this.review.reviewDueCells()
     });
     this.addCommand({
       id: "weakness-training",
       name: t("cmd.weaknessTraining"),
-      callback: () => void this.generateWeaknessTraining()
+      callback: () => void this.review.generateWeaknessTraining()
     });
     this.addCommand({
       id: "refresh-learning-summary",
       name: t("cmd.learningSummary"),
-      callback: () => void this.refreshLearningSummary()
+      callback: () => void this.review.refreshLearningSummary()
     });
     this.addCommand({
       id: "strength-reinforcement",
       name: t("cmd.strengthReinforcement"),
-      callback: () => void this.generateStrengthReinforcement()
+      callback: () => void this.review.generateStrengthReinforcement()
     });
   }
 
@@ -962,7 +969,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
           await this.store.setTaskStatus(taskId, "completed");
           // Capture a memory cell automatically (no extra model call), then a
           // single rebuild picks up the review, the cell, and any new scene.
-          await this.autoSaveCellFromReview(record, outcome.reviewText);
+          await this.review.autoSaveCellFromReview(record, outcome.reviewText);
           await this.rebuildIndex(false);
           new Notice(t("notice.agentDone", { id }));
           return;
@@ -1340,133 +1347,6 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     };
   }
 
-  /**
-   * Distill a durable memory cell from an annotation (note + review + dialogue),
-   * write it, and refresh the auto-grouped scenes. The engine produces the cell
-   * when reachable; otherwise we fall back to a cell built from the note so the
-   * learning memory still grows. This is the path that populates Cells & Scenes.
-   */
-  public async createCellFromAnnotation(id: string): Promise<void> {
-    const record = this.indexTable.get(id);
-    if (!record) {
-      new Notice(t("notice.placeCursor"));
-      return;
-    }
-    const progress = new Notice(t("notice.cellDistilling"), 0);
-    try {
-      const cell = await this.distillCell(record);
-      if (!cell) {
-        new Notice(t("notice.cellFailed"));
-        return;
-      }
-      await this.store.createMemoryCell(cell);
-      await this.store.syncScenesFromCells();
-      await this.rebuildIndex(false);
-      new Notice(t("notice.cellDone", { concept: cell.concept }));
-    } catch (error) {
-      console.error("[Annotation Tutor Lite] cell creation failed", error);
-      new Notice(t("notice.cellFailed"));
-    } finally {
-      progress.hide();
-    }
-  }
-
-  /** Build a validated MemoryCell from an annotation, model-distilled if possible. */
-  private async distillCell(record: IndexRecord): Promise<MemoryCell | null> {
-    const lang =
-      this.settings.reviewLanguage.trim() || detectLanguageName(record.userNote ?? "");
-    const dialogue = (record.dialogue ?? [])
-      .map((turn) => `${turn.role === "agent" ? "Tutor" : "Learner"}: ${turn.text}`)
-      .join("\n");
-    const system = `${tutorSystemPrompt(lang)}\n\nDistill ONE durable learning-memory cell from this annotation. Reply with a single JSON object and nothing else.`;
-    const user = [
-      "JSON keys:",
-      "- type: one of understanding | misconception | goal | difficulty | strategy | progress",
-      "- concept: a short noun phrase naming the topic",
-      `- summary: 1-3 sentences on what the learner now understands or struggles with (in ${lang})`,
-      "- confidence: a number from 0 to 1",
-      "",
-      `Selected text: ${record.selectedText ?? ""}`,
-      `Learner's note: ${record.userNote ?? record.userNoteSummary ?? ""}`,
-      ...(record.reviewText ? [`Tutor review: ${record.reviewText}`] : []),
-      ...(dialogue ? [`Dialogue:\n${dialogue}`] : [])
-    ].join("\n");
-    const turn = await this.runDialogueTurn(
-      [
-        { role: "system", content: system },
-        { role: "user", content: user }
-      ],
-      `${system}\n\n${user}`
-    );
-    const parsed = turn.ok ? parseJsonObject(turn.text) : null;
-
-    const concept =
-      asText(parsed?.["concept"]) ||
-      record.concepts[0] ||
-      (record.selectedText ?? "").slice(0, 40).trim() ||
-      record.annotationId;
-    const summary =
-      asText(parsed?.["summary"]) ||
-      (record.userNote ?? record.userNoteSummary ?? record.reviewText ?? "").trim();
-    if (!summary) return null;
-    const now = nowIso();
-    const id = cellIdForAnnotation(record.annotationId);
-    const existing = this.librarySnapshot.cells.find((cell) => cell.id === id);
-    const candidate: MemoryCell = {
-      id,
-      type: asCellType(parsed?.["type"]),
-      concept,
-      status: "new",
-      summary,
-      sourceAnnotations: [record.annotationId],
-      tags: record.concepts,
-      confidence: asConfidence(parsed?.["confidence"]),
-      review: existing?.review ?? initReviewState(now),
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now
-    };
-    const validated = memoryCellSchema.safeParse(candidate);
-    return validated.success ? validated.data : null;
-  }
-
-  /**
-   * After a review, capture a memory cell automatically (deterministically, no
-   * extra model call) so the learning memory grows on its own. Create-once per
-   * annotation, so a richer manually-saved cell is never clobbered by a re-review.
-   */
-  private async autoSaveCellFromReview(
-    record: IndexRecord,
-    reviewText: string
-  ): Promise<void> {
-    const id = cellIdForAnnotation(record.annotationId);
-    if (this.librarySnapshot.cells.some((cell) => cell.id === id)) return;
-    const review = parseAgentReview(reviewText, nowIso());
-    const summary = (review?.summary ?? reviewText).trim();
-    const concept =
-      record.concepts[0] ||
-      (record.selectedText ?? "").slice(0, 40).trim() ||
-      record.annotationId;
-    if (!summary || !concept) return;
-    const now = nowIso();
-    const candidate: MemoryCell = {
-      id,
-      type: cellTypeForCorrectness(review?.correctness),
-      concept,
-      status: "new",
-      summary,
-      sourceAnnotations: [record.annotationId],
-      tags: record.concepts,
-      confidence: confidenceForCorrectness(review?.correctness),
-      review: initReviewState(now),
-      createdAt: now,
-      updatedAt: now
-    };
-    const validated = memoryCellSchema.safeParse(candidate);
-    if (!validated.success) return;
-    await this.store.createMemoryCell(validated.data);
-    await this.store.syncScenesFromCells();
-  }
-
   private confirmDeleteById(id: string): void {
     const record = this.indexTable.get(id);
     if (record) this.confirmDelete(record);
@@ -1663,7 +1543,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     this.indexTable.replaceAll(this.librarySnapshot.annotations);
     this.refreshDashboard();
     this.settingTab?.refresh();
-    this.refreshDueBadge();
+    this.review.refreshBadge();
     await this.refreshDecorations();
     if (notify) {
       const errors = this.librarySnapshot.diagnostics.length;
@@ -1746,267 +1626,6 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       })
     );
     await this.rebuildIndex(false);
-  }
-
-  // --- spaced repetition -----------------------------------------------------
-
-  /**
-   * Open the SM-2 review modal over the cells due now. Gated by the opt-in
-   * `enableSpacedReview` setting; each grade reschedules the cell (srs.ts) and
-   * the file + in-memory schedule are updated so the due counter falls live.
-   */
-  public async reviewDueCells(): Promise<void> {
-    if (!this.settings.enableSpacedReview) {
-      new Notice(t("notice.reviewDisabled"));
-      return;
-    }
-    const due = dueCells(this.librarySnapshot.cells, nowIso());
-    if (due.length === 0) {
-      new Notice(t("notice.reviewNoneDue"));
-      return;
-    }
-    const cards: ReviewCard[] = due.map((cell) => ({
-      cellId: cell.id,
-      concept: cell.concept,
-      summary: cell.summary,
-      path: cell.path
-    }));
-    new ReviewModal(this.app, cards, {
-      open: (path) => this.openLibraryPath(path),
-      grade: async (card, grade) => {
-        const cell = this.librarySnapshot.cells.find((c) => c.id === card.cellId);
-        const next = scheduleNext(cell?.review ?? initReviewState(nowIso()), grade, nowIso());
-        await this.store.updateCellSchedule(card.cellId, next);
-        if (cell) cell.review = next; // keep the snapshot in step so the badge falls
-        this.refreshDueBadge();
-      }
-    }).open();
-  }
-
-  /** Refresh the status-bar "N due" badge (hidden unless spaced review is on). */
-  private refreshDueBadge(): void {
-    if (!this.reviewStatusEl) return;
-    const count = this.settings.enableSpacedReview
-      ? dueCells(this.librarySnapshot.cells, nowIso()).length
-      : 0;
-    setDueBadge(this.reviewStatusEl, count, () => void this.reviewDueCells());
-  }
-
-  // --- opt-in feedback mechanisms (off by default) ---------------------------
-
-  /** Retrieval-practice questions targeting weak cells (active recall). */
-  public async generateWeaknessTraining(): Promise<void> {
-    await this.generateFeedback({
-      enabled: this.settings.enableWeaknessTraining,
-      cells: classifyCells(this.librarySnapshot.cells).weaknesses,
-      fileName: "Training/weakness-practice.md",
-      title: t("feedback.weaknessTitle"),
-      instruction:
-        "Write 5 short retrieval-practice questions (active recall) targeting these weak points. Number them, then put concise answers under a final '### Answers' heading. Write everything in {lang}."
-    });
-  }
-
-  /** A narrative summary of strengths, weaknesses, and methods + next steps. */
-  public async refreshLearningSummary(): Promise<void> {
-    await this.generateFeedback({
-      enabled: this.settings.enableLearningSummary,
-      cells: this.librarySnapshot.cells,
-      fileName: "Learning summary.md",
-      title: t("feedback.summaryTitle"),
-      instruction:
-        "From the cells below, write a short narrative of the learner's strengths, weaknesses, and problem-solving methods (use those three headings), then 2-3 concrete next study steps. Write in {lang}."
-    });
-  }
-
-  /** Next-step extensions that build on the learner's strengths. */
-  public async generateStrengthReinforcement(): Promise<void> {
-    await this.generateFeedback({
-      enabled: this.settings.enableStrengthReinforcement,
-      cells: classifyCells(this.librarySnapshot.cells).strengths,
-      fileName: "Training/next-steps.md",
-      title: t("feedback.strengthTitle"),
-      instruction:
-        "For each strength below, suggest one concrete next-step extension or application that deepens mastery. Keep it brief. Write in {lang}."
-    });
-  }
-
-  /**
-   * Shared driver for the opt-in feedback commands: gate on the setting, bail if
-   * there are no matching cells, ask the engine once, and write the result to a
-   * dated file under the memory root (then open it).
-   */
-  private async generateFeedback(opts: {
-    enabled: boolean;
-    cells: MemoryCell[];
-    fileName: string;
-    title: string;
-    instruction: string;
-  }): Promise<void> {
-    if (!opts.enabled) {
-      new Notice(t("notice.feedbackDisabled"));
-      return;
-    }
-    if (opts.cells.length === 0) {
-      new Notice(t("notice.feedbackNone"));
-      return;
-    }
-    const lang =
-      this.settings.reviewLanguage.trim() ||
-      detectLanguageName(opts.cells.map((cell) => cell.summary).join(" "));
-    const progress = new Notice(t("notice.feedbackGenerating"), 0);
-    try {
-      const items = opts.cells
-        .slice(0, 12)
-        .map((cell, index) => `(${index + 1}) [${cell.type}] ${cell.concept}: ${cell.summary}`)
-        .join("\n");
-      const system = `${tutorSystemPrompt(lang)}\n\n${opts.instruction.replace(/\{lang\}/g, lang)}`;
-      const turn = await this.runDialogueTurn(
-        [
-          { role: "system", content: system },
-          { role: "user", content: items }
-        ],
-        `${system}\n\n${items}`
-      );
-      if (!turn.ok || !turn.text.trim()) {
-        new Notice(t("notice.feedbackFailed"));
-        return;
-      }
-      const body = `# ${opts.title}\n\n_${nowIso()}_\n\n${turn.text.trim()}\n`;
-      const path = await this.store.writeMemoryDoc(opts.fileName, body);
-      await this.openLibraryPath(path);
-    } catch (error) {
-      console.error("[Annotation Tutor Lite] feedback generation failed", error);
-      new Notice(t("notice.feedbackFailed"));
-    } finally {
-      progress.hide();
-    }
-  }
-
-  // --- notebook --------------------------------------------------------------
-
-  /** Open the study notebook, building it first if it doesn't exist yet. */
-  public async openNotebook(): Promise<void> {
-    const path = this.store.notebookIndexPath();
-    if (this.app.vault.getAbstractFileByPath(path) instanceof TFile) {
-      await this.openLibraryPath(path);
-      return;
-    }
-    await this.buildNotebook();
-  }
-
-  /**
-   * Build the per-Vault study notebook (index + per-document pages + related-
-   * document chapters) from the current annotations and dialogue, then open it.
-   * Deterministic and instant — no model calls (see {@link enrichNotebook}).
-   */
-  public async buildNotebook(): Promise<void> {
-    const records = this.indexTable.all();
-    if (records.length === 0) {
-      new Notice(t("notice.notebookEmpty"));
-      return;
-    }
-    const progress = new Notice(t("notice.notebookBuilding"), 0);
-    try {
-      const result = await this.store.writeNotebook(records, this.librarySnapshot.cells);
-      progress.hide();
-      new Notice(
-        t("notice.notebookDone", { pages: result.pages, chapters: result.chapters })
-      );
-      await this.openLibraryPath(result.path);
-    } catch (error) {
-      progress.hide();
-      new Notice(
-        t("notice.notebookFailed", {
-          detail: error instanceof Error ? error.message : String(error)
-        })
-      );
-    }
-  }
-
-  /**
-   * Hybrid enrichment: build the notebook, but first ask the engine to write a
-   * short synthesis for each studied document (sequential, free-model safe), so
-   * the pages gain prose summaries on top of the deterministic structure.
-   */
-  public async enrichNotebook(): Promise<void> {
-    const records = this.indexTable.all();
-    if (records.length === 0) {
-      new Notice(t("notice.notebookEmpty"));
-      return;
-    }
-    const byDoc = new Map<string, IndexRecord[]>();
-    for (const record of records) {
-      const list = byDoc.get(record.sourceFile);
-      if (list) list.push(record);
-      else byDoc.set(record.sourceFile, [record]);
-    }
-    const docs = [...byDoc.entries()];
-    const progress = new Notice(
-      t("notice.notebookEnriching", { done: 0, total: docs.length }),
-      0
-    );
-    const synthesis = new Map<string, string>();
-    try {
-      let done = 0;
-      for (const [sourceFile, recs] of docs) {
-        const text = await this.synthesizeDocument(sourceFile, recs);
-        if (text) synthesis.set(sourceFile, text);
-        done += 1;
-        progress.setMessage(
-          t("notice.notebookEnriching", { done, total: docs.length })
-        );
-      }
-      const result = await this.store.writeNotebook(
-        records,
-        this.librarySnapshot.cells,
-        synthesis
-      );
-      progress.hide();
-      new Notice(
-        t("notice.notebookDone", { pages: result.pages, chapters: result.chapters })
-      );
-      await this.openLibraryPath(result.path);
-    } catch (error) {
-      progress.hide();
-      new Notice(
-        t("notice.notebookFailed", {
-          detail: error instanceof Error ? error.message : String(error)
-        })
-      );
-    }
-  }
-
-  /** One engine call: synthesize a learner's annotations on one document. */
-  private async synthesizeDocument(
-    sourceFile: string,
-    records: IndexRecord[]
-  ): Promise<string> {
-    const title = sourceFile.split("/").pop()?.replace(/\.md$/i, "") ?? sourceFile;
-    const lang =
-      this.settings.reviewLanguage.trim() ||
-      detectLanguageName(records.map((r) => r.userNote ?? "").join(" "));
-    const items = records
-      .map((record, index) => {
-        const excerpt = (record.selectedText ?? "").replace(/\s+/g, " ").trim();
-        const note = (record.userNote ?? record.userNoteSummary ?? "").trim();
-        const review = (record.reviewSummary ?? record.reviewText ?? "").trim();
-        return [
-          `(${index + 1}) Excerpt: ${excerpt.slice(0, 200)}`,
-          note ? `    Learner's note: ${note}` : "",
-          review ? `    Your review: ${review}` : ""
-        ]
-          .filter(Boolean)
-          .join("\n");
-      })
-      .join("\n");
-    const system = `${tutorSystemPrompt(lang)}\n\nYou are writing a short synthesis for the learner's study notebook page about "${title}".`;
-    const user = `Below are the learner's annotations on ${sourceFile}. Write 2-4 sentences synthesizing what they engaged with and what to revisit. Plain prose — no headings, no lists.\n\n${items}`;
-    const messages: ChatMessage[] = [
-      { role: "system", content: system },
-      { role: "user", content: user }
-    ];
-    const turn = await this.runDialogueTurn(messages, `${system}\n\n${user}`);
-    return turn.ok ? turn.text.trim() : "";
   }
 
   // --- view helpers ----------------------------------------------------------

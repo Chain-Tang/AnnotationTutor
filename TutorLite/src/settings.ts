@@ -812,7 +812,7 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
         new Date().toISOString()
       );
       this.actionRow(container, [
-        [t("review.start", { count: due.length }), () => this.plugin.reviewDueCells()]
+        [t("review.start", { count: due.length }), () => this.plugin.review.reviewDueCells()]
       ]);
     }
     this.addToggle(container, "set.enableWeaknessTraining", "enableWeaknessTraining");

@@ -1156,6 +1156,9 @@ const DICTS: Record<Locale, Dict> = {
   ja
 };
 
+/** The raw locale tables, exposed for the i18n parity test. */
+export const localeTables: Record<Locale, Dict> = DICTS;
+
 /** Map an Obsidian language code (localStorage "language") to a known locale. */
 export function resolveLocale(raw: string | null | undefined): Locale {
   const code = (raw ?? "").toLowerCase();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveLocale, setLanguage, setLocale, t } from "../src/i18n.js";
+import { localeTables, resolveLocale, setLanguage, setLocale, t } from "../src/i18n.js";
 
 describe("resolveLocale", () => {
   it("maps Obsidian language codes to known locales", () => {
@@ -50,5 +50,34 @@ describe("setLanguage", () => {
     setLanguage("", "ja");
     expect(t("action.delete")).toBe("削除");
     setLocale("en");
+  });
+});
+
+describe("locale coverage", () => {
+  const enKeys = new Set(Object.keys(localeTables.en));
+
+  it("no locale defines a key English lacks (catches typos/renames)", () => {
+    for (const [locale, dict] of Object.entries(localeTables)) {
+      const orphans = Object.keys(dict).filter((key) => !enKeys.has(key));
+      expect({ locale, orphans }).toEqual({ locale, orphans: [] });
+    }
+  });
+
+  it("English and Simplified Chinese stay in full parity (primary locales)", () => {
+    // The two fully-translated locales must not drift: every en key has a zh-cn
+    // value and vice-versa. (zh-tw / ja intentionally fall back to English.)
+    const zhCn = localeTables["zh-cn"];
+    const missingInZhCn = Object.keys(localeTables.en).filter((k) => !(k in zhCn));
+    const extraInZhCn = Object.keys(zhCn).filter((k) => !enKeys.has(k));
+    expect({ missingInZhCn, extraInZhCn }).toEqual({ missingInZhCn: [], extraInZhCn: [] });
+  });
+
+  it("has no empty translation values", () => {
+    for (const [locale, dict] of Object.entries(localeTables)) {
+      const empty = Object.entries(dict)
+        .filter(([, value]) => value.trim() === "")
+        .map(([key]) => key);
+      expect({ locale, empty }).toEqual({ locale, empty: [] });
+    }
   });
 });

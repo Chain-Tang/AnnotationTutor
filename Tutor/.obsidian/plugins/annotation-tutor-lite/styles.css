@@ -832,6 +832,17 @@
   padding-left: var(--size-4-5);
 }
 
+/* Compact pre-translation counter in the status bar (bottom edge). */
+.atl-pretranslate-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.atl-pretranslate-status .svg-icon {
+  width: 14px;
+  height: 14px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .atl-popover,
   .atl-float-panel {

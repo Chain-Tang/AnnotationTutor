@@ -98,7 +98,8 @@ export function buildNotebook(
     .sort((a, b) => a.concept.localeCompare(b.concept));
 
   const files: NotebookFile[] = [
-    { path: `${base}/Notebook.md`, content: renderIndex(pages, chapters, base, options) }
+    { path: `${base}/Notebook.md`, content: renderIndex(pages, chapters, base, options) },
+    { path: `${base}/Declaration.md`, content: renderDeclaration(base, options) }
   ];
   for (const page of pages) {
     files.push({ path: page.path, content: renderPage(page, base, options) });
@@ -122,6 +123,7 @@ function renderIndex(
   lines.push(
     "> Your study notebook, built from annotations and tutor dialogue.",
     "> Rebuildable from the **Build notebook** command — edits here are overwritten.",
+    `> New here? Open ${link(`${base}/Declaration`, "About this notebook")} for the format and the ideas behind it.`,
     "",
     "## Chapters",
     ""
@@ -221,6 +223,63 @@ function renderChapter(
     );
   }
   lines.push("", `See also: ${link(`${base}/Notebook`, "Notebook")}`, "");
+  return lines.join("\n");
+}
+
+/**
+ * A standing "declaration" page: what the notebook is, how to open it, its
+ * format, the learning theories behind it, and why it helps. Static content, so
+ * the notebook is self-explanatory even on first open.
+ */
+function renderDeclaration(base: string, options: NotebookOptions): string {
+  const lines = header("About This Notebook", options.generatedAt);
+  lines.push(
+    "> What this notebook is, the ideas behind it, and how to use it.",
+    "",
+    "## What it is",
+    "",
+    "A study companion built automatically from the notes you make while reading.",
+    "Nothing here is written by hand: it is assembled from your annotations, the",
+    "tutor's reviews, your in-margin dialogues, and the memory cells distilled from",
+    "them. Your source notes remain the source of truth — rebuild the notebook any",
+    "time and it reflects them.",
+    "",
+    "## How to open it",
+    "",
+    "- Click the **notebook icon** in the left ribbon (*Open study notebook*), or",
+    "- Open the command palette and run **Open study notebook**.",
+    "",
+    "The first time, it is built on the spot. Run **Build notebook** to refresh it,",
+    "or **Enrich notebook with agent** to add AI-written summaries.",
+    "",
+    "## Format",
+    "",
+    `- ${link(`${base}/Notebook`, "Notebook")} — the index / map of content; your entry point.`,
+    "- **pages/** — one page per document you have studied, in four parts: document",
+    "  context, an *original-text index* (links back to each highlighted passage),",
+    "  your annotations with the tutor's reviews, and the dialogue you had.",
+    "- **chapters/** — pages that group documents sharing a concept, so related",
+    "  reading sits together.",
+    "",
+    "## The ideas behind it",
+    "",
+    "- **Zettelkasten (slip-box).** Each studied document is a *literature note*;",
+    "  the chapters and index are *structure notes* that connect ideas across",
+    "  sources, turning scattered notes into a network of knowledge.",
+    "- **Active recall & the Feynman technique.** You write what a passage means in",
+    "  your own words; explaining it plainly exposes — and then closes — the gaps.",
+    "- **Socratic questioning.** The tutor often ends with a question rather than a",
+    "  verdict, nudging you one step further.",
+    "- **Spaced reinforcement.** Memory cells carry a status and a confidence, so",
+    "  what you have and haven't consolidated stays visible and ready for review.",
+    "",
+    "## Why it helps",
+    "",
+    "- One place to see everything you've engaged with, in your own words.",
+    "- Connections between sources surface on their own, prompting synthesis.",
+    "- Your learning memory is plain Markdown you own — searchable and portable.",
+    ""
+  );
   return lines.join("\n");
 }
 

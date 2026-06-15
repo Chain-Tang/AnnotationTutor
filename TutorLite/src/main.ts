@@ -243,6 +243,9 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   private readonly glossaryCache = new Map<string, FileGlossary>();
   // File paths with a pre-translation pass in flight, to avoid duplicate runs.
   private readonly pretranslating = new Set<string>();
+  // A compact "done/total" pre-translation indicator in the status bar (bottom
+  // edge), so the background glossing doesn't interrupt reading with notices.
+  private pretranslateStatusEl: HTMLElement | null = null;
 
   /**
    * HTTP transport for the direct-API engine. Routes through Obsidian's
@@ -327,6 +330,8 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     this.addRibbonIcon("notebook", t("ribbon.openNotebook"), () => {
       void this.openNotebook();
     });
+    this.pretranslateStatusEl = this.addStatusBarItem();
+    this.pretranslateStatusEl.addClass("atl-pretranslate-status");
 
     this.registerCommands();
     this.registerEvent(
@@ -1218,10 +1223,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     }
     this.pretranslating.add(file.path);
     const target = this.dictionaryLanguageName();
-    const progress = new Notice(
-      t("notice.pretranslateStart", { name: file.basename }),
-      0
-    );
+    this.setPretranslateStatus(0, batches.length);
     const entries: GlossaryEntry[] = [];
     let done = 0;
     let failed = 0;
@@ -1254,24 +1256,24 @@ export default class AnnotationTutorLitePlugin extends Plugin {
         // Publish progress so far so Alt+T can already use the terms found in the
         // batches done — the cache no longer waits for the whole document.
         this.glossaryCache.set(file.path, buildFileGlossary(hash, entries, false));
-        progress.setMessage(
-          t("notice.pretranslateProgress", { done, total: batches.length })
-        );
+        this.setPretranslateStatus(done, batches.length);
       }
     } finally {
-      progress.hide();
       this.pretranslating.delete(file.path);
+      if (this.pretranslating.size === 0) this.clearPretranslateStatus();
     }
     if (needsKey) {
       // The cache holds whatever was glossed before the key gave out; mark it
       // complete so we don't loop, and tell the user why it stopped.
       this.glossaryCache.set(file.path, buildFileGlossary(hash, entries));
-      new Notice(t("notice.apiKeyMissing"));
+      if (manual) new Notice(t("notice.apiKeyMissing"));
       return;
     }
     const glossary = buildFileGlossary(hash, entries);
     this.glossaryCache.set(file.path, glossary);
     const count = glossary.entries.length;
+    // Auto runs stay silent — the status-bar counter was the only hint needed.
+    if (!manual) return;
     if (count > 0) {
       new Notice(
         failed > 0
@@ -1283,6 +1285,21 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     } else {
       new Notice(t("notice.pretranslateEmpty"));
     }
+  }
+
+  /** Show a compact "done/total" pre-translation counter in the status bar. */
+  private setPretranslateStatus(done: number, total: number): void {
+    const el = this.pretranslateStatusEl;
+    if (!el) return;
+    el.empty();
+    if (total <= 0) return;
+    setIcon(el.createSpan({ cls: "atl-pretranslate-status-icon" }), "languages");
+    el.createSpan({ text: ` ${done}/${total}` });
+    el.setAttribute("aria-label", t("status.pretranslate"));
+  }
+
+  private clearPretranslateStatus(): void {
+    this.pretranslateStatusEl?.empty();
   }
 
   /** Run one one-shot text generation through the configured review engine. */

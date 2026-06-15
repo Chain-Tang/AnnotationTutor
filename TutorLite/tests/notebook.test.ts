@@ -121,10 +121,25 @@ describe("buildNotebook", () => {
     expect(paths).toContain("Agent Memory/Notebook/pages/Notes-A-B-2.md");
   });
 
-  it("still produces an index when there are no annotations", () => {
+  it("still produces an index + declaration when there are no annotations", () => {
     const files = buildNotebook([], options);
-    expect(files).toHaveLength(1);
-    expect(files[0]?.content).toContain("No studied documents yet.");
+    const paths = files.map((file) => file.path);
+    expect(paths).toEqual([
+      "Agent Memory/Notebook/Notebook.md",
+      "Agent Memory/Notebook/Declaration.md"
+    ]);
+    const index = files.find((f) => f.path.endsWith("Notebook.md"))!;
+    expect(index.content).toContain("No studied documents yet.");
+  });
+
+  it("includes a declaration page explaining the notebook", () => {
+    const declaration = byPath(
+      buildNotebook(records, options),
+      "Agent Memory/Notebook/Declaration.md"
+    );
+    expect(declaration).toContain("How to open it");
+    expect(declaration).toContain("Zettelkasten");
+    expect(declaration).toContain("Feynman");
   });
 });
 

@@ -24376,7 +24376,8 @@ function buildNotebook(records, options) {
     pages: ps
   })).sort((a, b) => a.concept.localeCompare(b.concept));
   const files = [
-    { path: `${base}/Notebook.md`, content: renderIndex(pages, chapters, base, options) }
+    { path: `${base}/Notebook.md`, content: renderIndex(pages, chapters, base, options) },
+    { path: `${base}/Declaration.md`, content: renderDeclaration(base, options) }
   ];
   for (const page of pages) {
     files.push({ path: page.path, content: renderPage(page, base, options) });
@@ -24394,6 +24395,7 @@ function renderIndex(pages, chapters, base, options) {
   lines.push(
     "> Your study notebook, built from annotations and tutor dialogue.",
     "> Rebuildable from the **Build notebook** command \u2014 edits here are overwritten.",
+    `> New here? Open ${link(`${base}/Declaration`, "About this notebook")} for the format and the ideas behind it.`,
     "",
     "## Chapters",
     ""
@@ -24473,6 +24475,57 @@ function renderChapter(chapter, base, options) {
     );
   }
   lines.push("", `See also: ${link(`${base}/Notebook`, "Notebook")}`, "");
+  return lines.join("\n");
+}
+function renderDeclaration(base, options) {
+  const lines = header("About This Notebook", options.generatedAt);
+  lines.push(
+    "> What this notebook is, the ideas behind it, and how to use it.",
+    "",
+    "## What it is",
+    "",
+    "A study companion built automatically from the notes you make while reading.",
+    "Nothing here is written by hand: it is assembled from your annotations, the",
+    "tutor's reviews, your in-margin dialogues, and the memory cells distilled from",
+    "them. Your source notes remain the source of truth \u2014 rebuild the notebook any",
+    "time and it reflects them.",
+    "",
+    "## How to open it",
+    "",
+    "- Click the **notebook icon** in the left ribbon (*Open study notebook*), or",
+    "- Open the command palette and run **Open study notebook**.",
+    "",
+    "The first time, it is built on the spot. Run **Build notebook** to refresh it,",
+    "or **Enrich notebook with agent** to add AI-written summaries.",
+    "",
+    "## Format",
+    "",
+    `- ${link(`${base}/Notebook`, "Notebook")} \u2014 the index / map of content; your entry point.`,
+    "- **pages/** \u2014 one page per document you have studied, in four parts: document",
+    "  context, an *original-text index* (links back to each highlighted passage),",
+    "  your annotations with the tutor's reviews, and the dialogue you had.",
+    "- **chapters/** \u2014 pages that group documents sharing a concept, so related",
+    "  reading sits together.",
+    "",
+    "## The ideas behind it",
+    "",
+    "- **Zettelkasten (slip-box).** Each studied document is a *literature note*;",
+    "  the chapters and index are *structure notes* that connect ideas across",
+    "  sources, turning scattered notes into a network of knowledge.",
+    "- **Active recall & the Feynman technique.** You write what a passage means in",
+    "  your own words; explaining it plainly exposes \u2014 and then closes \u2014 the gaps.",
+    "- **Socratic questioning.** The tutor often ends with a question rather than a",
+    "  verdict, nudging you one step further.",
+    "- **Spaced reinforcement.** Memory cells carry a status and a confidence, so",
+    "  what you have and haven't consolidated stays visible and ready for review.",
+    "",
+    "## Why it helps",
+    "",
+    "- One place to see everything you've engaged with, in your own words.",
+    "- Connections between sources surface on their own, prompting synthesis.",
+    "- Your learning memory is plain Markdown you own \u2014 searchable and portable.",
+    ""
+  );
   return lines.join("\n");
 }
 function header(title, generatedAt) {
@@ -25157,6 +25210,7 @@ var en = {
   "notice.pretranslatePartial": "Pre-translation ready: {count} terms ({failed} sections failed).",
   "notice.pretranslateFailed": "Pre-translation failed \u2014 the model returned no usable glossary.",
   "notice.pretranslateBusy": "Pre-translation is already running for this document\u2026",
+  "status.pretranslate": "Pre-translating\u2026",
   "set.pretranslate": "Pre-translate on open (Alt+T cache)",
   "set.pretranslateDesc": "When a document opens, gloss it in the background into a cached dictionary so Alt+T answers instantly. Each open may make a few model calls. The live Alt+T translation is kept as a fallback for words this misses.",
   "set.pretranslateChunk": "Pre-translate chunk size (characters)",
@@ -25415,6 +25469,7 @@ var zhCn = {
   "notice.pretranslatePartial": "\u9884\u7FFB\u8BD1\u5B8C\u6210\uFF1A\u5DF2\u7F13\u5B58 {count} \u4E2A\u8BCD\u6761\uFF08{failed} \u4E2A\u6BB5\u843D\u5931\u8D25\uFF09\u3002",
   "notice.pretranslateFailed": "\u9884\u7FFB\u8BD1\u5931\u8D25\u2014\u2014\u6A21\u578B\u672A\u8FD4\u56DE\u53EF\u7528\u7684\u8BCD\u6C47\u8868\u3002",
   "notice.pretranslateBusy": "\u8BE5\u6587\u6863\u6B63\u5728\u9884\u7FFB\u8BD1\u4E2D\u2026",
+  "status.pretranslate": "\u6B63\u5728\u9884\u7FFB\u8BD1\u2026",
   "set.pretranslate": "\u6253\u5F00\u65F6\u9884\u7FFB\u8BD1\uFF08Alt+T \u7F13\u5B58\uFF09",
   "set.pretranslateDesc": "\u6253\u5F00\u6587\u6863\u65F6\u5728\u540E\u53F0\u5C06\u5176\u7FFB\u8BD1\u6210\u7F13\u5B58\u8BCD\u5178\uFF0C\u8BA9 Alt+T \u5373\u65F6\u7ED9\u51FA\u8BD1\u6587\u3002\u6BCF\u6B21\u6253\u5F00\u53EF\u80FD\u4F1A\u53D1\u8D77\u51E0\u6B21\u6A21\u578B\u8C03\u7528\u3002\u5BF9\u4E8E\u672A\u8986\u76D6\u5230\u7684\u8BCD\uFF0C\u4ECD\u53EF\u7528 Alt+T \u5B9E\u65F6\u7FFB\u8BD1\u4F5C\u4E3A\u8865\u5145\u3002",
   "set.pretranslateChunk": "\u9884\u7FFB\u8BD1\u5206\u5757\u5927\u5C0F\uFF08\u5B57\u7B26\uFF09",
@@ -25693,6 +25748,7 @@ var zhTw = {
   "notice.pretranslatePartial": "\u9810\u7FFB\u8B6F\u5B8C\u6210\uFF1A\u5DF2\u5FEB\u53D6 {count} \u500B\u8A5E\u689D\uFF08{failed} \u500B\u6BB5\u843D\u5931\u6557\uFF09\u3002",
   "notice.pretranslateFailed": "\u9810\u7FFB\u8B6F\u5931\u6557\u2014\u2014\u6A21\u578B\u672A\u50B3\u56DE\u53EF\u7528\u7684\u8A5E\u5F59\u8868\u3002",
   "notice.pretranslateBusy": "\u8A72\u6587\u4EF6\u6B63\u5728\u9810\u7FFB\u8B6F\u4E2D\u2026",
+  "status.pretranslate": "\u6B63\u5728\u9810\u7FFB\u8B6F\u2026",
   "set.pretranslate": "\u958B\u555F\u6642\u9810\u7FFB\u8B6F\uFF08Alt+T \u5FEB\u53D6\uFF09",
   "set.pretranslateDesc": "\u958B\u555F\u6587\u4EF6\u6642\u5728\u80CC\u666F\u5C07\u5176\u7FFB\u8B6F\u6210\u5FEB\u53D6\u8A5E\u5178\uFF0C\u8B93 Alt+T \u7ACB\u5373\u986F\u793A\u8B6F\u6587\u3002\u6BCF\u6B21\u958B\u555F\u53EF\u80FD\u6703\u767C\u8D77\u6578\u6B21\u6A21\u578B\u547C\u53EB\u3002\u5C0D\u65BC\u672A\u6DB5\u84CB\u7684\u5B57\u8A5E\uFF0C\u4ECD\u53EF\u7528 Alt+T \u5373\u6642\u7FFB\u8B6F\u4F5C\u70BA\u88DC\u5145\u3002",
   "set.pretranslateChunk": "\u9810\u7FFB\u8B6F\u5206\u584A\u5927\u5C0F\uFF08\u5B57\u5143\uFF09",
@@ -25915,6 +25971,7 @@ var ja = {
   "notice.pretranslatePartial": "\u4E8B\u524D\u7FFB\u8A33\u304C\u5B8C\u4E86\uFF1A{count} \u4EF6\u3092\u30AD\u30E3\u30C3\u30B7\u30E5\u3057\u307E\u3057\u305F\uFF08{failed} \u4EF6\u306E\u30BB\u30AF\u30B7\u30E7\u30F3\u304C\u5931\u6557\uFF09\u3002",
   "notice.pretranslateFailed": "\u4E8B\u524D\u7FFB\u8A33\u306B\u5931\u6557\u3057\u307E\u3057\u305F \u2014 \u30E2\u30C7\u30EB\u304C\u6709\u52B9\u306A\u7528\u8A9E\u96C6\u3092\u8FD4\u3057\u307E\u305B\u3093\u3067\u3057\u305F\u3002",
   "notice.pretranslateBusy": "\u3053\u306E\u6587\u66F8\u306F\u73FE\u5728\u4E8B\u524D\u7FFB\u8A33\u4E2D\u3067\u3059\u2026",
+  "status.pretranslate": "\u4E8B\u524D\u7FFB\u8A33\u4E2D\u2026",
   "set.pretranslate": "\u958B\u3044\u305F\u3068\u304D\u306B\u4E8B\u524D\u7FFB\u8A33\uFF08Alt+T \u30AD\u30E3\u30C3\u30B7\u30E5\uFF09",
   "set.pretranslateDesc": "\u6587\u66F8\u3092\u958B\u3044\u305F\u3068\u304D\u306B\u30D0\u30C3\u30AF\u30B0\u30E9\u30A6\u30F3\u30C9\u3067\u7528\u8A9E\u96C6\u3068\u3057\u3066\u30AD\u30E3\u30C3\u30B7\u30E5\u3057\u3001Alt+T \u304C\u5373\u5EA7\u306B\u8A33\u3092\u8868\u793A\u3067\u304D\u308B\u3088\u3046\u306B\u3057\u307E\u3059\u3002\u958B\u304F\u305F\u3073\u306B\u30E2\u30C7\u30EB\u547C\u3073\u51FA\u3057\u304C\u6570\u56DE\u767A\u751F\u3059\u308B\u5834\u5408\u304C\u3042\u308A\u307E\u3059\u3002\u53D6\u308A\u3053\u307C\u3057\u305F\u8A9E\u306B\u306F\u3001\u5F93\u6765\u306E Alt+T \u5373\u6642\u7FFB\u8A33\u304C\u5F15\u304D\u7D9A\u304D\u4F7F\u3048\u307E\u3059\u3002",
   "set.pretranslateChunk": "\u4E8B\u524D\u7FFB\u8A33\u306E\u30C1\u30E3\u30F3\u30AF\u30B5\u30A4\u30BA\uFF08\u6587\u5B57\u6570\uFF09",
@@ -29565,6 +29622,9 @@ var AnnotationTutorLitePlugin = class extends import_obsidian11.Plugin {
   glossaryCache = /* @__PURE__ */ new Map();
   // File paths with a pre-translation pass in flight, to avoid duplicate runs.
   pretranslating = /* @__PURE__ */ new Set();
+  // A compact "done/total" pre-translation indicator in the status bar (bottom
+  // edge), so the background glossing doesn't interrupt reading with notices.
+  pretranslateStatusEl = null;
   /**
    * HTTP transport for the direct-API engine. Routes through Obsidian's
    * `requestUrl` (which bypasses CORS, unlike a renderer `fetch`), and races a
@@ -29640,6 +29700,8 @@ var AnnotationTutorLitePlugin = class extends import_obsidian11.Plugin {
     this.addRibbonIcon("notebook", t("ribbon.openNotebook"), () => {
       void this.openNotebook();
     });
+    this.pretranslateStatusEl = this.addStatusBarItem();
+    this.pretranslateStatusEl.addClass("atl-pretranslate-status");
     this.registerCommands();
     this.registerEvent(
       this.app.workspace.on(
@@ -30383,10 +30445,7 @@ var AnnotationTutorLitePlugin = class extends import_obsidian11.Plugin {
     }
     this.pretranslating.add(file2.path);
     const target = this.dictionaryLanguageName();
-    const progress = new import_obsidian11.Notice(
-      t("notice.pretranslateStart", { name: file2.basename }),
-      0
-    );
+    this.setPretranslateStatus(0, batches.length);
     const entries = [];
     let done = 0;
     let failed = 0;
@@ -30417,22 +30476,21 @@ var AnnotationTutorLitePlugin = class extends import_obsidian11.Plugin {
         }
         done += 1;
         this.glossaryCache.set(file2.path, buildFileGlossary(hash2, entries, false));
-        progress.setMessage(
-          t("notice.pretranslateProgress", { done, total: batches.length })
-        );
+        this.setPretranslateStatus(done, batches.length);
       }
     } finally {
-      progress.hide();
       this.pretranslating.delete(file2.path);
+      if (this.pretranslating.size === 0) this.clearPretranslateStatus();
     }
     if (needsKey) {
       this.glossaryCache.set(file2.path, buildFileGlossary(hash2, entries));
-      new import_obsidian11.Notice(t("notice.apiKeyMissing"));
+      if (manual) new import_obsidian11.Notice(t("notice.apiKeyMissing"));
       return;
     }
     const glossary = buildFileGlossary(hash2, entries);
     this.glossaryCache.set(file2.path, glossary);
     const count = glossary.entries.length;
+    if (!manual) return;
     if (count > 0) {
       new import_obsidian11.Notice(
         failed > 0 ? t("notice.pretranslatePartial", { count, failed }) : t("notice.pretranslateDone", { count })
@@ -30442,6 +30500,19 @@ var AnnotationTutorLitePlugin = class extends import_obsidian11.Plugin {
     } else {
       new import_obsidian11.Notice(t("notice.pretranslateEmpty"));
     }
+  }
+  /** Show a compact "done/total" pre-translation counter in the status bar. */
+  setPretranslateStatus(done, total) {
+    const el = this.pretranslateStatusEl;
+    if (!el) return;
+    el.empty();
+    if (total <= 0) return;
+    (0, import_obsidian11.setIcon)(el.createSpan({ cls: "atl-pretranslate-status-icon" }), "languages");
+    el.createSpan({ text: ` ${done}/${total}` });
+    el.setAttribute("aria-label", t("status.pretranslate"));
+  }
+  clearPretranslateStatus() {
+    this.pretranslateStatusEl?.empty();
   }
   /** Run one one-shot text generation through the configured review engine. */
   async captureText(prompt, timeoutMs) {

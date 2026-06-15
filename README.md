@@ -47,6 +47,36 @@ It comes in two editions:
 
 ---
 
+## 🧭 The learning method
+
+Annotation Tutor is built around how people actually learn deeply — not just
+collect highlights. Each principle maps to a concrete feature:
+
+- 🛋️ **Immersive, in-context learning.** Read, annotate, and converse without
+  leaving the page — margin cards and an in-card dialogue keep you *in the text*
+  instead of bouncing to a chatbot.
+- ✍️ **The Feynman technique.** You write what a passage means in *your own words*;
+  the tutor reviews that explanation, so the act of explaining is what reveals and
+  then closes the gaps.
+- ❓ **Socratic questioning.** Reviews often end with a question rather than a
+  verdict, nudging you one step further instead of just handing over the answer.
+- 🌐 **Rapid translation.** `Alt+T` glosses a word or passage inline; the whole
+  document can be pre-glossed in the background so foreign-language reading stays
+  fluid.
+- 🧠 **Memory units (cells).** Durable, single-idea memory cells are distilled from
+  your annotations and dialogue — each with a concept, a confidence, and a status —
+  forming a learning memory you can read and `grep`.
+- 📓 **A Zettelkasten notebook.** One command assembles your studied documents into
+  a slip-box: literature-note pages per source, structure-note chapters that link
+  related reading, and an index — so connections between ideas surface on their own.
+- 🔁 **Reinforcement along the forgetting curve.** Cells track confidence and a
+  `needs_review` status — the foundation for spaced review of what hasn't yet stuck.
+  *(Automated review scheduling is on the roadmap.)*
+
+All of it is plain, local Markdown you own — private, portable, and future-proof.
+
+---
+
 ## 🚀 Install TutorLite (≈2 minutes)
 
 Requires **Node 22.13+** and **pnpm 10**.
@@ -90,9 +120,11 @@ Open *Settings → General* and pick the engine that powers reviews, chat, and t
 1. **Annotate** — select text in a note, run **Add learning annotation**, and write your understanding.
 2. **Ask for a review** — run **Ask Agent**; your agent reads the annotation files, writes a review back into the note, and marks the task done. The plugin watches the files and refreshes the UI automatically.
 3. **Translate while reading** — `Alt+T` on a selection for an inline gloss, or `Ctrl+Alt+T` to pre-translate the open document so subsequent lookups are instant.
+4. **Open your notebook** — click the 📓 **notebook icon** in the left ribbon (or run **Open study notebook** from the command palette) to assemble everything you've studied into a Zettelkasten-style notebook; the first open builds it. The notebook's own **About this notebook** page explains its format and the ideas behind it.
 
 Your annotations, reviews, and memory cells are all plain Markdown under your
-Vault's `Agent Memory/` folder — portable and future-proof.
+Vault's `Agent Memory/` folder — portable and future-proof. Memory cells are
+captured automatically after a review, or on demand from the 🧠 button on a card.
 
 ---
 

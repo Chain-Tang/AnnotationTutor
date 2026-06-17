@@ -52,24 +52,52 @@ export type CaptureResult = {
 const isWindows = process.platform === "win32";
 
 /**
- * On Windows a GUI app (Obsidian) can be launched with a PATH that predates a
- * global npm install, so a bare `opencode` won't resolve via cmd.exe and the run
- * fails with "not recognized". Prepend the npm global-bin dir (%APPDATA%\npm)
- * so the CLI is found regardless. No-op elsewhere or when already present.
+ * A GUI app (Obsidian) is often launched with a PATH that omits where CLIs like
+ * `opencode` get installed, so a bare `opencode` fails with "not found":
+ *  - Windows: the global npm bin dir (`%APPDATA%\npm`) predates the app's PATH.
+ *  - macOS/Linux: an app launched from Finder/Dock/a desktop entry inherits a
+ *    minimal PATH that omits Homebrew (`/opt/homebrew/bin`, `/usr/local/bin`) and
+ *    per-user installs (`~/.opencode/bin`, `~/.local/bin`, `~/.bun/bin`).
+ * Prepend the likely install dirs so the CLI resolves regardless of how Obsidian
+ * was started. Pure and platform-injectable so both branches are unit-testable.
+ * Returns the same `env` reference when nothing needs adding.
  */
-export function spawnEnv(): NodeJS.ProcessEnv {
-  if (!isWindows) return process.env;
-  const appData = process.env.APPDATA;
-  if (!appData) return process.env;
-  const npmBin = `${appData}\\npm`;
+export function spawnEnv(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform
+): NodeJS.ProcessEnv {
+  const extra = extraBinDirs(env, platform);
+  if (extra.length === 0) return env;
+  const sep = platform === "win32" ? ";" : ":";
+  const norm = (dir: string): string => {
+    const trimmed = dir.trim().replace(/[\\/]+$/, "");
+    return platform === "win32" ? trimmed.toLowerCase() : trimmed;
+  };
   const pathKey =
-    Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "Path";
-  const current = process.env[pathKey] ?? "";
-  const present = current
-    .split(";")
-    .some((dir) => dir.trim().toLowerCase() === npmBin.toLowerCase());
-  if (present) return process.env;
-  return { ...process.env, [pathKey]: `${npmBin};${current}` };
+    Object.keys(env).find((key) => key.toLowerCase() === "path") ??
+    (platform === "win32" ? "Path" : "PATH");
+  const current = env[pathKey] ?? "";
+  const have = new Set(current.split(sep).map(norm));
+  const missing = extra.filter((dir) => !have.has(norm(dir)));
+  if (missing.length === 0) return env;
+  const prefix = missing.join(sep);
+  return { ...env, [pathKey]: current ? `${prefix}${sep}${current}` : prefix };
+}
+
+/** Likely CLI install dirs for the platform that may be missing from a GUI PATH. */
+function extraBinDirs(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string[] {
+  if (platform === "win32") {
+    const appData = env.APPDATA;
+    return appData ? [`${appData}\\npm`] : [];
+  }
+  const home = env.HOME;
+  return [
+    "/opt/homebrew/bin", // Apple Silicon Homebrew
+    "/usr/local/bin", // Intel Homebrew + common installs
+    ...(home
+      ? [`${home}/.opencode/bin`, `${home}/.local/bin`, `${home}/.bun/bin`]
+      : [])
+  ];
 }
 
 /**

@@ -4,7 +4,8 @@ import {
   buildReviewPrompt,
   buildWindowsCommandLine,
   extractReviewText,
-  quoteWinArg
+  quoteWinArg,
+  spawnEnv
 } from "../src/agent-runner.js";
 import type { IndexRecord } from "../src/model.js";
 
@@ -145,5 +146,67 @@ describe("buildWindowsCommandLine", () => {
     expect(
       buildWindowsCommandLine("opencode", ["run", "-m", "opencode/x", "--format", "json"])
     ).toBe("opencode run -m opencode/x --format json");
+  });
+});
+
+// spawnEnv augments a GUI app's (often minimal) PATH so the agent CLI resolves on
+// every OS. It takes env + platform as injectable params so both branches are
+// testable regardless of the host the suite runs on.
+describe("spawnEnv", () => {
+  describe("windows", () => {
+    it("prepends the npm global-bin dir when missing", () => {
+      const env = { APPDATA: "C:\\Users\\x\\AppData\\Roaming", Path: "C:\\Windows" };
+      expect(spawnEnv(env, "win32").Path).toBe(
+        "C:\\Users\\x\\AppData\\Roaming\\npm;C:\\Windows"
+      );
+    });
+
+    it("is a no-op (same ref) when the npm dir is already present (case-insensitive)", () => {
+      const env = { APPDATA: "C:\\A", Path: "c:\\a\\npm;C:\\Windows" };
+      expect(spawnEnv(env, "win32")).toBe(env);
+    });
+
+    it("returns the env unchanged when APPDATA is absent", () => {
+      const env = { Path: "C:\\Windows" };
+      expect(spawnEnv(env, "win32")).toBe(env);
+    });
+  });
+
+  describe("macOS / Linux", () => {
+    it("prepends Homebrew and per-user bin dirs a GUI PATH tends to omit", () => {
+      const env = { HOME: "/Users/x", PATH: "/usr/bin:/bin" };
+      expect(spawnEnv(env, "darwin").PATH).toBe(
+        "/opt/homebrew/bin:/usr/local/bin:/Users/x/.opencode/bin:" +
+          "/Users/x/.local/bin:/Users/x/.bun/bin:/usr/bin:/bin"
+      );
+    });
+
+    it("does not duplicate a dir already present", () => {
+      const env = { HOME: "/home/x", PATH: "/usr/local/bin:/usr/bin" };
+      expect(spawnEnv(env, "linux").PATH).toBe(
+        "/opt/homebrew/bin:/home/x/.opencode/bin:/home/x/.local/bin:" +
+          "/home/x/.bun/bin:/usr/local/bin:/usr/bin"
+      );
+    });
+
+    it("skips per-user dirs when HOME is unset", () => {
+      const env = { PATH: "/usr/bin" };
+      expect(spawnEnv(env, "linux").PATH).toBe("/opt/homebrew/bin:/usr/local/bin:/usr/bin");
+    });
+
+    it("seeds PATH (key 'PATH') when the env has none", () => {
+      const out = spawnEnv({}, "darwin");
+      expect(out.PATH).toBe("/opt/homebrew/bin:/usr/local/bin");
+    });
+
+    it("returns the same ref when every dir is already present", () => {
+      const env = {
+        HOME: "/home/x",
+        PATH:
+          "/opt/homebrew/bin:/usr/local/bin:/home/x/.opencode/bin:" +
+          "/home/x/.local/bin:/home/x/.bun/bin:/usr/bin"
+      };
+      expect(spawnEnv(env, "linux")).toBe(env);
+    });
   });
 });

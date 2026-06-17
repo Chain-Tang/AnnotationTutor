@@ -1,5 +1,7 @@
 # Annotation Tutor Lite
 
+**English** · [简体中文](README.zh-CN.md)
+
 **Turn what you read into learning memory your AI tutor can actually use — all in
 plain Markdown, all on your machine.**
 
@@ -28,19 +30,69 @@ file in your Vault, so any agent (Claude Code, OpenCode, Codex) can read and ext
   **OpenAI-compatible API** — your key lives only in your Vault's local plugin data.
 - 🌏 **Fully localized UI** in English, 简体中文, 繁體中文, and 日本語.
 
-## Install (for users — no Node required)
+## Download & install
 
-1. Download the latest release assets from the
-   [**Releases** page](https://github.com/Chain-Tang/PriveTutor/releases):
-   either the `annotation-tutor-lite-<version>.zip`, **or** the three loose files
-   `main.js`, `manifest.json`, `styles.css`.
-2. Put them in a folder named `annotation-tutor-lite` inside your Vault:
-   `<YourVault>/.obsidian/plugins/annotation-tutor-lite/`
-   (unzipping the zip there creates this folder for you).
-3. In Obsidian, open **Settings → Community plugins**, turn off Restricted mode if
-   needed, then enable **Annotation Tutor Lite**. Reload (`Ctrl/Cmd+R`) on first install.
+Pick whichever method suits you — all install the same plugin into
+`<YourVault>/.obsidian/plugins/annotation-tutor-lite/`. **Methods 1–3 need no Node or
+build tools.**
+
+### 1. Release zip (easiest)
+
+1. Download `annotation-tutor-lite-<version>.zip` from the
+   [**Releases** page](https://github.com/Chain-Tang/PriveTutor/releases/latest).
+2. Unzip it into your Vault's `.obsidian/plugins/` folder — it creates the
+   `annotation-tutor-lite/` folder for you.
+3. In Obsidian → **Settings → Community plugins**, turn off Restricted mode if needed,
+   enable **Annotation Tutor Lite**, and reload (`Ctrl/Cmd+R`).
+
+### 2. Loose files (manual)
+
+From the same [release](https://github.com/Chain-Tang/PriveTutor/releases/latest),
+download `main.js`, `manifest.json`, and `styles.css`, then drop all three into a folder
+you create at `<YourVault>/.obsidian/plugins/annotation-tutor-lite/`. Enable and reload as
+above.
+
+### 3. BRAT (auto-updates)
+
+Install the **BRAT** community plugin, then *Add beta plugin* → enter
+`Chain-Tang/PriveTutor`. BRAT installs from the latest release's assets and keeps the
+plugin updated. (If BRAT can't resolve it, use method 1 or 2.)
+
+### 4. Build from source (developers)
+
+You need **Node 22.13+** and **pnpm 10**. Get the source any of these ways:
+
+```bash
+git clone https://github.com/Chain-Tang/PriveTutor.git      # full repo
+# or:  gh repo clone Chain-Tang/PriveTutor
+# or:  download the source ZIP from the repo's green "Code" button (no git needed)
+```
+
+Then build and install into a Vault:
+
+```bash
+cd PriveTutor/TutorLite
+pnpm install
+pnpm install:vault -- --vault "/path/to/YourVault"   # build + copy + enable
+# or, to produce release artifacts (zip + loose files under dist/):
+pnpm package
+```
 
 Then [connect an engine](#connect-an-engine) and you're ready.
+
+## Platform support
+
+Desktop **Windows, macOS, and Linux** are all supported (Obsidian 1.12.4+); the plugin is
+desktop-only (mobile is not supported). The pure logic is unit-tested and the
+OS-touching code paths (locating the agent CLI, quoting, path handling) are written for
+all three platforms.
+
+One thing to know if you use the **OpenCode engine**: Obsidian launched from a Dock,
+Start menu, or desktop entry can inherit a minimal `PATH` that omits where CLIs install.
+The plugin compensates by also searching the usual locations — `%APPDATA%\npm` on Windows,
+and `/opt/homebrew/bin`, `/usr/local/bin`, `~/.opencode/bin`, `~/.local/bin`, `~/.bun/bin`
+on macOS/Linux. If your `opencode` lives somewhere unusual, set its full path as the
+engine command, or use the **Direct API** engine (no subprocess, works everywhere).
 
 ## Connect an engine
 
@@ -134,13 +186,8 @@ Cell/Scene/Profile changes through the **Proposals** tab.
 
 ## Development
 
-Requires **Node 22.13+** and **pnpm 10**.
-
-```bash
-git clone https://github.com/Chain-Tang/PriveTutor.git
-cd PriveTutor/TutorLite
-pnpm install
-```
+After getting the source ([method 4 above](#4-build-from-source-developers)) and running
+`pnpm install` in `TutorLite/`:
 
 - `pnpm typecheck` / `pnpm test` / `pnpm build` — the gate.
 - `pnpm dev` — esbuild watch.

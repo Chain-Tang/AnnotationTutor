@@ -17,6 +17,7 @@ import {
   buildMarginCard,
   clearChildren,
   drawConnector,
+  lastLineRect,
   loadCardGeom,
   placeCards,
   updateConnector,
@@ -148,10 +149,11 @@ class MarginRail {
   }
 
   /**
-   * Where the dotted connector should meet the text: the right edge of the
-   * annotation's underlined span (so the line attaches to the end of the
-   * underlined text). Falls back to the marker glyph, then to the line end
-   * (`lineEndPos`) when neither is rendered. Returns null when off-screen.
+   * Where the dotted connector should meet the text: the very end of the
+   * annotation's underlined span. A multi-line span is split by CodeMirror into
+   * one element per line, so use the LAST one (and its last on-screen line) to
+   * reach the end of the underline, not the end of its first line. Falls back to
+   * the marker glyph, then the line end (`lineEndPos`). Null when off-screen.
    */
   private anchorFor(
     id: string,
@@ -159,16 +161,17 @@ class MarginRail {
     editorRect: DOMRect
   ): { x: number; midY: number; top: number } | null {
     const content = this.view.contentDOM;
-    const span = content.querySelector<HTMLElement>(
+    const spans = content.querySelectorAll<HTMLElement>(
       `[data-atl-id="${id}"]:not(.atl-marker)`
     );
+    const span = spans.item(spans.length - 1);
     const marker = content.querySelector<HTMLElement>(
       `.atl-marker[data-atl-id="${id}"]`
     );
     const el = span ?? marker;
     if (el) {
-      const rect = el.getBoundingClientRect();
-      if (rect.width || rect.height) {
+      const rect = lastLineRect(el);
+      if (rect) {
         const x = (el === span ? rect.right : rect.left) - editorRect.left;
         return {
           x,

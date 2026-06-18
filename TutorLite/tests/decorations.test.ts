@@ -85,11 +85,12 @@ describe("planDecorations", () => {
     expect(byId.get("ANN-2")?.from).toBe(text.indexOf("gamma"));
   });
 
-  it("emits one marker per annotation sharing a paragraph", () => {
+  it("emits one marker per annotation sharing a paragraph (no-highlight mode)", () => {
     const text = "Alpha beta gamma delta. ^ann-20260606-001";
     const a: AnchorMark = { id: "ANN-1", blockId: "ann-20260606-001", selectedText: "Alpha" };
     const b: AnchorMark = { id: "ANN-2", blockId: "ann-20260606-001", selectedText: "gamma" };
-    const markers = planDecorations(doc(text), [a, b], "dotted-underline", true).filter(
+    // Glyph markers only appear when there is no highlight to click.
+    const markers = planDecorations(doc(text), [a, b], "none", true).filter(
       (p) => p.kind === "marker"
     );
     expect(markers).toHaveLength(2);
@@ -161,8 +162,12 @@ describe("planDecorations", () => {
       expect(styles[0].to).toBe(line2From + "It scales to long sequences.".length);
       expect(styles[0].id).toBe("ANN-1");
     }
-    // One marker, clamped to the ^id start (the span runs up to it).
-    const marker = plans.find((p) => p.kind === "marker");
+    // With a highlight on, the underline is the toggle — no glyph marker.
+    expect(plans.some((p) => p.kind === "marker")).toBe(false);
+    // In no-highlight mode the glyph clamps to the ^id start (span runs up to it).
+    const marker = planDecorations(doc2, [m], "none", true).find(
+      (p) => p.kind === "marker"
+    );
     expect(marker?.kind).toBe("marker");
     if (marker?.kind === "marker") {
       expect(marker.pos).toBe(line2From + second.indexOf(" ^ann"));
@@ -257,7 +262,7 @@ describe("planDecorations", () => {
     }
   });
 
-  it("falls back to a whole-line underline when the selected text drifts", () => {
+  it("falls back to a whole-line underline (carrying the id) when the text drifts", () => {
     const plans = planDecorations(
       doc(),
       [{ ...mark, selectedText: "not present here" }],
@@ -270,7 +275,28 @@ describe("planDecorations", () => {
       expect(style.from).toBe(0);
       // Up to the space before the block id, not the whole line.
       expect(style.to).toBe(LINE.indexOf(" ^ann"));
+      // The fallback underline is the toggle, so it must carry the annotation id.
+      expect(style.id).toBe(mark.id);
     }
-    expect(plans.some((p) => p.kind === "marker")).toBe(true);
+    // With a highlight on, the underline is the toggle — no glyph is drawn.
+    expect(plans.some((p) => p.kind === "marker")).toBe(false);
+  });
+
+  it("draws no glyph marker when a highlight style is active (underline is the toggle)", () => {
+    const plans = planDecorations(doc(), [mark], "dotted-underline", true);
+    expect(plans.some((p) => p.kind === "marker")).toBe(false);
+    // The underlined span carries the id so clicking it can toggle the comment.
+    const style = plans.find((p) => p.kind === "style");
+    expect(style?.kind === "style" && style.id).toBe(mark.id);
+    // The raw ^id token is still hidden.
+    expect(plans.some((p) => p.kind === "hide")).toBe(true);
+  });
+
+  it("draws a glyph marker only when there is no highlight to click", () => {
+    const withGlyph = planDecorations(doc(), [mark], "none", true);
+    expect(withGlyph.some((p) => p.kind === "marker")).toBe(true);
+    // Disabling the marker in no-highlight mode leaves nothing clickable inline.
+    const hidden = planDecorations(doc(), [mark], "none", false);
+    expect(hidden.some((p) => p.kind === "marker")).toBe(false);
   });
 });

@@ -65,11 +65,22 @@
   height: 0.72em;
 }
 
-/* The underlined span itself is clickable (toggles its card), so hint it —
-   useful when the marker glyph is turned off and the underline is the handle. */
+/* The highlighted span itself is the comment toggle (the glyph is only shown
+   when there is no highlight), so make it read as clickable: pointer cursor plus
+   a gentle hover cue. */
 .cm-line [data-atl-id]:not(.atl-marker),
 .markdown-rendered [data-atl-id]:not(.atl-marker) {
   cursor: pointer;
+  border-radius: var(--radius-s);
+  transition:
+    text-decoration-color 120ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 120ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cm-line [data-atl-id]:not(.atl-marker):hover,
+.markdown-rendered [data-atl-id]:not(.atl-marker):hover {
+  text-decoration-color: var(--text-accent);
+  background-color: var(--background-modifier-hover);
 }
 
 /* --- icon buttons (shared by panel, popover, detail modal) ---------------- */

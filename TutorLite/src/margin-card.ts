@@ -502,3 +502,17 @@ function spacer(): HTMLElement {
 export function clearChildren(node: Element): void {
   while (node.firstChild) node.removeChild(node.firstChild);
 }
+
+/**
+ * The rect of an element's last on-screen line. An inline highlight that wraps
+ * across visual lines reports one client rect per line; the connector should meet
+ * the end of the underline, so anchor it to that final rect (not the bounding box,
+ * whose right edge is the widest line). Null when the element has no box.
+ */
+export function lastLineRect(el: Element): DOMRect | null {
+  const rects = el.getClientRects();
+  const last = rects.item(rects.length - 1);
+  if (last) return last;
+  const box = el.getBoundingClientRect();
+  return box.width || box.height ? box : null;
+}

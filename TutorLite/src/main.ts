@@ -1401,17 +1401,19 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       const blockRecords = match?.[1] ? byBlock.get(match[1]) : undefined;
       if (!blockRecords) continue;
       // A paragraph may carry several annotations sharing one block id; render
-      // each (its own underline + clickable marker).
+      // each. The highlighted span itself is the comment toggle; a glyph is added
+      // only when there is no highlight to click (or it could not be applied).
       for (const record of blockRecords) {
-        if (el.querySelector(`.atl-marker[data-atl-id="${record.annotationId}"]`)) {
-          continue;
+        if (el.querySelector(`[data-atl-id="${record.annotationId}"]`)) continue;
+        const underlined =
+          cls && record.selectedText
+            ? underlineFirst(el, record.selectedText, cls, record.annotationId, (id, anchor) =>
+                void this.openInlineNote(id, anchor)
+              )
+            : false;
+        if (!underlined && (this.settings.showMarker || cls !== null)) {
+          this.appendReadingMarker(el, record.annotationId);
         }
-        if (cls && record.selectedText) {
-          underlineFirst(el, record.selectedText, cls, record.annotationId, (id, anchor) =>
-            void this.openInlineNote(id, anchor)
-          );
-        }
-        if (this.settings.showMarker) this.appendReadingMarker(el, record.annotationId);
       }
     }
   }
@@ -2053,8 +2055,9 @@ export default class AnnotationTutorLitePlugin extends Plugin {
 
 /**
  * Wrap the first occurrence of `text` within `el` in a styled span, tagged with
- * the annotation id and made clickable so it toggles the margin card even when
- * the marker glyph is hidden.
+ * the annotation id and made clickable so it is itself the comment toggle.
+ * Returns whether the span was applied, so the caller can fall back to a marker
+ * glyph when the text could not be wrapped (e.g. it crosses inline markup).
  */
 function underlineFirst(
   el: HTMLElement,
@@ -2062,7 +2065,7 @@ function underlineFirst(
   cls: string,
   id: string,
   onClick: (id: string, anchor: HTMLElement) => void
-): void {
+): boolean {
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
   let node = walker.nextNode();
   while (node) {
@@ -2081,11 +2084,13 @@ function underlineFirst(
       });
       try {
         range.surroundContents(span);
+        return true;
       } catch {
         // Range crossed element boundaries (inline markup); leave it unstyled.
+        return false;
       }
-      return;
     }
     node = walker.nextNode();
   }
+  return false;
 }

@@ -57,10 +57,10 @@ export function styleClass(style: HighlightStyle): string | null {
 
 /**
  * Decide which decorations a document needs, as plain descriptors:
- * an inline style hugging each annotated span, a clickable marker placed at the
- * end of each annotation's span, and a "hide" descriptor that removes the raw
- * ` ^id` token. One marker per annotation, so several comments in one paragraph
- * each get their own marker (not a single shared one at the line end).
+ * an inline style hugging each annotated span, a "hide" descriptor that removes
+ * the raw ` ^id` token, and — only when there is no highlight to click — a
+ * clickable marker glyph. With a highlight on, the underline/background itself is
+ * the comment toggle, so no glyph is drawn; one glyph per annotation otherwise.
  */
 export function planDecorations(
   doc: Text,
@@ -77,6 +77,9 @@ export function planDecorations(
     else byBlockId.set(mark.blockId, [mark]);
   }
   const className = styleClass(style);
+  // The marker glyph is only an affordance for when there is no highlight to
+  // click; with a style on, the highlighted span itself toggles the comment.
+  const showGlyph = showMarker && style === "none";
   const plans: DecoPlan[] = [];
 
   for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber += 1) {
@@ -119,10 +122,10 @@ export function planDecorations(
       if (className) {
         plans.push({ kind: "style", from: span.from, to: span.to, className, id: mark.id });
       }
-      if (showMarker) {
-        // Sit the marker right after the underlined span. When the span abuts
-        // the trailing ` ^id` (e.g. a whole-sentence selection), clamp to the
-        // id's start and order it before the hidden token (side -1).
+      if (showGlyph) {
+        // Sit the marker right after the span. When it abuts the trailing ` ^id`
+        // (e.g. a whole-sentence selection), clamp to the id's start and order it
+        // before the hidden token (side -1).
         const pos = Math.min(span.to, suffixStart);
         plans.push({ kind: "marker", pos, id: mark.id, side: span.to >= suffixStart ? -1 : 1 });
       }
@@ -131,18 +134,19 @@ export function planDecorations(
 
     if (!anyMatched) {
       // No selected text located anywhere in the block (drift, inline
-      // formatting): keep the block-id line visible up to the id, and place a
-      // single paragraph marker at the end of that visible text.
+      // formatting): underline the block-id line up to the id and tag it with the
+      // annotation id so it stays the clickable toggle; add a glyph only when
+      // there is no highlight to click.
       if (className && suffixStart > line.from) {
-        plans.push({ kind: "style", from: line.from, to: suffixStart, className });
+        plans.push({ kind: "style", from: line.from, to: suffixStart, className, id: first.id });
       }
-      if (showMarker) {
+      if (showGlyph) {
         plans.push({ kind: "marker", pos: suffixStart, id: first.id, side: -1 });
       }
     }
 
     if (showMarker) {
-      // Hide the raw ` ^id` token; the per-span markers replace its role.
+      // Hide the raw ` ^id` token; the highlight (or glyph) takes over its role.
       plans.push({ kind: "hide", from: suffixStart, to: line.to });
     }
   }

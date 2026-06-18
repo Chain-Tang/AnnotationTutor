@@ -11,6 +11,7 @@ import {
   buildMarginCard,
   clearChildren,
   drawConnector,
+  lastLineRect,
   loadCardGeom,
   placeCards,
   updateConnector,
@@ -144,7 +145,11 @@ export class ReadingRail {
       );
       const anchorEl = span ?? marker;
       if (!anchorEl) continue; // not rendered (collapsed/virtualised section)
-      const rect = anchorEl.getBoundingClientRect();
+      // Anchor to the end of the underline: its last on-screen line when the span
+      // wraps across two lines, so the connector meets the very end of the text.
+      const rect =
+        anchorEl === span ? lastLineRect(anchorEl) : anchorEl.getBoundingClientRect();
+      if (!rect) continue;
       if (rect.bottom < hostRect.top || rect.top > hostRect.bottom) continue;
       const anchorRight = anchorEl === span ? rect.right : rect.left;
 

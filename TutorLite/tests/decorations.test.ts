@@ -192,6 +192,71 @@ describe("planDecorations", () => {
     }
   });
 
+  it("underlines a multi-line selection inside a blockquote (markup-tolerant)", () => {
+    // Live Preview hides the "> " markers, so the captured selection omits them;
+    // the continuation line must still match by its bare content, not fall back
+    // to underlining the block-id line several lines down.
+    const l1 = "> The mind is its own place";
+    const l2 = "> and can make a heaven. ^ann-1";
+    const doc2 = Text.of([l1, l2]);
+    const m: AnchorMark = {
+      id: "ANN-1",
+      blockId: "ann-1",
+      selectedText: "mind is its own place\nand can make a heaven."
+    };
+    const styles = planDecorations(doc2, [m], "dotted-underline", false).filter(
+      (p) => p.kind === "style"
+    );
+    expect(styles).toHaveLength(1);
+    const last = "and can make a heaven.";
+    if (styles[0]?.kind === "style") {
+      expect(styles[0].from).toBe(l1.indexOf("mind"));
+      // The end hugs the sentence (past the "> " markup), before the trailing ^id.
+      expect(styles[0].to).toBe(l1.length + 1 + l2.indexOf(last) + last.length);
+    }
+  });
+
+  it("underlines a multi-line selection inside an indented list item", () => {
+    // The wrapped continuation line is indented in source; the selection omits it.
+    const l1 = "- First point that is";
+    const l2 = "  long and wraps over. ^ann-1";
+    const doc2 = Text.of([l1, l2]);
+    const m: AnchorMark = {
+      id: "ANN-1",
+      blockId: "ann-1",
+      selectedText: "point that is\nlong and wraps over."
+    };
+    const styles = planDecorations(doc2, [m], "dotted-underline", false).filter(
+      (p) => p.kind === "style"
+    );
+    expect(styles).toHaveLength(1);
+    if (styles[0]?.kind === "style") {
+      expect(styles[0].from).toBe(l1.indexOf("point that is"));
+      expect(styles[0].to).toBe(l1.length + 1 + l2.indexOf("long and wraps over.") + "long and wraps over.".length);
+    }
+  });
+
+  it("matches a continuation line literally when its content really starts with a marker", () => {
+    // If the user selected a line whose content genuinely begins with "- ", the
+    // exact match wins over markup-stripping, so nothing is over-consumed.
+    const l1 = "Alpha beta";
+    const l2 = "- not a list, just text. ^ann-1";
+    const doc2 = Text.of([l1, l2]);
+    const m: AnchorMark = {
+      id: "ANN-1",
+      blockId: "ann-1",
+      selectedText: "beta\n- not a list, just text."
+    };
+    const styles = planDecorations(doc2, [m], "dotted-underline", false).filter(
+      (p) => p.kind === "style"
+    );
+    expect(styles).toHaveLength(1);
+    if (styles[0]?.kind === "style") {
+      expect(styles[0].from).toBe(l1.indexOf("beta"));
+      expect(styles[0].to).toBe(l1.length + 1 + "- not a list, just text.".length);
+    }
+  });
+
   it("falls back to a whole-line underline when the selected text drifts", () => {
     const plans = planDecorations(
       doc(),

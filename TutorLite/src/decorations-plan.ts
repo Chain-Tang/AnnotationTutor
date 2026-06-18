@@ -36,6 +36,13 @@ export const BLOCK_ID_SUFFIX = /\s+\^([A-Za-z0-9_-]+)\s*$/;
 // up into a preceding heading's text.
 const HEADING = /^ {0,3}#{1,6}(?:\s|$)/;
 
+// Leading block markup on a (continuation) line that the captured selection
+// omits: indentation, blockquote markers (possibly nested), and a list marker.
+// In Live Preview these are hidden, so `editor.getSelection()` returns the bare
+// content; the source line still carries them. Stripping this prefix lets a
+// multi-line selection inside a list or quote match its continuation lines.
+const LINE_PREFIX = /^[ \t]*(?:>[ \t]*)*(?:[-*+][ \t]+|\d+[.)][ \t]+)?/;
+
 const STYLE_CLASS: Record<Exclude<HighlightStyle, "none">, string> = {
   "dotted-underline": "atl-hl-dotted",
   "wavy-underline": "atl-hl-wavy",
@@ -192,20 +199,52 @@ function locateSpan(
     if (firstLine.text.slice(c) !== first) continue;
     let ok = true;
     for (let k = 1; k < span - 1; k += 1) {
-      if (doc.line(ln + k).text !== (parts[k] ?? "")) {
+      if (!lineMatchesWhole(doc.line(ln + k).text, parts[k] ?? "")) {
         ok = false;
         break;
       }
     }
     if (!ok) continue;
     const lastLineObj = doc.line(ln + span - 1);
-    if (lastLineObj.text.slice(0, last.length) !== last) continue;
+    const lastEnd = matchLineHead(lastLineObj.text, last);
+    if (lastEnd === null) continue;
     return {
       from: firstLine.from + c,
-      to: lastLineObj.from + last.length,
+      to: lastLineObj.from + lastEnd,
       endLine: ln + span - 1,
-      endCh: last.length
+      endCh: lastEnd
     };
+  }
+  return null;
+}
+
+/** Length of the leading block-markup prefix on a line (0 when there is none). */
+function markupPrefixLen(lineText: string): number {
+  return LINE_PREFIX.exec(lineText)?.[0].length ?? 0;
+}
+
+/**
+ * Whether a continuation line's whole content equals `part`. Tolerates leading
+ * block markup (blockquote/list/indent) the captured selection omits, but only
+ * after an exact match fails — so a line whose real content starts with `-`/`>`
+ * (and was selected with it) still matches by its literal text.
+ */
+function lineMatchesWhole(lineText: string, part: string): boolean {
+  if (lineText === part) return true;
+  const prefix = markupPrefixLen(lineText);
+  return prefix > 0 && lineText.slice(prefix) === part;
+}
+
+/**
+ * The offset just past `part` when it is the head of a continuation line, or null
+ * when it is not. Tries a literal head match first, then one past a leading
+ * block-markup prefix, so list/quote continuation lines resolve correctly.
+ */
+function matchLineHead(lineText: string, part: string): number | null {
+  if (lineText.slice(0, part.length) === part) return part.length;
+  const prefix = markupPrefixLen(lineText);
+  if (prefix > 0 && lineText.slice(prefix, prefix + part.length) === part) {
+    return prefix + part.length;
   }
   return null;
 }

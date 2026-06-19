@@ -535,7 +535,9 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
             this.display();
           })
       );
-    if (!this.plugin.settings.autoRunAgent) return;
+    // The engine (OpenCode / Direct API), its key, and the model are always shown:
+    // translation (Alt+T), the tutor chat, and manual reviews all need an engine,
+    // not just auto-run. Gating these behind auto-run hid them on a fresh install.
 
     new Setting(container)
       .setName(t("set.reviewEngine"))

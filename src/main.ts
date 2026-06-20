@@ -41,6 +41,11 @@ import { shouldRemoveAnnotationBlockId } from "./memory-policy.js";
 import { lineDiff } from "./line-diff.js";
 import { copyablePrompt, defaultReviewRequest } from "./markdown/overview.js";
 import { buildReviewPrompt, listModels, type ModelListResult } from "./agent-runner.js";
+import {
+  mergeShellPath,
+  probeOpenCodeEnv,
+  type ShellProbe
+} from "./opencode-setup.js";
 import { runAcpReview } from "./acp-runner.js";
 import {
   listApiModels,
@@ -102,7 +107,12 @@ import { TranslationController } from "./translation-controller.js";
 import { NotebookController } from "./notebook-controller.js";
 import { ReviewController } from "./review-controller.js";
 import type { ReviewOutcome } from "./review-outcome.js";
-import { isAbsolute, relative as pathRelative, resolve as pathResolve } from "node:path";
+import {
+  basename,
+  isAbsolute,
+  relative as pathRelative,
+  resolve as pathResolve
+} from "node:path";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { ConfirmModal, DetailModal } from "./views/annotation-modal.js";
@@ -185,6 +195,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
 
   public override async onload(): Promise<void> {
     this.settings = migrateSettings(await this.loadData());
+    this.applyAgentShellPath();
     this.applyLocale();
     this.stashedStyle =
       this.settings.highlightStyle === "none"
@@ -467,6 +478,73 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     return result;
   }
 
+  /**
+   * Prepend the login-shell PATH captured by "Set up OpenCode" onto this
+   * process's PATH, so every CLI spawn (review, model list, ACP chat, Alt+T)
+   * resolves OpenCode and its runtime the way a terminal would. Idempotent.
+   */
+  public applyAgentShellPath(): void {
+    const shellPath = this.settings.agentShellPath.trim();
+    if (!shellPath) return;
+    const sep = process.platform === "win32" ? ";" : ":";
+    process.env.PATH = mergeShellPath(process.env.PATH ?? "", shellPath, sep);
+  }
+
+  /**
+   * One-tap OpenCode setup, aimed at GUI launches (especially macOS from
+   * Finder/Dock) where Obsidian's minimal PATH can't find OpenCode or its
+   * runtime. Asks the login shell for the resolved binary path and full PATH,
+   * saves both, then verifies connectivity — guiding the user until it works.
+   */
+  public async setupOpenCode(): Promise<void> {
+    const binName = basename(this.settings.agentCommand.trim() || "opencode");
+    const probing = new Notice(t("notice.opencodeSetupProbing"), 0);
+    let probe: ShellProbe | null = null;
+    try {
+      probe = await probeOpenCodeEnv({ binName });
+    } finally {
+      probing.hide();
+    }
+    if (probe?.path) {
+      this.settings.agentShellPath = probe.path;
+      this.applyAgentShellPath();
+    }
+    if (probe?.opencode) this.settings.agentCommand = probe.opencode;
+    if (probe?.path || probe?.opencode) await this.persistSettings();
+    // On macOS/Linux, neither a PATH nor a binary means OpenCode is not installed
+    // or not on the login shell's PATH — there is nothing to connect to.
+    if (process.platform !== "win32" && !probe?.path && !probe?.opencode) {
+      new Notice(t("notice.opencodeSetupNotFound"), 12000);
+      this.settingTab?.refresh();
+      return;
+    }
+    const command = this.settings.agentCommand.trim() || "opencode";
+    const testing = new Notice(t("notice.agentTesting", { command }), 0);
+    try {
+      const result = await this.refreshAvailableModels();
+      if (result.ok) {
+        new Notice(
+          t("notice.opencodeSetupOk", {
+            command,
+            count: result.models.length,
+            free: freeModels(result.models).length
+          })
+        );
+      } else {
+        new Notice(
+          t("notice.opencodeSetupFailed", {
+            command,
+            detail: result.error ?? ""
+          }),
+          12000
+        );
+      }
+    } finally {
+      testing.hide();
+      this.settingTab?.refresh();
+    }
+  }
+
   /** Connectivity check: refresh the model list and report the outcome. */
   public async testAgentConnection(): Promise<void> {
     const command = this.settings.agentCommand.trim() || "opencode";
@@ -561,6 +639,11 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       id: "open-tutor-chat",
       name: t("cmd.openChat"),
       callback: () => void this.openChat()
+    });
+    this.addCommand({
+      id: "setup-opencode",
+      name: t("cmd.setupOpenCode"),
+      callback: () => void this.setupOpenCode()
     });
     this.addCommand({
       id: "translate-selection",

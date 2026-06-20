@@ -78,6 +78,12 @@ export type AnnotationTutorLiteSettings = {
   /** Model id for the API engine, e.g. deepseek-chat. */
   apiModel: string;
   agentCommand: string;
+  /**
+   * Full PATH captured from the user's login shell by "Set up OpenCode", reused
+   * for every CLI spawn so a GUI-launched Obsidian (esp. macOS from Finder/Dock)
+   * resolves OpenCode and its runtime the same way a terminal would. Empty = none.
+   */
+  agentShellPath: string;
   agentModel: string;
   /** Which engine the tutor chat prefers. OpenCode can read the Vault directly. */
   chatEngine: ReviewEngine;
@@ -145,6 +151,7 @@ export const DEFAULT_SETTINGS: AnnotationTutorLiteSettings = {
   apiKey: "",
   apiModel: "deepseek-chat",
   agentCommand: "opencode",
+  agentShellPath: "",
   agentModel: "opencode/mimo-v2.5-free",
   chatEngine: "opencode",
   agentFallbackModel: "",
@@ -229,6 +236,9 @@ export function migrateSettings(loaded: unknown): AnnotationTutorLiteSettings {
   }
   if (typeof settings.agentCommand !== "string" || !settings.agentCommand.trim()) {
     settings.agentCommand = DEFAULT_SETTINGS.agentCommand;
+  }
+  if (typeof settings.agentShellPath !== "string") {
+    settings.agentShellPath = DEFAULT_SETTINGS.agentShellPath;
   }
   if (typeof settings.agentModel !== "string") {
     settings.agentModel = DEFAULT_SETTINGS.agentModel;

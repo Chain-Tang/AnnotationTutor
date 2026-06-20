@@ -49,6 +49,15 @@ describe("migrateSettings", () => {
     expect(migrateSettings({}).highlightColor).toBe("");
   });
 
+  it("coerces a non-string agentShellPath to empty, keeping a valid one", () => {
+    expect(migrateSettings({ agentShellPath: 42 }).agentShellPath).toBe("");
+    expect(migrateSettings({}).agentShellPath).toBe("");
+    expect(
+      migrateSettings({ agentShellPath: "/opt/homebrew/bin:/usr/bin" })
+        .agentShellPath
+    ).toBe("/opt/homebrew/bin:/usr/bin");
+  });
+
   it("passes through known fields and fills missing ones", () => {
     const migrated = migrateSettings({ memoryRoot: "Notes", showMarker: false });
     expect(migrated.memoryRoot).toBe("Notes");

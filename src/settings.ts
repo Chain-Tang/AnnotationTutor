@@ -759,6 +759,7 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     this.addModelDropdown(container, "set.agentModel", "agentModel", false);
 
     this.actionRow(container, [
+      [t("set.setupOpenCode"), () => this.plugin.setupOpenCode()],
       [
         t("set.refreshModels"),
         () => this.plugin.refreshAvailableModels().then(() => this.refresh())

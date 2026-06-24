@@ -101,7 +101,8 @@ import { CHAT_VIEW_TYPE, ChatView, type ChatMode } from "./views/chat-view.js";
 import { startAcpSession, type AcpSessionHandle, type AcpStreamEvent } from "./acp-session.js";
 import { tutorSystemPrompt, type ChatContext } from "./chat-prompt.js";
 import { classifyIntent, extractAnnotationId } from "./intent.js";
-import { buildEditInstruction, extractEdit } from "./edit-parse.js";
+import { buildEditInstruction, padBlockInsertion, resolveEdit } from "./edit-parse.js";
+import { defaultHotkeys } from "./hotkeys.js";
 import { detectLanguageName } from "./lang.js";
 import { TranslationController } from "./translation-controller.js";
 import { NotebookController } from "./notebook-controller.js";
@@ -446,10 +447,15 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     const cached = await this.store.loadLibraryCache();
     if (cached) this.librarySnapshot = cached;
     await this.rebuildIndex(false);
-    // When auto-run is on with the OpenCode engine, discover the CLI's models
-    // in the background so the picker is ready (its free models change over
-    // time). The API engine discovers models lazily from the settings panel.
-    if (this.settings.autoRunAgent && this.settings.reviewEngine === "opencode") {
+    // Warm up the OpenCode connection on open whenever an engine uses it (review
+    // or chat), not just when auto-run is enabled: this both readies the model
+    // picker (its free models change over time) and establishes connectivity so
+    // the CLI is reachable without first running a command. The API engine
+    // discovers models lazily from the settings panel.
+    if (
+      this.settings.reviewEngine === "opencode" ||
+      this.settings.chatEngine === "opencode"
+    ) {
       void this.refreshAvailableModels();
     }
     // The file open before our file-open handler registered won't have fired it;
@@ -631,7 +637,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     this.addCommand({
       id: "add-learning-annotation",
       name: t("cmd.addAnnotation"),
-      hotkeys: [{ modifiers: ["Mod", "Shift"], key: "l" }],
+      hotkeys: defaultHotkeys("add-learning-annotation"),
       editorCallback: (editor, info) =>
         void this.createAnnotationFromEditor(editor, info)
     });
@@ -648,7 +654,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     this.addCommand({
       id: "translate-selection",
       name: t("cmd.translate"),
-      hotkeys: [{ modifiers: ["Alt"], key: "t" }],
+      hotkeys: defaultHotkeys("translate-selection"),
       // A checkCallback (not editorCallback) so the hotkey also fires in Reading
       // view, where there is no editor — that is where immersive reading happens.
       checkCallback: (checking) => {
@@ -668,7 +674,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     this.addCommand({
       id: "pretranslate-document",
       name: t("cmd.pretranslate"),
-      hotkeys: [{ modifiers: ["Mod", "Alt"], key: "t" }],
+      hotkeys: defaultHotkeys("pretranslate-document"),
       callback: () => void this.translation.pretranslateActiveFile()
     });
     this.addCommand({
@@ -1384,16 +1390,20 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     let agentText = turn.text;
     let edit: DialogueReplyResult["edit"];
     if (wantsEdit) {
-      const parsed = extractEdit(turn.text);
+      const parsed = resolveEdit(turn.text);
       agentText = parsed.explanation || turn.text;
       if (parsed.edit && target) {
-        const before = target.hasSelection ? target.original : "";
-        const diff = before
-          ? lineDiff(before, parsed.edit)
-          : parsed.edit.split(/\r?\n/).map((line) => `+ ${line}`).join("\n");
-        const captured = target;
+        // A fallback block (no edit markers) is always an insert, so a generated
+        // table/diagram is added rather than overwriting the annotated span.
+        const captured = parsed.isInsert
+          ? { ...target, hasSelection: false, original: "" }
+          : target;
+        const before = captured.hasSelection ? captured.original : "";
         const replacement = parsed.edit;
-        agentText = parsed.explanation || t("chat.edit.proposed");
+        const diff = before
+          ? lineDiff(before, replacement)
+          : replacement.split(/\r?\n/).map((line) => `+ ${line}`).join("\n");
+        agentText = parsed.isInsert ? turn.text : parsed.explanation || t("chat.edit.proposed");
         edit = { diff, apply: () => this.applyNoteEdit(captured, replacement) };
       }
     }
@@ -1931,7 +1941,13 @@ export default class AnnotationTutorLitePlugin extends Plugin {
         );
       }
     } else {
-      editor.replaceRange(newText, target.from);
+      // Insert at the cursor. Pad block content (tables, Mermaid, code fences)
+      // with surrounding blank lines so it isn't glued to the adjacent text and
+      // actually renders.
+      const doc = editor.getValue();
+      const offset = editor.posToOffset(target.from);
+      const padded = padBlockInsertion(doc.slice(0, offset), doc.slice(offset), newText);
+      editor.replaceRange(padded, target.from);
     }
     void this.app.workspace.revealLeaf(target.view.leaf);
     editor.focus();

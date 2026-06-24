@@ -23,7 +23,7 @@ import { t } from "../i18n.js";
 import { classifyIntent } from "../intent.js";
 import { detectLanguageName } from "../lang.js";
 import { diffLineClass, lineDiff } from "../line-diff.js";
-import { buildEditInstruction, extractEdit } from "../edit-parse.js";
+import { buildEditInstruction, EDIT_START, resolveEdit } from "../edit-parse.js";
 import {
   buildApiMessages,
   opencodePreamble,
@@ -265,24 +265,22 @@ export class ChatView extends ItemView {
     // without the model, a "write" (hint toward Build), or a plain question.
     const intent = classifyIntent(text);
     if (intent === "locate" && this.tryLocate(text)) return;
-    if (intent === "write" && this.mode !== "build") {
-      this.addNotice(t("chat.writeHint"));
-    }
 
     this.setBusy(true);
     const ctx = await this.resolveContext();
-    // In Build mode the agent may propose an edit: capture where it would land
-    // and append the edit protocol to the message the engine actually receives.
-    // With an annotation pinned (e.g. a "polish" routed from a card), prefer its
-    // selected text so the edit replaces the annotated span.
-    const target =
-      this.mode === "build"
-        ? this.plugin.captureEditTarget(this.pinned?.selection)
-        : null;
-    const engineText =
-      this.mode === "build"
-        ? `${buildEditInstruction(target?.hasSelection ?? false)}\n\n${text}`
-        : text;
+    // The agent may propose an edit when in Build mode or when the message
+    // clearly asks for one ("insert a table…", "draw a diagram…") — so writing
+    // and inserting work without first switching to Build. Capture where the
+    // edit would land and append the edit protocol to the message the engine
+    // receives. With an annotation pinned (e.g. a "polish" routed from a card),
+    // prefer its selected text so the edit replaces the annotated span.
+    const wantsEdit = this.mode === "build" || intent === "write";
+    const target = wantsEdit
+      ? this.plugin.captureEditTarget(this.pinned?.selection)
+      : null;
+    const engineText = wantsEdit
+      ? `${buildEditInstruction(target?.hasSelection ?? false)}\n\n${text}`
+      : text;
     try {
       if (this.plugin.settings.chatEngine === "opencode") {
         await this.runOpenCodeWithFallback(ctx, engineText, text, target);
@@ -404,18 +402,31 @@ export class ChatView extends ItemView {
     container: HTMLElement | null,
     target: EditTarget | null
   ): Promise<void> {
-    if (this.mode === "build") {
-      const { explanation, edit } = extractEdit(text);
+    // `target` is non-null exactly when this turn asked the agent to write; also
+    // handle a reply that carries edit markers even if there's no note to apply
+    // to, so the raw markers are never shown as text.
+    if (this.mode === "build" || target || text.includes(EDIT_START)) {
+      const { explanation, edit, isInsert } = resolveEdit(text);
       if (edit) {
-        const message = explanation || t("chat.edit.proposed");
+        // A fallback block (the model skipped the edit markers) is always an
+        // insert; show the full reply so its table/diagram previews, then offer
+        // to drop just that block in at the cursor.
+        const editTarget = isInsert ? this.insertTarget(target) : target;
+        const message = isInsert ? text : explanation || t("chat.edit.proposed");
         if (container) await this.renderInto(container, message);
         else await this.renderAssistant(message);
-        this.renderEditCard(edit, target);
+        this.renderEditCard(edit, editTarget);
         return;
       }
     }
     if (container) await this.renderInto(container, text);
     else await this.renderAssistant(text);
+  }
+
+  /** Coerce a captured target into an insert-at-cursor target for a generated block. */
+  private insertTarget(target: EditTarget | null): EditTarget | null {
+    const base = target ?? this.plugin.captureEditTarget();
+    return base ? { ...base, hasSelection: false, original: "" } : null;
   }
 
   /** A preview card for a proposed edit: a diff plus Apply / Dismiss. */

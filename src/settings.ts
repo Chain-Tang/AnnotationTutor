@@ -5,6 +5,14 @@ import { isFreeModel } from "./agent-models.js";
 import { queryCells, queryScenes } from "./library-query.js";
 import type { CellQuery, SceneQuery } from "./library-query.js";
 import { dueCells } from "./srs.js";
+import {
+  SHORTCUT_COMMAND_IDS,
+  SHORTCUT_NAME_KEYS,
+  defaultHotkeys,
+  formatHotkeys,
+  type HotkeyDef,
+  type ShortcutCommandId
+} from "./hotkeys.js";
 import { AnnotationTable } from "./views/annotation-table.js";
 import {
   DEFAULT_SETTINGS,
@@ -229,6 +237,8 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
         });
       });
 
+    this.renderShortcuts(container);
+
     this.renderAgentRunner(container);
 
     const stats = container.createDiv({ cls: "atl-library-stats" });
@@ -247,6 +257,63 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       [t("settings.rebuild"), () => this.plugin.rebuildIndex(true)]
     ]);
     this.renderDiagnostics(container);
+  }
+
+  /**
+   * Keyboard shortcuts: the commands users most often rebind (annotate,
+   * translate, pre-translate), each showing its current binding plus a button
+   * that jumps to Obsidian's Hotkeys pane (filtered to this plugin) so it can be
+   * changed freely. Obsidian owns the actual binding; we only surface it.
+   */
+  private renderShortcuts(container: HTMLElement): void {
+    container.createEl("h3", { text: t("set.shortcuts") });
+    container.createEl("p", { cls: "atl-muted", text: t("set.shortcutsDesc") });
+    for (const id of SHORTCUT_COMMAND_IDS) {
+      new Setting(container)
+        .setName(t(SHORTCUT_NAME_KEYS[id]))
+        .setDesc(formatHotkeys(this.currentHotkeys(id)))
+        .addButton((button) =>
+          button.setButtonText(t("set.shortcutsEdit")).onClick(() =>
+            this.openHotkeySettings()
+          )
+        );
+    }
+  }
+
+  /** A command's live binding (custom, else default), via Obsidian's hotkey manager. */
+  private currentHotkeys(id: ShortcutCommandId): HotkeyDef[] {
+    const fullId = `${this.plugin.manifest.id}:${id}`;
+    const manager = (
+      this.app as unknown as {
+        hotkeyManager?: {
+          getHotkeys?: (id: string) => HotkeyDef[] | undefined;
+          getDefaultHotkeys?: (id: string) => HotkeyDef[] | undefined;
+        };
+      }
+    ).hotkeyManager;
+    const custom = manager?.getHotkeys?.(fullId);
+    if (custom && custom.length > 0) return custom;
+    const def = manager?.getDefaultHotkeys?.(fullId);
+    if (def && def.length > 0) return def;
+    return defaultHotkeys(id);
+  }
+
+  /** Open Obsidian's Hotkeys settings, filtered to this plugin's commands. */
+  private openHotkeySettings(): void {
+    const setting = (
+      this.app as unknown as {
+        setting?: {
+          open?: () => void;
+          openTabById?: (id: string) => { setQuery?: (q: string) => void } | undefined;
+        };
+      }
+    ).setting;
+    try {
+      setting?.open?.();
+      setting?.openTabById?.("hotkeys")?.setQuery?.(t("settings.title"));
+    } catch {
+      new Notice(t("set.shortcutsOpenFailed"));
+    }
   }
 
   /**

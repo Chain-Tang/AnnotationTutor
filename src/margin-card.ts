@@ -5,7 +5,7 @@
 // DOM, the dotted connector geometry, drag, vertical stacking, and the handler
 // registry the plugin wires once on load.
 
-import { setIcon, setTooltip } from "obsidian";
+import { Notice, setIcon, setTooltip } from "obsidian";
 import { t } from "./i18n.js";
 import type { AnchorMark } from "./decorations-plan.js";
 import type { DialogueTurn } from "./model.js";
@@ -21,7 +21,7 @@ export type DialogueReplyResult = {
   ok: boolean;
   agentText?: string;
   error?: string;
-  edit?: { diff: string; apply: () => boolean };
+  edit?: { diff: string; text: string; apply: () => boolean };
 };
 
 export type MarginCardHandlers = {
@@ -322,11 +322,60 @@ function appendTurn(
   const render = getMarginCardHandlers()?.render;
   if (role === "agent" && render) {
     el.classList.add("atl-rail-md");
-    void render(el, text);
+    // Attach the copy button after the async render so it isn't clobbered, and
+    // so the learner can lift a generated table/diagram out of the narrow card.
+    void Promise.resolve(render(el, text)).then(() => attachCopyButton(el, text));
   } else {
     el.textContent = text;
   }
   thread.appendChild(el);
+}
+
+/**
+ * A hover-revealed button (top-right of a turn or edit card) that copies `raw`
+ * to the clipboard — the dialogue is too narrow to select reliably, and the rail
+ * re-renders can wipe a live selection, so an explicit copy is the dependable path.
+ */
+function attachCopyButton(host: HTMLElement, raw: string): void {
+  const button = host.createEl("button", { cls: "atl-iconbtn atl-rail-copy" });
+  setIcon(button, "copy");
+  setTooltip(button, t("chat.copy"));
+  button.addEventListener("mousedown", (event) => event.stopPropagation());
+  button.onclick = (event) => {
+    event.stopPropagation();
+    void copyToClipboard(raw, button, "copy");
+  };
+}
+
+/**
+ * Copy `raw` and flash confirmation. An icon button (`icon` set) swaps to a check
+ * glyph; a text button shows "Copied", matching the sidebar chat's copy buttons.
+ */
+async function copyToClipboard(
+  raw: string,
+  button: HTMLElement,
+  icon?: string
+): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(raw);
+  } catch {
+    new Notice(t("chat.copyFailed"));
+    return;
+  }
+  if (icon) {
+    setIcon(button, "check");
+    setTooltip(button, t("chat.copied"));
+  } else {
+    button.textContent = t("chat.copied");
+  }
+  window.setTimeout(() => {
+    if (icon) {
+      setIcon(button, icon);
+      setTooltip(button, t("chat.copy"));
+    } else {
+      button.textContent = t("chat.copy");
+    }
+  }, 1500);
 }
 
 function appendNotice(thread: HTMLElement, text: string): HTMLElement {
@@ -337,10 +386,10 @@ function appendNotice(thread: HTMLElement, text: string): HTMLElement {
   return el;
 }
 
-/** A diff preview + Apply/Dismiss for a tutor-proposed change to the source. */
+/** A diff preview + Apply/Copy/Dismiss for a tutor-proposed change to the source. */
 function appendEditCard(
   thread: HTMLElement,
-  edit: { diff: string; apply: () => boolean }
+  edit: { diff: string; text: string; apply: () => boolean }
 ): void {
   const card = document.createElement("div");
   card.className = "atl-rail-editcard";
@@ -370,10 +419,14 @@ function appendEditCard(
       apply.textContent = t("chat.edit.applied");
     }
   };
+  const copy = document.createElement("button");
+  copy.textContent = t("chat.copy");
+  copy.onclick = () => void copyToClipboard(edit.text, copy);
   const dismiss = document.createElement("button");
   dismiss.textContent = t("chat.edit.dismiss");
   dismiss.onclick = () => card.remove();
   actions.appendChild(apply);
+  actions.appendChild(copy);
   actions.appendChild(dismiss);
   card.appendChild(actions);
 

@@ -507,11 +507,49 @@
 }
 
 .atl-rail-turn {
+  position: relative;
   border-radius: var(--radius-s);
   padding: var(--size-2-1) var(--size-2-2);
   font-size: calc(var(--font-smaller) * var(--atl-card-scale, 1));
   line-height: var(--line-height-tight);
   white-space: pre-wrap;
+}
+
+/* Copy affordance on an agent turn, revealed on hover in its top-right corner
+   (the margin dialogue is too narrow to select reliably). */
+.atl-rail-copy {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  color: var(--text-faint);
+  cursor: pointer;
+  opacity: 0;
+  box-shadow: none;
+  transition: opacity 160ms ease, color 160ms ease, background-color 160ms ease;
+}
+
+.atl-rail-turn:hover .atl-rail-copy,
+.atl-rail-copy:focus-visible {
+  opacity: 1;
+}
+
+.atl-rail-copy:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.atl-rail-copy .svg-icon {
+  width: 12px;
+  height: 12px;
 }
 
 .atl-rail-turn--user {

@@ -1405,7 +1405,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
           ? lineDiff(before, replacement)
           : replacement.split(/\r?\n/).map((line) => `+ ${line}`).join("\n");
         agentText = parsed.isInsert ? turn.text : parsed.explanation || t("chat.edit.proposed");
-        edit = { diff, apply: () => this.applyNoteEdit(captured, replacement) };
+        edit = { diff, text: replacement, apply: () => this.applyNoteEdit(captured, replacement) };
       }
     }
 

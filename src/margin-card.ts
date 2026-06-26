@@ -11,6 +11,7 @@ import type { AnchorMark } from "./decorations-plan.js";
 import type { DialogueTurn } from "./model.js";
 import { diffLineClass } from "./line-diff.js";
 import { nextCardScale } from "./card-zoom.js";
+import { skinClass, type RailSkin } from "./skins.js";
 
 /**
  * The outcome of one in-card dialogue turn. `edit` is present only when the
@@ -92,7 +93,7 @@ export const SVG_NS = "http://www.w3.org/2000/svg";
 export const CARD_GAP = 8;
 
 type BuildOptions = {
-  paper: boolean;
+  skin: RailSkin;
   geom: Geom;
   /** Show the agent review (if any) inside the card, below the note. */
   showReview: boolean;
@@ -107,9 +108,11 @@ export function buildMarginCard(
   options: BuildOptions
 ): { card: HTMLElement; observer: ResizeObserver } {
   const card = document.createElement("div");
-  card.className = options.paper
-    ? "atl-rail-card atl-rail-card--paper"
-    : "atl-rail-card";
+  // Every card carries its skin class (`atl-skin-<id>`); "quiet" skins (paper,
+  // sticky, leaf, and all user skins) also get the chrome-less base that hides
+  // scrollbars, the grip, and the resize cue.
+  card.className = `atl-rail-card ${skinClass(options.skin.id)}`;
+  if (options.skin.quiet) card.classList.add("atl-rail-card--quiet");
   card.dataset["atlId"] = mark.id;
 
   // Assigned once the dialogue area is built; the header button toggles it.

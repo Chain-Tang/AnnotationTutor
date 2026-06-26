@@ -120,7 +120,7 @@ class MarginRail {
       const geom = this.geom.get(mark.id) ?? loadCardGeom(mark.id) ?? { dx: 0, dy: 0 };
       this.geom.set(mark.id, geom);
       const { card, observer } = buildMarginCard(mark, {
-        paper: config.marginPaper,
+        skin: config.skin,
         geom,
         showReview: config.inlineReview,
         onCollapse: () =>
@@ -137,7 +137,7 @@ class MarginRail {
       });
     }
 
-    const hideLink = config.marginPaper && config.marginHideLink;
+    const hideLink = config.skin.quiet && config.marginHideLink;
     placeCards(placed, railWidth, this.geom, (id, anchorX, anchorMidY) => {
       if (hideLink) return;
       drawConnector(this.svg, this.cardsEl, id, anchorX, anchorMidY, editorRect);

@@ -330,29 +330,32 @@
   opacity: 0.9;
 }
 
-.atl-rail-card--paper::after {
+/* --- shared "quiet" skin base (paper, sticky, leaf, and user skins) --------- */
+/* Quiet skins drop the card's stock chrome so the note reads like margin text:
+   no resize cue, no scrollbars, no grip. Each quiet skin then paints its own
+   surface below. The classic "flat" skin keeps all of the stock chrome. */
+.atl-rail-card--quiet::after {
   display: none;
 }
 
-/* Paper mode hides the native resize grip too, so the card reads as plain text;
-   `resize: both` still applies, so the bottom-right corner stays drag-resizable. */
-.atl-rail-card--paper::-webkit-resizer {
+/* Hide the native resize grip too; `resize: both` still applies, so the
+   bottom-right corner stays drag-resizable. */
+.atl-rail-card--quiet::-webkit-resizer {
   display: none;
 }
 
-/* Paper mode reads as plain margin text, so hide the scrollbars on the card and
-   its inner panes (dialogue thread, review, inline diff) while keeping wheel and
-   trackpad scrolling. Non-paper cards keep their native scrollbars. */
-.atl-rail-card--paper,
-.atl-rail-card--paper .atl-rail-thread,
-.atl-rail-card--paper .atl-rail-review,
-.atl-rail-card--paper .atl-diff {
+/* Hide the scrollbars on the card and its inner panes (dialogue thread, review,
+   inline diff) while keeping wheel and trackpad scrolling. */
+.atl-rail-card--quiet,
+.atl-rail-card--quiet .atl-rail-thread,
+.atl-rail-card--quiet .atl-rail-review,
+.atl-rail-card--quiet .atl-diff {
   scrollbar-width: none; /* Firefox */
 }
-.atl-rail-card--paper::-webkit-scrollbar,
-.atl-rail-card--paper .atl-rail-thread::-webkit-scrollbar,
-.atl-rail-card--paper .atl-rail-review::-webkit-scrollbar,
-.atl-rail-card--paper .atl-diff::-webkit-scrollbar {
+.atl-rail-card--quiet::-webkit-scrollbar,
+.atl-rail-card--quiet .atl-rail-thread::-webkit-scrollbar,
+.atl-rail-card--quiet .atl-rail-review::-webkit-scrollbar,
+.atl-rail-card--quiet .atl-diff::-webkit-scrollbar {
   display: none; /* Chromium / Electron (Obsidian) */
 }
 
@@ -371,11 +374,11 @@
   background: var(--background-modifier-border);
 }
 
-.atl-rail-card--paper .atl-rail-grip {
+.atl-rail-card--quiet .atl-rail-grip {
   display: none;
 }
 
-.atl-rail-card--paper:hover {
+.atl-skin-paper:hover {
   box-shadow: none;
 }
 
@@ -408,21 +411,21 @@
   height: 14px;
 }
 
-/* Paper mode: the chrome-less head buttons read as cramped, ambiguous glyphs
-   against the plain-text card, so give them a visible bordered button shape and
+/* Quiet skins: the chrome-less head buttons read as cramped, ambiguous glyphs
+   against the plain surface, so give them a visible bordered button shape and
    more space between them. Borders apply to all four actions for a uniform row. */
-.atl-rail-card--paper .atl-rail-card-head {
+.atl-rail-card--quiet .atl-rail-card-head {
   gap: var(--size-2-3);
 }
 
-.atl-rail-card--paper .atl-rail-card-head .atl-iconbtn {
+.atl-rail-card--quiet .atl-rail-card-head .atl-iconbtn {
   padding: var(--size-2-2);
   color: var(--text-muted);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
 }
 
-.atl-rail-card--paper .atl-rail-card-head .atl-iconbtn:hover {
+.atl-rail-card--quiet .atl-rail-card-head .atl-iconbtn:hover {
   background: var(--background-modifier-hover);
   border-color: var(--text-accent);
   color: var(--text-accent);
@@ -447,12 +450,156 @@
   box-shadow: none;
 }
 
-/* "Paper" variant: drop the card chrome, leaving notes in the margin. */
-.atl-rail-card--paper {
+/* "Paper" skin: drop the card chrome, leaving notes in the margin. */
+.atl-skin-paper {
   padding: 0 0 0 var(--size-2-2);
   background: transparent;
   border: none;
   box-shadow: none;
+}
+
+/* --- "Sticky note" skin --------------------------------------------------- */
+/* A physical paper note: a warm sheet with a faint fibre grain (an feTurbulence
+   SVG baked into a data URI, so it stays crisp at any zoom and costs nothing at
+   runtime), a soft drop shadow, a slight tilt, a curled corner, and a tape strip.
+   The text stays real editable DOM on top. */
+.atl-skin-sticky {
+  --atl-sticky-paper: #fff4c2;
+  --atl-sticky-paper-2: #ffe79a;
+  --atl-sticky-ink: #4a3f1d;
+  padding: var(--size-4-2) var(--size-4-3) var(--size-4-2);
+  color: var(--atl-sticky-ink);
+  background-color: var(--atl-sticky-paper);
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='120' height='120' filter='url(%23n)' opacity='0.05'/></svg>"),
+    linear-gradient(160deg, var(--atl-sticky-paper) 0%, var(--atl-sticky-paper-2) 100%);
+  border: none;
+  border-radius: 2px 2px 3px 3px;
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.08),
+    0 8px 16px -6px rgba(0, 0, 0, 0.35);
+  transform: rotate(-1.2deg);
+  transform-origin: top center;
+  transition:
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.theme-dark .atl-skin-sticky {
+  --atl-sticky-paper: #e9d27a;
+  --atl-sticky-paper-2: #d9bd5c;
+  --atl-sticky-ink: #2c2510;
+}
+
+.atl-skin-sticky:hover {
+  transform: rotate(-0.4deg) translateY(-1px);
+  box-shadow:
+    0 2px 2px rgba(0, 0, 0, 0.1),
+    0 14px 24px -8px rgba(0, 0, 0, 0.4);
+}
+
+/* A translucent strip of tape pinning the note at the top. It sits just inside
+   the top edge because the card clips overflow (to hide its scrollbars). */
+.atl-skin-sticky::before {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 50%;
+  width: 54px;
+  height: 14px;
+  transform: translateX(-50%) rotate(-2deg);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.5),
+    rgba(220, 220, 200, 0.35)
+  );
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+}
+
+/* A lifted, curling bottom-right corner. */
+.atl-skin-sticky::after {
+  content: "";
+  display: block;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
+  background: linear-gradient(
+    135deg,
+    rgba(0, 0, 0, 0.12) 0%,
+    rgba(0, 0, 0, 0.04) 45%,
+    transparent 55%
+  );
+  border-bottom-right-radius: 3px;
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+  pointer-events: none;
+}
+
+/* The note text reads warm on the sticky paper, in both themes. */
+.atl-skin-sticky .atl-rail-edit,
+.atl-skin-sticky .atl-rail-review,
+.atl-skin-sticky .atl-rail-question {
+  color: var(--atl-sticky-ink);
+}
+
+.atl-skin-sticky .atl-rail-card-head .atl-iconbtn {
+  color: rgba(74, 63, 29, 0.7);
+  border-color: rgba(74, 63, 29, 0.28);
+}
+
+/* --- "Leaf" skin ---------------------------------------------------------- */
+/* The visible leaf is a single SVG painted as the card background and stretched
+   to fill (preserveAspectRatio='none'), so the silhouette, midrib, veins, and a
+   faint feTurbulence grain all scale with the card at any size. The card box is
+   transparent; `filter: drop-shadow` then casts a shadow that follows the leaf's
+   alpha rather than a rectangle. Text stays real DOM on top, with generous
+   padding so the tapered tip and rounded base never crowd it. */
+.atl-skin-leaf {
+  --atl-leaf-ink: #1f3d12;
+  min-width: 188px;
+  min-height: 96px;
+  padding: var(--size-4-8) var(--size-4-5) var(--size-4-6);
+  color: var(--atl-leaf-ink);
+  background-color: transparent;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 240' preserveAspectRatio='none'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23cde6a8'/><stop offset='1' stop-color='%238fc866'/></linearGradient><clipPath id='c'><path d='M100 4 C150 50 192 110 192 168 C192 214 150 236 100 236 C50 236 8 214 8 168 C8 110 50 50 100 4 Z'/></clipPath><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter></defs><g clip-path='url(%23c)'><rect width='200' height='240' fill='url(%23g)'/><rect width='200' height='240' filter='url(%23n)' opacity='0.05'/><g stroke='rgba(31,61,18,0.28)' stroke-width='1.6' fill='none' stroke-linecap='round'><path d='M100 14 L100 226'/><path d='M100 56 C74 50 54 58 36 84'/><path d='M100 92 C74 86 54 94 38 120'/><path d='M100 128 C74 122 56 130 44 156'/><path d='M100 56 C126 50 146 58 164 84'/><path d='M100 92 C126 86 146 94 162 120'/><path d='M100 128 C126 122 144 130 156 156'/></g></g><path d='M100 4 C150 50 192 110 192 168 C192 214 150 236 100 236 C50 236 8 214 8 168 C8 110 50 50 100 4 Z' fill='none' stroke='rgba(31,61,18,0.3)' stroke-width='2.5'/></svg>");
+  border: none;
+  box-shadow: none;
+  filter: drop-shadow(0 8px 9px rgba(20, 50, 10, 0.42));
+  transform: rotate(-1deg);
+  transform-origin: top center;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.theme-dark .atl-skin-leaf {
+  --atl-leaf-ink: #ecf6e2;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 240' preserveAspectRatio='none'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%236fa04a'/><stop offset='1' stop-color='%234f7d34'/></linearGradient><clipPath id='c'><path d='M100 4 C150 50 192 110 192 168 C192 214 150 236 100 236 C50 236 8 214 8 168 C8 110 50 50 100 4 Z'/></clipPath><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter></defs><g clip-path='url(%23c)'><rect width='200' height='240' fill='url(%23g)'/><rect width='200' height='240' filter='url(%23n)' opacity='0.06'/><g stroke='rgba(236,246,226,0.32)' stroke-width='1.6' fill='none' stroke-linecap='round'><path d='M100 14 L100 226'/><path d='M100 56 C74 50 54 58 36 84'/><path d='M100 92 C74 86 54 94 38 120'/><path d='M100 128 C74 122 56 130 44 156'/><path d='M100 56 C126 50 146 58 164 84'/><path d='M100 92 C126 86 146 94 162 120'/><path d='M100 128 C126 122 144 130 156 156'/></g></g><path d='M100 4 C150 50 192 110 192 168 C192 214 150 236 100 236 C50 236 8 214 8 168 C8 110 50 50 100 4 Z' fill='none' stroke='rgba(20,40,12,0.45)' stroke-width='2.5'/></svg>");
+  filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.5));
+}
+
+.atl-skin-leaf:hover {
+  transform: rotate(0.6deg) translateY(-1px);
+}
+
+.atl-skin-leaf .atl-rail-edit,
+.atl-skin-leaf .atl-rail-review,
+.atl-skin-leaf .atl-rail-question {
+  color: var(--atl-leaf-ink);
+}
+
+.atl-skin-leaf .atl-rail-card-head .atl-iconbtn {
+  color: rgba(31, 61, 18, 0.72);
+  border-color: rgba(31, 61, 18, 0.3);
+}
+
+.theme-dark .atl-skin-leaf .atl-rail-card-head .atl-iconbtn {
+  color: rgba(236, 246, 226, 0.85);
+  border-color: rgba(236, 246, 226, 0.35);
 }
 
 /* --- agent review, shown quietly inside the comment card ----------------- */

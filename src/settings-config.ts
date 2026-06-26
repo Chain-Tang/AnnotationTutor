@@ -63,7 +63,13 @@ export type AnnotationTutorLiteSettings = {
   highlightColor: string;
   showMarker: boolean;
   marginComments: boolean;
-  marginPaper: boolean;
+  /**
+   * Which card skin the margin cards wear: a built-in id ("flat" | "paper" |
+   * "sticky" | "leaf") or a user skin id discovered from the plugin's skins
+   * folder. "flat" is the classic bordered card. Replaces the old `marginPaper`
+   * boolean (paper migrated to "paper").
+   */
+  cardSkin: string;
   marginHideLink: boolean;
   inlineReview: boolean;
   watchMemoryFiles: boolean;
@@ -140,7 +146,7 @@ export const DEFAULT_SETTINGS: AnnotationTutorLiteSettings = {
   highlightColor: "",
   showMarker: true,
   marginComments: true,
-  marginPaper: false,
+  cardSkin: "flat",
   marginHideLink: false,
   inlineReview: true,
   watchMemoryFiles: true,
@@ -207,6 +213,16 @@ export function migrateSettings(loaded: unknown): AnnotationTutorLiteSettings {
   if (!highlightStyles.includes(settings.highlightStyle)) {
     settings.highlightStyle = DEFAULT_SETTINGS.highlightStyle;
   }
+  // Fold the retired `marginPaper` boolean into the new `cardSkin` picker: an
+  // explicit `cardSkin` wins; otherwise paper-on migrates to the "paper" skin.
+  if (!("cardSkin" in data) || typeof settings.cardSkin !== "string") {
+    settings.cardSkin = (data as { marginPaper?: unknown }).marginPaper === true
+      ? "paper"
+      : DEFAULT_SETTINGS.cardSkin;
+  }
+  if (!settings.cardSkin.trim()) settings.cardSkin = DEFAULT_SETTINGS.cardSkin;
+  // Drop the legacy key so it is not re-persisted.
+  delete (settings as Record<string, unknown>).marginPaper;
   // A valid hex stays (canonicalized); anything else falls back to "" = follow
   // the theme accent.
   settings.highlightColor = normalizeHighlightColor(settings.highlightColor);

@@ -4,9 +4,16 @@
 // <style> injection live in skin-loader.ts.
 
 /**
+ * A GPU 3D tilt (via vanilla-tilt): the card rotates toward the pointer with an
+ * optional moving glare, so a textured skin catches light like a physical object.
+ */
+export type TiltSpec = { max: number; glare: boolean; maxGlare: number };
+
+/**
  * One selectable card look. `quiet` skins use the chrome-less, scrollbar-hidden
  * base (the behaviour the old "paper" toggle gave the card); `css` is present
- * only for user skins loaded from a `.css` file in the plugin's skins folder.
+ * only for user skins loaded from a `.css` file in the plugin's skins folder;
+ * `tilt` opts the skin into the 3D tilt effect.
  */
 export type SkinDef = {
   id: string;
@@ -14,10 +21,11 @@ export type SkinDef = {
   builtin: boolean;
   quiet: boolean;
   css?: string;
+  tilt?: TiltSpec;
 };
 
 /** The minimal skin shape threaded down to the rails and the card builder. */
-export type RailSkin = { id: string; quiet: boolean };
+export type RailSkin = { id: string; quiet: boolean; tilt: TiltSpec | null };
 
 /** The classic bordered card; also the fallback when an id can't be resolved. */
 export const DEFAULT_SKIN_ID = "flat";
@@ -31,8 +39,20 @@ export const DEFAULT_SKIN_ID = "flat";
 export const BUILTIN_SKINS: readonly SkinDef[] = [
   { id: "flat", name: "Flat", builtin: true, quiet: false },
   { id: "paper", name: "Paper", builtin: true, quiet: true },
-  { id: "sticky", name: "Sticky note", builtin: true, quiet: true },
-  { id: "leaf", name: "Leaf", builtin: true, quiet: true }
+  {
+    id: "sticky",
+    name: "Sticky note",
+    builtin: true,
+    quiet: true,
+    tilt: { max: 8, glare: true, maxGlare: 0.35 }
+  },
+  {
+    id: "leaf",
+    name: "Leaf",
+    builtin: true,
+    quiet: true,
+    tilt: { max: 10, glare: false, maxGlare: 0 }
+  }
 ];
 
 /**
@@ -82,8 +102,8 @@ export function mergeSkins(
 /** Resolve an id to the RailSkin to render, falling back to flat when unknown. */
 export function resolveRailSkin(id: string, all: readonly SkinDef[]): RailSkin {
   const found = all.find((skin) => skin.id === id);
-  if (found) return { id: found.id, quiet: found.quiet };
-  return { id: DEFAULT_SKIN_ID, quiet: false };
+  if (found) return { id: found.id, quiet: found.quiet, tilt: found.tilt ?? null };
+  return { id: DEFAULT_SKIN_ID, quiet: false, tilt: null };
 }
 
 /**

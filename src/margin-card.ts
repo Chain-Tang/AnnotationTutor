@@ -12,6 +12,10 @@ import type { DialogueTurn } from "./model.js";
 import { diffLineClass } from "./line-diff.js";
 import { nextCardScale } from "./card-zoom.js";
 import { skinClass, type RailSkin } from "./skins.js";
+import VanillaTilt from "vanilla-tilt";
+
+/** An element that vanilla-tilt has been initialized on stashes its handle here. */
+type TiltElement = HTMLElement & { vanillaTilt?: { destroy(): void } };
 
 /**
  * The outcome of one in-card dialogue turn. `edit` is present only when the
@@ -231,6 +235,27 @@ export function buildMarginCard(
     persistCardGeom(mark.id, options.geom);
   });
   observer.observe(card);
+
+  // A tilt skin (sticky, leaf) becomes a GPU 3D object that leans toward the
+  // pointer with a moving glare. Init after a frame so the card is in the DOM
+  // (vanilla-tilt measures it); the connected guard skips cards already torn
+  // down by a fast re-render. clearChildren destroys the instance on rebuild so
+  // its window resize listener (added for glare) never accumulates.
+  if (options.skin.tilt) {
+    const tilt = options.skin.tilt;
+    requestAnimationFrame(() => {
+      if (!card.isConnected) return;
+      VanillaTilt.init(card, {
+        max: tilt.max,
+        glare: tilt.glare,
+        "max-glare": tilt.maxGlare,
+        speed: 400,
+        scale: 1.03,
+        perspective: 900,
+        gyroscope: false
+      });
+    });
+  }
 
   return { card, observer };
 }
@@ -583,6 +608,11 @@ function spacer(): HTMLElement {
 }
 
 export function clearChildren(node: Element): void {
+  // Tear down any vanilla-tilt instances before dropping the cards, so the
+  // window resize listener glare adds doesn't pile up across rail rebuilds.
+  node
+    .querySelectorAll<HTMLElement>(".atl-rail-card")
+    .forEach((el) => (el as TiltElement).vanillaTilt?.destroy());
   while (node.firstChild) node.removeChild(node.firstChild);
 }
 

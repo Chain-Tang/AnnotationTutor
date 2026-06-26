@@ -91,6 +91,14 @@ import {
   type DialogueReplyResult
 } from "./margin-rail.js";
 import { ReadingRail } from "./reading-rail.js";
+import {
+  BUILTIN_SKINS,
+  mergeSkins,
+  resolveRailSkin,
+  type RailSkin,
+  type SkinDef
+} from "./skins.js";
+import { SkinLoader } from "./skin-loader.js";
 import { highlightFirst } from "./reading-highlight.js";
 import { setLanguage, t } from "./i18n.js";
 import {
@@ -143,6 +151,10 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   private watcher!: MemoryWatcher;
   private settingTab!: AnnotationTutorLiteSettingTab;
   private readonly readingRail = new ReadingRail();
+  // User-authored card skins discovered in the plugin's skins/ folder, plus the
+  // loader that injects the active one's CSS. Built-ins live in skins.ts/styles.css.
+  private skinLoader!: SkinLoader;
+  public customSkins: SkinDef[] = [];
   // Annotation IDs with an agent run in flight, to avoid duplicate spawns.
   private readonly runningAgents = new Set<string>();
   // Models discovered from the agent CLI (`opencode models`), for the picker.
@@ -211,6 +223,9 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       (paths) => this.onMemoryChanged(paths)
     );
 
+    this.skinLoader = new SkinLoader(this.app, this.manifest.dir ?? "");
+    this.customSkins = await this.skinLoader.loadCustomSkins();
+    this.applySkinCss();
     this.settingTab = new AnnotationTutorLiteSettingTab(this.app, this);
     this.addSettingTab(this.settingTab);
     this.registerEditorExtension([annotationDecorations, marginRailExtension]);
@@ -347,6 +362,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   public override onunload(): void {
     this.watcher?.dispose();
     this.readingRail.detach();
+    this.skinLoader?.unload();
     document.body.style.removeProperty("--atl-hl-color");
     document.body.style.removeProperty("--atl-hl-bg-color");
     setMarkerClickHandler(null);
@@ -420,6 +436,41 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     this.applyHighlightColor();
     void this.refreshDecorations();
     this.review.refreshBadge();
+  }
+
+  /** Built-in skins followed by any user skins from the skins/ folder. */
+  public allSkins(): SkinDef[] {
+    return mergeSkins(BUILTIN_SKINS, this.customSkins);
+  }
+
+  /** The skin (id + quiet flag) the rails should render right now. */
+  public activeRailSkin(): RailSkin {
+    return resolveRailSkin(this.settings.cardSkin, this.allSkins());
+  }
+
+  /** Push the active skin's custom CSS into the document (no-op for built-ins). */
+  public applySkinCss(): void {
+    const active = this.allSkins().find((skin) => skin.id === this.settings.cardSkin);
+    this.skinLoader.applyCss(active);
+  }
+
+  /** Re-scan the skins folder, then re-apply CSS and re-render the cards. */
+  public async reloadSkins(): Promise<void> {
+    this.customSkins = await this.skinLoader.loadCustomSkins();
+    this.applySkinCss();
+    this.applyDisplaySettings();
+  }
+
+  /** Open the user skins folder in the OS file manager. */
+  public async openSkinsFolder(): Promise<void> {
+    await this.skinLoader.openFolder();
+  }
+
+  /** Create a starter skin file, refresh the registry, and return its id. */
+  public async createSkinFromTemplate(): Promise<string> {
+    const id = await this.skinLoader.createFromTemplate();
+    this.customSkins = await this.skinLoader.loadCustomSkins();
+    return id;
   }
 
   /**
@@ -1278,7 +1329,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
         this.readingRail.attach(view);
         this.readingRail.setMarks(
           this.marksFor(view.file?.path ?? ""),
-          this.settings.marginPaper,
+          this.activeRailSkin(),
           this.settings.marginHideLink,
           this.settings.inlineReview
         );
@@ -2084,7 +2135,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
           style: this.settings.highlightStyle,
           showMarker: this.settings.showMarker,
           marginComments: this.settings.marginComments,
-          marginPaper: this.settings.marginPaper,
+          skin: this.activeRailSkin(),
           marginHideLink: this.settings.marginHideLink,
           inlineReview: this.settings.inlineReview
         })
@@ -2094,7 +2145,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       this.readingRail.attach(view);
       this.readingRail.setMarks(
         marks,
-        this.settings.marginPaper,
+        this.activeRailSkin(),
         this.settings.marginHideLink,
         this.settings.inlineReview
       );

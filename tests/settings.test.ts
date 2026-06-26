@@ -26,6 +26,33 @@ describe("migrateSettings", () => {
     expect("highlightAnnotations" in migrated).toBe(false);
   });
 
+  it("migrates the old marginPaper boolean to the cardSkin picker", () => {
+    expect(migrateSettings({ marginPaper: true }).cardSkin).toBe("paper");
+    expect(migrateSettings({ marginPaper: false }).cardSkin).toBe("flat");
+    expect(migrateSettings({}).cardSkin).toBe("flat");
+  });
+
+  it("keeps an explicit cardSkin over the legacy marginPaper boolean", () => {
+    expect(
+      migrateSettings({ marginPaper: true, cardSkin: "sticky" }).cardSkin
+    ).toBe("sticky");
+  });
+
+  it("falls back to flat for a missing / non-string / empty cardSkin", () => {
+    expect(migrateSettings({ cardSkin: 7 }).cardSkin).toBe("flat");
+    expect(migrateSettings({ cardSkin: "" }).cardSkin).toBe("flat");
+    expect(migrateSettings({ cardSkin: "   " }).cardSkin).toBe("flat");
+  });
+
+  it("preserves a known cardSkin id round-trip", () => {
+    expect(migrateSettings({ cardSkin: "leaf" }).cardSkin).toBe("leaf");
+  });
+
+  it("drops the legacy marginPaper key so it is not re-persisted", () => {
+    const migrated = migrateSettings({ marginPaper: true });
+    expect("marginPaper" in migrated).toBe(false);
+  });
+
   it("keeps an explicit highlightStyle over the legacy boolean", () => {
     const migrated = migrateSettings({
       highlightAnnotations: false,

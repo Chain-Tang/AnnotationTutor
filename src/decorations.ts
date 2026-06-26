@@ -16,6 +16,7 @@ import {
 } from "@codemirror/view";
 import { setIcon } from "obsidian";
 import type { HighlightStyle } from "./settings.js";
+import type { RailSkin } from "./skins.js";
 import {
   planDecorations,
   type AnchorMark,
@@ -29,7 +30,7 @@ export type MarkerConfig = {
   style: HighlightStyle;
   showMarker: boolean;
   marginComments: boolean;
-  marginPaper: boolean;
+  skin: RailSkin;
   marginHideLink: boolean;
   inlineReview: boolean;
 };
@@ -39,7 +40,7 @@ const DEFAULT_CONFIG: MarkerConfig = {
   style: "dotted-underline",
   showMarker: true,
   marginComments: true,
-  marginPaper: false,
+  skin: { id: "flat", quiet: false },
   marginHideLink: false,
   inlineReview: true
 };

@@ -189,7 +189,26 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     this.renderHighlightColor(container);
     this.addToggle(container, "set.showMarker", "showMarker");
     this.addToggle(container, "set.marginComments", "marginComments");
-    this.addToggle(container, "set.marginPaper", "marginPaper");
+    new Setting(container)
+      .setName(t("set.cardSkin"))
+      .setDesc(t("set.cardSkinDesc"))
+      .addDropdown((dropdown) => {
+        for (const skin of this.plugin.allSkins()) {
+          dropdown.addOption(
+            skin.id,
+            skin.builtin ? t(`skin.${skin.id}`) : skin.name
+          );
+        }
+        dropdown
+          .setValue(this.plugin.settings.cardSkin)
+          .onChange(async (value) => {
+            this.plugin.settings.cardSkin = value;
+            await this.plugin.persistSettings();
+            this.plugin.applySkinCss();
+            this.plugin.applyDisplaySettings();
+          });
+      });
+    this.renderSkinTools(container);
     this.addToggle(container, "set.marginHideLink", "marginHideLink");
     this.addToggle(container, "set.inlineReview", "inlineReview");
     this.addToggle(container, "set.watch", "watchMemoryFiles");
@@ -322,6 +341,36 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
    * page to reveal/hide the picker; the picker itself only repaints the highlight
    * (no full re-render, which would close the open picker) so dragging stays live.
    */
+  /** Folder buttons under the Card skin picker: open, create starter, reload. */
+  private renderSkinTools(container: HTMLElement): void {
+    new Setting(container)
+      .setName(t("skin.section"))
+      .setDesc(t("skin.sectionDesc"))
+      .addButton((button) =>
+        button
+          .setButtonText(t("skin.openFolder"))
+          .onClick(() => void this.plugin.openSkinsFolder())
+      )
+      .addButton((button) =>
+        button.setButtonText(t("skin.new")).onClick(async () => {
+          const id = await this.plugin.createSkinFromTemplate();
+          this.plugin.settings.cardSkin = id;
+          await this.plugin.persistSettings();
+          this.plugin.applySkinCss();
+          this.plugin.applyDisplaySettings();
+          new Notice(t("skin.created"));
+          this.display();
+        })
+      )
+      .addButton((button) =>
+        button.setButtonText(t("skin.reload")).onClick(async () => {
+          await this.plugin.reloadSkins();
+          new Notice(t("skin.reloaded"));
+          this.display();
+        })
+      );
+  }
+
   private renderHighlightColor(container: HTMLElement): void {
     const custom = this.plugin.settings.highlightColor !== "";
     new Setting(container)

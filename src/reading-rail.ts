@@ -19,6 +19,7 @@ import {
   type Geom,
   type PlacedCard
 } from "./margin-card.js";
+import type { RailSkin } from "./skins.js";
 
 export class ReadingRail {
   private host: HTMLElement | null = null; // stable, non-scrolling container
@@ -30,7 +31,7 @@ export class ReadingRail {
   private observers: ResizeObserver[] = [];
   private hostObserver: ResizeObserver | null = null;
   private marks: AnchorMark[] = [];
-  private paper = false;
+  private skin: RailSkin = { id: "flat", quiet: false };
   private hideLink = false;
   private showReview = true;
   private frame = 0;
@@ -85,12 +86,12 @@ export class ReadingRail {
 
   public setMarks(
     marks: AnchorMark[],
-    paper: boolean,
+    skin: RailSkin,
     hideLink: boolean,
     showReview: boolean
   ): void {
     this.marks = marks;
-    this.paper = paper;
+    this.skin = skin;
     this.hideLink = hideLink;
     this.showReview = showReview;
     const ids = new Set(marks.map((mark) => mark.id));
@@ -159,7 +160,7 @@ export class ReadingRail {
       const geom = this.geom.get(id) ?? loadCardGeom(id) ?? { dx: 0, dy: 0 };
       this.geom.set(id, geom);
       const { card, observer } = buildMarginCard(mark, {
-        paper: this.paper,
+        skin: this.skin,
         geom,
         showReview: this.showReview,
         onCollapse: () => this.toggle(id),
@@ -176,7 +177,7 @@ export class ReadingRail {
       });
     }
 
-    const hideLink = this.paper && this.hideLink;
+    const hideLink = this.skin.quiet && this.hideLink;
     placeCards(placed, railWidth, this.geom, (id, anchorX, anchorMidY) => {
       if (hideLink) return;
       drawConnector(svg, overlay, id, anchorX, anchorMidY, hostRect);

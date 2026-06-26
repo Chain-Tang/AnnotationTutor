@@ -431,6 +431,17 @@
   color: var(--text-accent);
 }
 
+/* Textured skins paint their own surface, so the note + reply inputs must stay
+   transparent even when focused — otherwise the theme's form-field background
+   flashes a white box over the paper/leaf while typing. */
+.atl-rail-card--quiet .atl-rail-edit,
+.atl-rail-card--quiet .atl-rail-edit:focus,
+.atl-rail-card--quiet .atl-rail-reply,
+.atl-rail-card--quiet .atl-rail-reply:focus {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
 .atl-rail-edit {
   flex: 1;
   width: 100%;
@@ -539,51 +550,98 @@
 }
 
 .atl-skin-sticky .atl-rail-card-head .atl-iconbtn {
-  color: rgba(74, 63, 29, 0.7);
-  border-color: rgba(74, 63, 29, 0.28);
+  color: rgba(74, 63, 29, 0.78);
+  border-color: rgba(74, 63, 29, 0.3);
+  background: rgba(120, 92, 40, 0.12);
+}
+
+.atl-skin-sticky .atl-rail-card-head .atl-iconbtn:hover {
+  color: #3a2f17;
+  border-color: rgba(74, 63, 29, 0.6);
+  background: rgba(120, 92, 40, 0.26);
 }
 
 /* --- "Leaf" skin ---------------------------------------------------------- */
-/* The card IS a real photographed leaf (CC0, ambientCG Leaf001, injected as
-   --atl-tex-leaf): a transparent PNG with the leaf's own veins, serrated edge,
-   and colour. The card box is transparent, so `filter: drop-shadow` follows the
-   leaf's alpha and casts a true leaf-shaped shadow that tilts with it
-   (vanilla-tilt). Generous padding keeps the note over the opaque leaf body, away
-   from the tapered tip and stem. A readable scrim sits behind the text. */
+/* The whole card is a leaf *surface*: the real photographed leaf (CC0, ambientCG
+   Leaf001, injected as --atl-tex-leaf) is laid over a leaf-green base, so the
+   card reads as one cohesive green note carrying the leaf's veins and colour —
+   not a leaf cut-out floating in an empty card. A dark vignette deepens the
+   edges; light cream text with a soft shadow stays legible over the veins. */
 .atl-skin-leaf {
-  --atl-leaf-ink: #14300b;
-  width: 208px;
-  min-width: 180px;
-  min-height: 360px;
-  padding: 40px 30px 58px;
+  --atl-leaf-ink: #f3f9ea;
+  padding: var(--size-4-3) var(--size-4-3) var(--size-4-2);
   color: var(--atl-leaf-ink);
-  background-color: transparent;
-  background-image: var(--atl-tex-leaf, none);
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: 100% 100%;
+  background-color: #588a37;
+  background-image:
+    radial-gradient(
+      120% 100% at 30% 18%,
+      rgba(255, 255, 255, 0.16) 0%,
+      rgba(0, 0, 0, 0) 42%,
+      rgba(10, 28, 4, 0.32) 100%
+    ),
+    var(--atl-tex-leaf, none),
+    linear-gradient(155deg, #74a84d 0%, #4a7b2f 100%);
+  background-repeat: no-repeat, no-repeat, no-repeat;
+  background-position: center, center, center;
+  background-size: 100% 100%, cover, 100% 100%;
   border: none;
-  box-shadow: none;
-  filter: drop-shadow(0 11px 13px rgba(18, 42, 6, 0.5));
+  border-radius: 16px 22px 16px 22px / 22px 16px 22px 16px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -16px 26px -18px rgba(0, 0, 0, 0.4),
+    0 12px 22px -10px rgba(15, 38, 8, 0.55);
   transform-origin: center;
 }
 
 .theme-dark .atl-skin-leaf {
-  filter: drop-shadow(0 11px 15px rgba(0, 0, 0, 0.6)) brightness(0.94);
+  background-color: #3f6a28;
+  background-image:
+    radial-gradient(
+      120% 100% at 30% 18%,
+      rgba(255, 255, 255, 0.1) 0%,
+      rgba(0, 0, 0, 0) 42%,
+      rgba(0, 0, 0, 0.4) 100%
+    ),
+    var(--atl-tex-leaf, none),
+    linear-gradient(155deg, #547f37 0%, #355c22 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -16px 26px -18px rgba(0, 0, 0, 0.5),
+    0 12px 24px -10px rgba(0, 0, 0, 0.6);
 }
 
-/* A soft light scrim behind the note text so it stays legible over the veins. */
 .atl-skin-leaf .atl-rail-edit,
 .atl-skin-leaf .atl-rail-review,
 .atl-skin-leaf .atl-rail-question {
   color: var(--atl-leaf-ink);
-  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.5);
+  text-shadow: 0 1px 2px rgba(8, 24, 4, 0.55);
 }
 
+.atl-skin-leaf .atl-rail-edit::placeholder {
+  color: rgba(243, 249, 234, 0.6);
+}
+
+/* Cream, translucent-dark buttons that sit on the leaf — never white. */
 .atl-skin-leaf .atl-rail-card-head .atl-iconbtn {
-  color: rgba(20, 48, 11, 0.82);
-  border-color: rgba(20, 48, 11, 0.32);
-  background: rgba(255, 255, 255, 0.25);
+  color: rgba(243, 249, 234, 0.92);
+  border-color: rgba(243, 249, 234, 0.4);
+  background: rgba(12, 30, 6, 0.28);
+}
+
+.atl-skin-leaf .atl-rail-card-head .atl-iconbtn:hover {
+  color: #ffffff;
+  border-color: rgba(243, 249, 234, 0.85);
+  background: rgba(12, 30, 6, 0.5);
+}
+
+/* Keep the textured skins' layered shadow on hover (the base card's hover rule
+   would otherwise replace it with the plain theme shadow). */
+.atl-skin-sticky:hover,
+.atl-skin-leaf:hover {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -16px 24px -16px rgba(0, 0, 0, 0.28),
+    0 16px 28px -8px rgba(0, 0, 0, 0.46);
 }
 
 /* --- agent review, shown quietly inside the comment card ----------------- */

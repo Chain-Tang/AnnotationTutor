@@ -243,17 +243,29 @@ export function buildMarginCard(
   // its window resize listener (added for glare) never accumulates.
   if (options.skin.tilt) {
     const tilt = options.skin.tilt;
-    requestAnimationFrame(() => {
-      if (!card.isConnected) return;
+    const initTilt = (): void => {
+      if (!card.isConnected || (card as TiltElement).vanillaTilt) return;
       VanillaTilt.init(card, {
         max: tilt.max,
         glare: tilt.glare,
         "max-glare": tilt.maxGlare,
         speed: 400,
-        scale: 1.03,
-        perspective: 900,
+        scale: 1.02,
+        perspective: 1000,
         gyroscope: false
       });
+    };
+    requestAnimationFrame(initTilt);
+    // Suspend the tilt while the card is dragged by its head, so it doesn't lean
+    // away under the pointer (which made repositioning feel slippery), then
+    // restore it when the drag ends.
+    head.addEventListener("mousedown", () => {
+      (card as TiltElement).vanillaTilt?.destroy();
+      const restore = (): void => {
+        document.removeEventListener("mouseup", restore, true);
+        requestAnimationFrame(initTilt);
+      };
+      document.addEventListener("mouseup", restore, true);
     });
   }
 

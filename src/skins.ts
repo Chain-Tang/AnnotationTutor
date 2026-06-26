@@ -44,14 +44,14 @@ export const BUILTIN_SKINS: readonly SkinDef[] = [
     name: "Sticky note",
     builtin: true,
     quiet: true,
-    tilt: { max: 8, glare: true, maxGlare: 0.35 }
+    tilt: { max: 6, glare: true, maxGlare: 0.28 }
   },
   {
     id: "leaf",
     name: "Leaf",
     builtin: true,
     quiet: true,
-    tilt: { max: 10, glare: false, maxGlare: 0 }
+    tilt: { max: 6, glare: false, maxGlare: 0 }
   }
 ];
 

@@ -6,7 +6,7 @@ The built-in **Sticky note** and **Leaf** card skins use real photographic
 textures from [ambientCG](https://ambientcg.com), released under
 **CC0 1.0** (public domain):
 
-- **Paper001** — paper surface (sticky note).
+- **Paper005** — manila paper surface (sticky note).
 - **Leaf001** — photographed leaf (leaf skin).
 
 CC0 places no obligation on us, but we credit the source gratefully. The images

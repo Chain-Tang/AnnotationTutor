@@ -459,43 +459,40 @@
 }
 
 /* --- "Sticky note" skin --------------------------------------------------- */
-/* A physical paper note: a warm sheet with a faint fibre grain (an feTurbulence
-   SVG baked into a data URI, so it stays crisp at any zoom and costs nothing at
-   runtime), a soft drop shadow, a slight tilt, a curled corner, and a tape strip.
-   The text stays real editable DOM on top. */
+/* A physical paper note. The grain is a *lit* relief (feTurbulence run through
+   feDiffuseLighting with a distant light), not flat noise, so the fibres emboss
+   and catch light; it is soft-light-blended over a warm gradient. Layered inset
+   highlights/shadows fake the sheet's thickness, and vanilla-tilt (wired in
+   margin-card.ts) makes the note a GPU 3D object that leans toward the pointer
+   with a moving glare. The text stays real editable DOM on top. */
 .atl-skin-sticky {
-  --atl-sticky-paper: #fff4c2;
-  --atl-sticky-paper-2: #ffe79a;
+  --atl-sticky-paper: #fff3b0;
+  --atl-sticky-paper-2: #ffe27a;
   --atl-sticky-ink: #4a3f1d;
-  padding: var(--size-4-2) var(--size-4-3) var(--size-4-2);
+  padding: var(--size-4-4) var(--size-4-3) var(--size-4-3);
   color: var(--atl-sticky-ink);
   background-color: var(--atl-sticky-paper);
   background-image:
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='120' height='120' filter='url(%23n)' opacity='0.05'/></svg>"),
-    linear-gradient(160deg, var(--atl-sticky-paper) 0%, var(--atl-sticky-paper-2) 100%);
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='p' x='0' y='0' width='100%25' height='100%25'><feTurbulence type='fractalNoise' baseFrequency='0.5' numOctaves='4' seed='4' result='n'/><feDiffuseLighting in='n' surfaceScale='1.4' diffuseConstant='1' lighting-color='%23ffffff'><feDistantLight azimuth='235' elevation='60'/></feDiffuseLighting></filter><rect width='200' height='200' filter='url(%23p)'/></svg>"),
+    linear-gradient(158deg, var(--atl-sticky-paper) 0%, var(--atl-sticky-paper-2) 100%);
+  background-repeat: repeat, no-repeat;
+  background-size: 150px 150px, 100% 100%;
+  background-blend-mode: soft-light, normal;
   border: none;
   border-radius: 2px 2px 3px 3px;
+  transform-origin: center;
   box-shadow:
-    0 1px 1px rgba(0, 0, 0, 0.08),
-    0 8px 16px -6px rgba(0, 0, 0, 0.35);
-  transform: rotate(-1.2deg);
-  transform-origin: top center;
-  transition:
-    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 160ms cubic-bezier(0.22, 1, 0.36, 1);
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.04),
+    inset 0 -14px 20px -16px rgba(0, 0, 0, 0.22),
+    0 1px 1px rgba(0, 0, 0, 0.07),
+    0 12px 22px -8px rgba(0, 0, 0, 0.38);
 }
 
 .theme-dark .atl-skin-sticky {
   --atl-sticky-paper: #e9d27a;
   --atl-sticky-paper-2: #d9bd5c;
   --atl-sticky-ink: #2c2510;
-}
-
-.atl-skin-sticky:hover {
-  transform: rotate(-0.4deg) translateY(-1px);
-  box-shadow:
-    0 2px 2px rgba(0, 0, 0, 0.1),
-    0 14px 24px -8px rgba(0, 0, 0, 0.4);
 }
 
 /* A translucent strip of tape pinning the note at the top. It sits just inside
@@ -567,23 +564,17 @@
   background-repeat: no-repeat;
   background-position: center;
   background-size: 100% 100%;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 240' preserveAspectRatio='none'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23cde6a8'/><stop offset='1' stop-color='%238fc866'/></linearGradient><clipPath id='c'><path d='M100 4 C150 50 192 110 192 168 C192 214 150 236 100 236 C50 236 8 214 8 168 C8 110 50 50 100 4 Z'/></clipPath><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter></defs><g clip-path='url(%23c)'><rect width='200' height='240' fill='url(%23g)'/><rect width='200' height='240' filter='url(%23n)' opacity='0.05'/><g stroke='rgba(31,61,18,0.28)' stroke-width='1.6' fill='none' stroke-linecap='round'><path d='M100 14 L100 226'/><path d='M100 56 C74 50 54 58 36 84'/><path d='M100 92 C74 86 54 94 38 120'/><path d='M100 128 C74 122 56 130 44 156'/><path d='M100 56 C126 50 146 58 164 84'/><path d='M100 92 C126 86 146 94 162 120'/><path d='M100 128 C126 122 144 130 156 156'/></g></g><path d='M100 4 C150 50 192 110 192 168 C192 214 150 236 100 236 C50 236 8 214 8 168 C8 110 50 50 100 4 Z' fill='none' stroke='rgba(31,61,18,0.3)' stroke-width='2.5'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 240' preserveAspectRatio='none'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23d6ecb4'/><stop offset='1' stop-color='%237fbf57'/></linearGradient><radialGradient id='s' cx='0.5' cy='0.5' r='0.5'><stop offset='0' stop-color='%23ffffff' stop-opacity='0.5'/><stop offset='1' stop-color='%23ffffff' stop-opacity='0'/></radialGradient><clipPath id='c'><path d='M100 4 C150 50 192 110 192 168 C192 214 150 236 100 236 C50 236 8 214 8 168 C8 110 50 50 100 4 Z'/></clipPath><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter></defs><g clip-path='url(%23c)'><rect width='200' height='240' fill='url(%23g)'/><rect width='200' height='240' filter='url(%23n)' opacity='0.05'/><ellipse cx='74' cy='66' rx='95' ry='74' fill='url(%23s)'/><g stroke='rgba(31,61,18,0.3)' stroke-width='1.6' fill='none' stroke-linecap='round'><path d='M100 14 L100 226'/><path d='M100 56 C74 50 54 58 36 84'/><path d='M100 92 C74 86 54 94 38 120'/><path d='M100 128 C74 122 56 130 44 156'/><path d='M100 56 C126 50 146 58 164 84'/><path d='M100 92 C126 86 146 94 162 120'/><path d='M100 128 C126 122 144 130 156 156'/></g></g><path d='M100 4 C150 50 192 110 192 168 C192 214 150 236 100 236 C50 236 8 214 8 168 C8 110 50 50 100 4 Z' fill='none' stroke='rgba(31,61,18,0.32)' stroke-width='2.5'/></svg>");
   border: none;
   box-shadow: none;
-  filter: drop-shadow(0 8px 9px rgba(20, 50, 10, 0.42));
-  transform: rotate(-1deg);
-  transform-origin: top center;
-  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  filter: drop-shadow(0 9px 11px rgba(20, 50, 10, 0.45));
+  transform-origin: center;
 }
 
 .theme-dark .atl-skin-leaf {
   --atl-leaf-ink: #ecf6e2;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 240' preserveAspectRatio='none'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%236fa04a'/><stop offset='1' stop-color='%234f7d34'/></linearGradient><clipPath id='c'><path d='M100 4 C150 50 192 110 192 168 C192 214 150 236 100 236 C50 236 8 214 8 168 C8 110 50 50 100 4 Z'/></clipPath><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter></defs><g clip-path='url(%23c)'><rect width='200' height='240' fill='url(%23g)'/><rect width='200' height='240' filter='url(%23n)' opacity='0.06'/><g stroke='rgba(236,246,226,0.32)' stroke-width='1.6' fill='none' stroke-linecap='round'><path d='M100 14 L100 226'/><path d='M100 56 C74 50 54 58 36 84'/><path d='M100 92 C74 86 54 94 38 120'/><path d='M100 128 C74 122 56 130 44 156'/><path d='M100 56 C126 50 146 58 164 84'/><path d='M100 92 C126 86 146 94 162 120'/><path d='M100 128 C126 122 144 130 156 156'/></g></g><path d='M100 4 C150 50 192 110 192 168 C192 214 150 236 100 236 C50 236 8 214 8 168 C8 110 50 50 100 4 Z' fill='none' stroke='rgba(20,40,12,0.45)' stroke-width='2.5'/></svg>");
-  filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.5));
-}
-
-.atl-skin-leaf:hover {
-  transform: rotate(0.6deg) translateY(-1px);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 240' preserveAspectRatio='none'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%236fa04a'/><stop offset='1' stop-color='%234f7d34'/></linearGradient><radialGradient id='s' cx='0.5' cy='0.5' r='0.5'><stop offset='0' stop-color='%23ffffff' stop-opacity='0.32'/><stop offset='1' stop-color='%23ffffff' stop-opacity='0'/></radialGradient><clipPath id='c'><path d='M100 4 C150 50 192 110 192 168 C192 214 150 236 100 236 C50 236 8 214 8 168 C8 110 50 50 100 4 Z'/></clipPath><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter></defs><g clip-path='url(%23c)'><rect width='200' height='240' fill='url(%23g)'/><rect width='200' height='240' filter='url(%23n)' opacity='0.06'/><ellipse cx='74' cy='66' rx='95' ry='74' fill='url(%23s)'/><g stroke='rgba(236,246,226,0.32)' stroke-width='1.6' fill='none' stroke-linecap='round'><path d='M100 14 L100 226'/><path d='M100 56 C74 50 54 58 36 84'/><path d='M100 92 C74 86 54 94 38 120'/><path d='M100 128 C74 122 56 130 44 156'/><path d='M100 56 C126 50 146 58 164 84'/><path d='M100 92 C126 86 146 94 162 120'/><path d='M100 128 C126 122 144 130 156 156'/></g></g><path d='M100 4 C150 50 192 110 192 168 C192 214 150 236 100 236 C50 236 8 214 8 168 C8 110 50 50 100 4 Z' fill='none' stroke='rgba(20,40,12,0.45)' stroke-width='2.5'/></svg>");
+  filter: drop-shadow(0 9px 12px rgba(0, 0, 0, 0.55));
 }
 
 .atl-skin-leaf .atl-rail-edit,

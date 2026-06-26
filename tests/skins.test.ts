@@ -89,14 +89,29 @@ describe("resolveRailSkin", () => {
     { id: "sunset", name: "Sunset", builtin: false, quiet: true, css: ".y{}" }
   ]);
 
-  it("resolves a known id to its id + quiet flag", () => {
-    expect(resolveRailSkin("sticky", all)).toEqual({ id: "sticky", quiet: true });
-    expect(resolveRailSkin("flat", all)).toEqual({ id: "flat", quiet: false });
-    expect(resolveRailSkin("sunset", all)).toEqual({ id: "sunset", quiet: true });
+  it("resolves a known id to its id + quiet flag + tilt", () => {
+    const sticky = resolveRailSkin("sticky", all);
+    expect(sticky).toMatchObject({ id: "sticky", quiet: true });
+    expect(sticky.tilt?.glare).toBe(true);
+    expect(resolveRailSkin("flat", all)).toEqual({
+      id: "flat",
+      quiet: false,
+      tilt: null
+    });
+    // A custom skin with no tilt spec resolves to tilt: null.
+    expect(resolveRailSkin("sunset", all)).toEqual({
+      id: "sunset",
+      quiet: true,
+      tilt: null
+    });
   });
 
   it("falls back to flat for an unknown id", () => {
-    expect(resolveRailSkin("ghost", all)).toEqual({ id: "flat", quiet: false });
+    expect(resolveRailSkin("ghost", all)).toEqual({
+      id: "flat",
+      quiet: false,
+      tilt: null
+    });
   });
 });
 

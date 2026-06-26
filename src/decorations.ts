@@ -40,7 +40,7 @@ const DEFAULT_CONFIG: MarkerConfig = {
   style: "dotted-underline",
   showMarker: true,
   marginComments: true,
-  skin: { id: "flat", quiet: false },
+  skin: { id: "flat", quiet: false, tilt: null },
   marginHideLink: false,
   inlineReview: true
 };

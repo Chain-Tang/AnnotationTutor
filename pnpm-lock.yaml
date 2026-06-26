@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      vanilla-tilt:
+        specifier: ^1.8.1
+        version: 1.8.1
       yaml:
         specifier: ^2.9.0
         version: 2.9.0
@@ -579,6 +582,9 @@ packages:
   undici-types@6.21.0:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
 
+  vanilla-tilt@1.8.1:
+    resolution: {integrity: sha512-hPB1XUsnh+SIeVSW2beb5RnuFxz4ZNgxjGD78o52F49gS4xaoLeEMh9qrQnJrnEn/vjjBI7IlxrrXmz4tGV0Kw==}
+
   vite@8.0.16:
     resolution: {integrity: sha512-h9bXPmJichP5fLmVQo3PyaGSDE2n3aPuomeAlVRm0JLmt4rY6zmPKd59HYI4LNW8oTK7tlTsuC7l/m7awx9Jcw==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -1099,6 +1105,8 @@ snapshots:
   typescript@5.9.3: {}
 
   undici-types@6.21.0: {}
+
+  vanilla-tilt@1.8.1: {}
 
   vite@8.0.16(@types/node@22.19.20)(esbuild@0.28.0)(yaml@2.9.0):
     dependencies:

@@ -31,7 +31,7 @@ export class ReadingRail {
   private observers: ResizeObserver[] = [];
   private hostObserver: ResizeObserver | null = null;
   private marks: AnchorMark[] = [];
-  private skin: RailSkin = { id: "flat", quiet: false };
+  private skin: RailSkin = { id: "flat", quiet: false, tilt: null };
   private hideLink = false;
   private showReview = true;
   private frame = 0;

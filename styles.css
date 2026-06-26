@@ -466,32 +466,29 @@
    thickness, and vanilla-tilt (wired in margin-card.ts) makes the note a GPU 3D
    object that leans toward the pointer with a moving glare. Text is editable DOM. */
 .atl-skin-sticky {
-  --atl-sticky-ink: #4a3f1d;
+  --atl-sticky-ink: #41331a;
   padding: var(--size-4-4) var(--size-4-3) var(--size-4-3);
   color: var(--atl-sticky-ink);
-  background-color: #fff3b0;
+  background-color: #d9ba8c;
   background-image:
-    linear-gradient(158deg, #fff3ad 0%, #ffd95c 100%),
+    linear-gradient(158deg, rgba(255, 250, 235, 0.18) 0%, rgba(74, 52, 22, 0.14) 100%),
     var(--atl-tex-paper, none);
   background-repeat: no-repeat, repeat;
   background-size: 100% 100%, 150px 150px;
-  background-blend-mode: multiply, normal;
+  background-blend-mode: soft-light, normal;
   border: none;
   border-radius: 2px 2px 3px 3px;
   transform-origin: center;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.5),
-    inset 0 0 0 1px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.05),
     inset 0 -16px 22px -16px rgba(0, 0, 0, 0.22),
     0 1px 1px rgba(0, 0, 0, 0.08),
     0 13px 24px -8px rgba(0, 0, 0, 0.42);
 }
 
 .theme-dark .atl-skin-sticky {
-  --atl-sticky-ink: #2c2510;
-  background-image:
-    linear-gradient(158deg, #ecd277 0%, #d6b945 100%),
-    var(--atl-tex-paper, none);
+  --atl-sticky-ink: #2a2110;
 }
 
 /* A translucent strip of tape pinning the note at the top. It sits just inside

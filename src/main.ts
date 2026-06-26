@@ -99,6 +99,7 @@ import {
   type SkinDef
 } from "./skins.js";
 import { SkinLoader } from "./skin-loader.js";
+import { PAPER_TEXTURE, LEAF_TEXTURE } from "./textures.js";
 import { highlightFirst } from "./reading-highlight.js";
 import { setLanguage, t } from "./i18n.js";
 import {
@@ -223,6 +224,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       (paths) => this.onMemoryChanged(paths)
     );
 
+    this.applyTextureVars();
     this.skinLoader = new SkinLoader(this.app, this.manifest.dir ?? "");
     this.customSkins = await this.skinLoader.loadCustomSkins();
     this.applySkinCss();
@@ -365,6 +367,8 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     this.skinLoader?.unload();
     document.body.style.removeProperty("--atl-hl-color");
     document.body.style.removeProperty("--atl-hl-bg-color");
+    document.body.style.removeProperty("--atl-tex-paper");
+    document.body.style.removeProperty("--atl-tex-leaf");
     setMarkerClickHandler(null);
     setMarginCardHandlers(null);
     setCardGeomStore(null);
@@ -446,6 +450,17 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   /** The skin (id + quiet flag) the rails should render right now. */
   public activeRailSkin(): RailSkin {
     return resolveRailSkin(this.settings.cardSkin, this.allSkins());
+  }
+
+  /**
+   * Publish the real CC0 paper/leaf textures as CSS custom properties on <body>,
+   * so the Sticky note / Leaf skin rules in styles.css can reference them without
+   * inlining ~150KB of base64 into the stylesheet. Removed on unload.
+   */
+  private applyTextureVars(): void {
+    const { style } = document.body;
+    style.setProperty("--atl-tex-paper", `url("${PAPER_TEXTURE}")`);
+    style.setProperty("--atl-tex-leaf", `url("${LEAF_TEXTURE}")`);
   }
 
   /** Push the active skin's custom CSS into the document (no-op for built-ins). */

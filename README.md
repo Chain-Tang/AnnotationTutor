@@ -8,6 +8,7 @@
 
 **Turn what you read into learning memory your AI tutor can actually use —
 all in plain Markdown, all on your machine.**
+![Uploading image.png…]()
 
 [![Release](https://img.shields.io/github/v/release/Chain-Tang/AnnotationTutor?label=release&color=7c3aed)](https://github.com/Chain-Tang/AnnotationTutor/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/Chain-Tang/AnnotationTutor/total?color=7c3aed)](https://github.com/Chain-Tang/AnnotationTutor/releases)

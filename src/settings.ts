@@ -14,10 +14,13 @@ import {
   type ShortcutCommandId
 } from "./hotkeys.js";
 import { AnnotationTable } from "./views/annotation-table.js";
+import { parseMcpConfig } from "./mcp-config.js";
 import {
   DEFAULT_SETTINGS,
   MIN_AGENT_TIMEOUT_SECONDS,
   MIN_PRETRANSLATE_CHUNK_CHARS,
+  agentPermissionPolicies,
+  type AgentPermissionPolicy,
   type AnnotationTutorLiteSettings,
   type HighlightStyle,
   type MemoryWriteMode,
@@ -252,6 +255,21 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
               : DEFAULT_SETTINGS.pretranslateChunkChars;
           this.plugin.settings.pretranslateChunkChars = next;
           text.setValue(String(next));
+          void this.plugin.persistSettings();
+        });
+      });
+
+    this.addToggle(container, "set.excalidrawAssist", "excalidrawAssist");
+
+    new Setting(container)
+      .setName(t("set.webCaptureViewTypes"))
+      .setDesc(t("set.webCaptureViewTypesDesc"))
+      .addText((text) => {
+        text
+          .setPlaceholder("surfing-book-view")
+          .setValue(this.plugin.settings.webCaptureViewTypes);
+        text.inputEl.addEventListener("blur", () => {
+          this.plugin.settings.webCaptureViewTypes = text.getValue().trim();
           void this.plugin.persistSettings();
         });
       });
@@ -882,6 +900,66 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       ],
       [t("set.testConnection"), () => this.plugin.testAgentConnection()]
     ]);
+
+    new Setting(container)
+      .setName(t("set.mcpServers"))
+      .setDesc(t("set.mcpServersDesc"))
+      .addTextArea((area) => {
+        area.setPlaceholder(
+          '{ "mcpServers": { "fetch": { "command": "uvx", "args": ["mcp-server-fetch"] } } }'
+        );
+        area.setValue(this.plugin.settings.mcpServersJson);
+        area.inputEl.rows = 6;
+        area.inputEl.addClass("atl-mcp-input");
+        area.inputEl.addEventListener("blur", () => {
+          const value = area.getValue().trim();
+          if (value) {
+            const parsed = parseMcpConfig(value);
+            if (!parsed.ok) {
+              // Keep the draft saved so nothing is lost; the chat warns again
+              // when the session starts.
+              new Notice(t("notice.mcpConfigError", { detail: parsed.error }));
+            }
+          }
+          this.plugin.settings.mcpServersJson = value;
+          void this.plugin.persistSettings();
+        });
+      });
+
+    new Setting(container)
+      .setName(t("set.permPolicy"))
+      .setDesc(t("set.permPolicyDesc"))
+      .addDropdown((dropdown) => {
+        const options: Record<string, string> = {};
+        for (const policy of agentPermissionPolicies) {
+          options[policy] = t(`set.permPolicy.${policy}`);
+        }
+        dropdown
+          .addOptions(options)
+          .setValue(this.plugin.settings.agentPermissionPolicy)
+          .onChange(async (value) => {
+            this.plugin.settings.agentPermissionPolicy =
+              value as AgentPermissionPolicy;
+            await this.plugin.persistSettings();
+          });
+      });
+
+    new Setting(container)
+      .setName(t("set.alwaysAllowTools"))
+      .setDesc(t("set.alwaysAllowToolsDesc"))
+      .addText((text) => {
+        text
+          .setPlaceholder("write, edit")
+          .setValue(this.plugin.settings.alwaysAllowTools.join(", "));
+        text.inputEl.addEventListener("blur", () => {
+          this.plugin.settings.alwaysAllowTools = text
+            .getValue()
+            .split(",")
+            .map((item) => item.trim())
+            .filter((item) => item !== "");
+          void this.plugin.persistSettings();
+        });
+      });
   }
 
   /** A text field bound to one of the API engine's string settings. */

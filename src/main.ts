@@ -6,6 +6,7 @@ import {
   MarkdownRenderer,
   MarkdownView,
   Menu,
+  Modal,
   Notice,
   Plugin,
   TFile,
@@ -107,7 +108,31 @@ import {
   DashboardView
 } from "./views/dashboard-view.js";
 import { CHAT_VIEW_TYPE, ChatView, type ChatMode } from "./views/chat-view.js";
-import { startAcpSession, type AcpSessionHandle, type AcpStreamEvent } from "./acp-session.js";
+import {
+  startAcpSession,
+  type AcpSessionHandle,
+  type AcpStreamEvent,
+  type PermissionChoice
+} from "./acp-session.js";
+import { parseMcpConfig, type McpParseResult } from "./mcp-config.js";
+import { openPermissionModal } from "./views/permission-modal.js";
+import {
+  buildCaptureNote,
+  captureNoteStem,
+  isBrowserLikeView,
+  type WebCaptureInput
+} from "./web-capture.js";
+import {
+  parseCslJson,
+  zoteroCaptureNote,
+  type ZoteroEntry
+} from "./zotero-import.js";
+import {
+  BUILTIN_COMMAND_DIR,
+  BUILTIN_COMMANDS,
+  builtinCommandFile
+} from "./builtin-commands.js";
+import { isExcalidrawDoc, sanitizeExcalidrawDoc } from "./excalidraw-guard.js";
 import { tutorSystemPrompt, type ChatContext } from "./chat-prompt.js";
 import { classifyIntent, extractAnnotationId } from "./intent.js";
 import { buildEditInstruction, padBlockInsertion, resolveEdit } from "./edit-parse.js";
@@ -181,6 +206,9 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   private notebook!: NotebookController;
   // Memory cells, SM-2 spaced review, and opt-in feedback, wired in onload.
   public review!: ReviewController;
+  // Excalidraw notes currently being repaired by the guard, so our own write
+  // does not re-trigger the sanitize hook in a loop.
+  private readonly excalidrawBusy = new Set<string>();
 
   /**
    * HTTP transport for the direct-API engine. Routes through Obsidian's
@@ -356,6 +384,14 @@ export default class AnnotationTutorLitePlugin extends Plugin {
         this.watcher.notify(file.path);
         this.watcher.notify(oldPath);
       })
+    );
+    // Repair agent-generated Excalidraw JSON as soon as it lands, so the
+    // drawing plugin can parse it even when the LLM bent the format rules.
+    this.registerEvent(
+      this.app.vault.on("create", (file) => void this.sanitizeExcalidrawFile(file))
+    );
+    this.registerEvent(
+      this.app.vault.on("modify", (file) => void this.sanitizeExcalidrawFile(file))
     );
 
     this.app.workspace.onLayoutReady(() => void this.initialize());
@@ -825,6 +861,21 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       id: "strength-reinforcement",
       name: t("cmd.strengthReinforcement"),
       callback: () => void this.review.generateStrengthReinforcement()
+    });
+    this.addCommand({
+      id: "install-builtin-commands",
+      name: t("cmd.installBuiltin"),
+      callback: () => void this.installBuiltinCommands()
+    });
+    this.addCommand({
+      id: "capture-web-selection",
+      name: t("cmd.captureWeb"),
+      callback: () => void this.captureWebSelection()
+    });
+    this.addCommand({
+      id: "import-zotero-csl",
+      name: t("cmd.importZotero"),
+      callback: () => this.openZoteroImportModal()
     });
   }
 
@@ -2049,20 +2100,250 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     };
   }
 
-  /** Spawn a persistent OpenCode ACP session for the chat (read-only fs). */
+  /** Spawn a persistent OpenCode ACP session for the chat. */
   public async startChatSession(handlers: {
     onUpdate: (event: AcpStreamEvent) => void;
     onExit: (reason: string) => void;
   }): Promise<AcpSessionHandle> {
+    // Learners paste MCP server configs straight from docs/other tools; parse
+    // failures must not block the session, just warn.
+    const rawMcp = this.settings.mcpServersJson.trim();
+    const parsed: McpParseResult = rawMcp
+      ? parseMcpConfig(rawMcp)
+      : { ok: true, servers: [] };
+    if (!parsed.ok) new Notice(t("notice.mcpConfigError", { detail: parsed.error }));
     return startAcpSession({
       command: this.settings.agentCommand.trim() || "opencode",
       model: this.settings.agentModel,
       cwd: this.vaultBasePath() ?? tmpdir(),
+      mcpServers: parsed.ok ? parsed.servers : [],
+      requestPermission: (tool) => this.askAgentPermission(tool),
       onUpdate: handlers.onUpdate,
       onExit: handlers.onExit,
       readFile: (path) => this.readVaultFileForAgent(path),
       startTimeoutMs: Math.max(60000, this.settings.agentTimeoutSeconds * 1000)
     });
+  }
+
+  /**
+   * Resolve an agent write/execute permission request per the configured
+   * policy. Read-only kinds never reach this callback (auto-allowed upstream).
+   */
+  private askAgentPermission(tool: {
+    kind?: string;
+    title?: string;
+  }): Promise<PermissionChoice> {
+    const policy = this.settings.agentPermissionPolicy;
+    if (policy === "auto") return Promise.resolve("allow_once");
+    if (policy === "readonly") return Promise.resolve("reject_once");
+    const name = (tool.title ?? tool.kind ?? "").trim().toLowerCase();
+    const always = this.settings.alwaysAllowTools.some((allowed) => {
+      const item = allowed.trim().toLowerCase();
+      return item !== "" && (name === item || name.includes(item));
+    });
+    if (always) return Promise.resolve("allow_once");
+    return new Promise((resolve) => openPermissionModal(this.app, tool, resolve));
+  }
+
+  // --- P2/P3 entry points -----------------------------------------------------
+
+  /** Capture notes (web selection, Zotero import) live beside the agent inbox. */
+  private captureDir(): string {
+    return `${this.store.memoryRoot()}/captures`;
+  }
+
+  /** Recursive folder creation; Obsidian only creates one level per call. */
+  private async ensureVaultFolder(folder: string): Promise<void> {
+    const path = normalizePath(folder);
+    if (!path || path === "." || path === "/") return;
+    if (this.app.vault.getAbstractFileByPath(path)) return;
+    const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+    if (parent) await this.ensureVaultFolder(parent);
+    try {
+      await this.app.vault.createFolder(path);
+    } catch {
+      // A concurrent writer may have created it already; safe to continue.
+    }
+  }
+
+  /** Create a note under `folder`, bumping the stem when the name is taken. */
+  private async createVaultNote(
+    folder: string,
+    stem: string,
+    content: string
+  ): Promise<TFile> {
+    await this.ensureVaultFolder(folder);
+    let path = normalizePath(`${folder}/${stem}.md`);
+    let counter = 1;
+    while (this.app.vault.getAbstractFileByPath(path)) {
+      path = normalizePath(`${folder}/${stem} ${counter}.md`);
+      counter += 1;
+    }
+    return this.app.vault.create(path, content);
+  }
+
+  /** Install bundled OpenCode slash commands (excalidraw-diagram) into the Vault. */
+  private async installBuiltinCommands(): Promise<void> {
+    let installed = 0;
+    let skipped = 0;
+    for (const command of BUILTIN_COMMANDS) {
+      const path = normalizePath(`${BUILTIN_COMMAND_DIR}/${command.name}.md`);
+      if (this.app.vault.getAbstractFileByPath(path)) {
+        skipped += 1;
+        continue;
+      }
+      await this.ensureVaultFolder(BUILTIN_COMMAND_DIR);
+      await this.app.vault.create(path, builtinCommandFile(command));
+      installed += 1;
+    }
+    new Notice(t("notice.builtinInstalled", { installed, skipped }));
+  }
+
+  /**
+   * Capture the current selection from an embedded browser view (Surfing and
+   * friends) into a learning capture note — the Zotero-style "into library"
+   * step, except the destination is the annotation loop.
+   */
+  private async captureWebSelection(): Promise<void> {
+    const view = this.app.workspace.activeLeaf?.view;
+    const extra = this.settings.webCaptureViewTypes
+      .split(",")
+      .map((item) => item.trim())
+      .filter((item) => item !== "");
+    if (!view || !isBrowserLikeView(view.getViewType(), extra)) {
+      new Notice(t("notice.captureNotBrowser"));
+      return;
+    }
+    const selection = window.getSelection()?.toString().trim() ?? "";
+    if (!selection) {
+      new Notice(t("notice.captureNoSelection"));
+      return;
+    }
+    const url = this.browserViewUrl(view);
+    const title = url ? await this.fetchPageTitle(url) : undefined;
+    const input: WebCaptureInput = {
+      selection,
+      capturedAt: nowIso(),
+      ...(url ? { url } : {}),
+      ...(title ? { title } : {})
+    };
+    const file = await this.createVaultNote(
+      this.captureDir(),
+      captureNoteStem(input),
+      buildCaptureNote(input, this.captureBlockId())
+    );
+    new Notice(t("notice.captureSaved", { path: file.path }));
+    await this.app.workspace.getLeaf(false).openFile(file);
+  }
+
+  /** Best-effort current URL of an embedded browser view (plugins differ). */
+  private browserViewUrl(view: unknown): string {
+    const candidate = view as {
+      getUrl?: () => unknown;
+      navigation?: { url?: unknown };
+      currentUrl?: unknown;
+      url?: unknown;
+    };
+    try {
+      const fromFn =
+        typeof candidate.getUrl === "function" ? candidate.getUrl() : undefined;
+      const value =
+        fromFn ?? candidate.navigation?.url ?? candidate.currentUrl ?? candidate.url;
+      return typeof value === "string" && /^https?:\/\//.test(value) ? value : "";
+    } catch {
+      return "";
+    }
+  }
+
+  /** Fetch a page just to read its <title>; any failure leaves title unset. */
+  private async fetchPageTitle(url: string): Promise<string | undefined> {
+    try {
+      const response = await requestUrl({ url, method: "GET", throw: false });
+      if (response.status < 200 || response.status >= 300) return undefined;
+      const match = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(response.text);
+      const title = match?.[1]?.replace(/\s+/g, " ").trim();
+      return title ? title.slice(0, 120) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** A block id the capture note's quote can anchor to. */
+  private captureBlockId(): string {
+    return `cap-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  /** Paste-a-CSL-JSON modal feeding importZoteroEntries. */
+  private openZoteroImportModal(): void {
+    const plugin = this;
+    const modal = new (class extends Modal {
+      public override onOpen(): void {
+        this.contentEl.empty();
+        this.titleEl.setText(t("zotero.title"));
+        this.contentEl.createEl("p", { text: t("zotero.hint") });
+        const area = this.contentEl.createEl("textarea", {
+          cls: "atl-zotero-input"
+        });
+        area.placeholder =
+          '[{ "title": "...", "author": [{ "family": "...", "given": "..." }] }]';
+        const actions = this.contentEl.createDiv({ cls: "atl-zotero-actions" });
+        const button = actions.createEl("button", {
+          cls: "mod-cta",
+          text: t("zotero.import")
+        });
+        button.onclick = async () => {
+          const result = parseCslJson(area.value);
+          if (!result.ok) {
+            new Notice(t("zotero.parseError"));
+            return;
+          }
+          this.close();
+          await plugin.importZoteroEntries(result.entries);
+        };
+      }
+    })(this.app);
+    modal.open();
+  }
+
+  /** One capture note per imported entry, then open the first one. */
+  public async importZoteroEntries(entries: ZoteroEntry[]): Promise<void> {
+    const capturedAt = nowIso();
+    let first: TFile | null = null;
+    for (const entry of entries) {
+      const stem = captureNoteStem({
+        selection: entry.title,
+        title: entry.title,
+        capturedAt
+      });
+      const file = await this.createVaultNote(
+        this.captureDir(),
+        stem,
+        zoteroCaptureNote(entry, capturedAt, this.captureBlockId())
+      );
+      first ??= file;
+    }
+    new Notice(t("zotero.done", { count: entries.length }));
+    if (first) await this.app.workspace.getLeaf(false).openFile(first);
+  }
+
+  /**
+   * Excalidraw guard: repair LLM-generated drawing JSON in place. Only runs on
+   * Excalidraw notes and only rewrites when a repair actually changed content.
+   */
+  private async sanitizeExcalidrawFile(file: unknown): Promise<void> {
+    if (!this.settings.excalidrawAssist) return;
+    if (!(file instanceof TFile) || file.extension !== "md") return;
+    if (this.excalidrawBusy.has(file.path)) return;
+    const content = await this.app.vault.cachedRead(file);
+    if (!isExcalidrawDoc(content)) return;
+    const repaired = sanitizeExcalidrawDoc(content);
+    if (repaired === null || !repaired.repaired) return;
+    this.excalidrawBusy.add(file.path);
+    try {
+      await this.app.vault.modify(file, repaired.content);
+    } finally {
+      this.excalidrawBusy.delete(file.path);
+    }
   }
 
   /** Find an annotation the learner is asking to locate (by id, else by text). */

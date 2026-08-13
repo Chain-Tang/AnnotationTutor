@@ -22,12 +22,27 @@ import { createInterface } from "node:readline";
 import { spawnEnv } from "./agent-runner.js";
 import { resolveAcpSpawn } from "./acp-runner.js";
 
+/** One slash command the agent runtime advertises (available_commands_update). */
+export type AcpCommand = { name: string; description?: string };
+
+/** A stdio MCP server passed to `session/new` (the only kind ACP requires). */
+export type McpServerConfig = {
+  name: string;
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+};
+
+/** The learner's answer to an interactive permission prompt. */
+export type PermissionChoice = "allow_once" | "allow_always" | "reject_once";
+
 /** A streamed event surfaced to the chat UI as a turn unfolds. */
 export type AcpStreamEvent =
   | { type: "message"; text: string }
   | { type: "thought"; text: string }
   | { type: "tool"; title: string; status?: string }
-  | { type: "mode"; mode: string };
+  | { type: "mode"; mode: string }
+  | { type: "commands"; commands: AcpCommand[] };
 
 /** The result of one prompt turn. */
 export type AcpTurnResult = {
@@ -43,6 +58,13 @@ export type AcpSessionOptions = {
   onUpdate: (event: AcpStreamEvent) => void;
   /** Serve a file the agent asks to read, already guarded to the Vault. null = refuse. */
   readFile?: (path: string) => Promise<string | null>;
+  /** Stdio MCP servers handed to `session/new`. Omitted = none. */
+  mcpServers?: McpServerConfig[];
+  /**
+   * Interactive gate for write/execute permission prompts (reads are
+   * auto-allowed without consulting it). Absent = decline, as before.
+   */
+  requestPermission?: (tool: { kind?: string; title?: string }) => Promise<PermissionChoice>;
 };
 
 type Outgoing = Record<string, unknown>;
@@ -60,6 +82,7 @@ type Incoming = {
       status?: string;
       kind?: string;
       content?: { type?: string; text?: string };
+      availableCommands?: { name?: string; description?: string }[];
     };
     toolCall?: { kind?: string; title?: string };
     options?: PermissionOption[];
@@ -86,16 +109,13 @@ export function isReadOnlyTool(tool?: { kind?: string; title?: string }): boolea
  * and command execution are declined (the preview-then-apply edit flow handles
  * those). Pure, so it is unit-tested.
  */
-export function permissionOutcome(
+/** Select the first offered option matching one of `kinds` (in priority order). */
+export function pickPermissionOption(
   params: PermissionParams,
-  allowReads: boolean
+  kinds: string[]
 ): Record<string, unknown> {
-  const allow = allowReads && isReadOnlyTool(params.toolCall);
   const options = params.options ?? [];
-  const want = allow
-    ? ["allow_once", "allow_always", "allow"]
-    : ["reject_once", "reject_always", "reject"];
-  for (const kind of want) {
+  for (const kind of kinds) {
     const match = options.find(
       (o) => (o.kind ?? "").toLowerCase() === kind && o.optionId
     );
@@ -104,6 +124,19 @@ export function permissionOutcome(
     }
   }
   return { outcome: { outcome: "cancelled" } };
+}
+
+export function permissionOutcome(
+  params: PermissionParams,
+  allowReads: boolean
+): Record<string, unknown> {
+  const allow = allowReads && isReadOnlyTool(params.toolCall);
+  return pickPermissionOption(
+    params,
+    allow
+      ? ["allow_once", "allow_always", "allow"]
+      : ["reject_once", "reject_always", "reject"]
+  );
 }
 
 export class AcpSession {
@@ -115,6 +148,7 @@ export class AcpSession {
   private startGate: Promise<void> | null = null;
   private closed = false;
   private failure: string | null = null;
+  private advertisedCommands: AcpCommand[] = [];
 
   public constructor(
     private readonly send: (message: Outgoing) => void,
@@ -123,6 +157,11 @@ export class AcpSession {
 
   public get error(): string | null {
     return this.failure;
+  }
+
+  /** The latest slash-command list the runtime advertised (empty until then). */
+  public get commands(): AcpCommand[] {
+    return this.advertisedCommands;
   }
 
   /** Run the handshake once; resolves when the session is ready (or failed). */
@@ -211,7 +250,14 @@ export class AcpSession {
       if (init.error) throw new Error(init.error.message ?? "initialize failed");
       const created = await this.request("session/new", {
         cwd: this.opts.cwd,
-        mcpServers: []
+        mcpServers: (this.opts.mcpServers ?? []).map((server) => ({
+          name: server.name,
+          command: server.command,
+          ...(server.args && server.args.length > 0 ? { args: server.args } : {}),
+          ...(server.env && Object.keys(server.env).length > 0
+            ? { env: Object.entries(server.env).map(([name, value]) => ({ name, value })) }
+            : {})
+        }))
       });
       if (created.error) throw new Error(created.error.message ?? "session/new failed");
       this.sessionId = created.result?.sessionId ?? null;
@@ -258,6 +304,18 @@ export class AcpSession {
         title: update.title ?? update.kind ?? "tool",
         ...(update.status ? { status: update.status } : {})
       });
+    } else if (kind === "available_commands_update") {
+      const commands: AcpCommand[] = [];
+      for (const command of update.availableCommands ?? []) {
+        const name = command?.name?.trim();
+        if (!name) continue;
+        commands.push({
+          name,
+          ...(command.description?.trim() ? { description: command.description.trim() } : {})
+        });
+      }
+      this.advertisedCommands = commands;
+      this.opts.onUpdate({ type: "commands", commands });
     }
   }
 
@@ -282,15 +340,42 @@ export class AcpSession {
       return;
     }
     if (method.includes("request_permission")) {
-      this.send({
-        jsonrpc: "2.0",
-        id,
-        result: permissionOutcome(message.params ?? {}, true)
-      });
+      void this.answerPermission(message);
       return;
     }
     // We advertised no other client capability.
     this.send({ jsonrpc: "2.0", id, error: { code: -32601, message: "unsupported" } });
+  }
+  /**
+   * Answer a permission prompt: reads auto-allow, writes/executes go through
+   * the interactive gate when one is wired, and decline otherwise. A prompt
+   * racing with dispose() is dropped rather than answered.
+   */
+  private async answerPermission(message: Incoming): Promise<void> {
+    const params = message.params ?? {};
+    const tool = params.toolCall;
+    let choice: PermissionChoice = "reject_once";
+    if (isReadOnlyTool(tool)) {
+      choice = "allow_once";
+    } else if (this.opts.requestPermission) {
+      try {
+        choice = await this.opts.requestPermission(tool ?? {});
+      } catch {
+        choice = "reject_once";
+      }
+    }
+    if (this.closed) return;
+    const kinds =
+      choice === "allow_once"
+        ? ["allow_once", "allow"]
+        : choice === "allow_always"
+          ? ["allow_always", "allow_once", "allow"]
+          : ["reject_once", "reject_always", "reject"];
+    this.send({
+      jsonrpc: "2.0",
+      id: message.id,
+      result: pickPermissionOption(params, kinds)
+    });
   }
 }
 
@@ -306,6 +391,8 @@ export async function startAcpSession(opts: {
   cwd: string;
   onUpdate: (event: AcpStreamEvent) => void;
   readFile?: (path: string) => Promise<string | null>;
+  mcpServers?: McpServerConfig[];
+  requestPermission?: (tool: { kind?: string; title?: string }) => Promise<PermissionChoice>;
   onExit?: (reason: string) => void;
   startTimeoutMs?: number;
 }): Promise<AcpSessionHandle> {
@@ -337,7 +424,9 @@ export async function startAcpSession(opts: {
       cwd: opts.cwd,
       model: opts.model,
       onUpdate: opts.onUpdate,
-      ...(opts.readFile ? { readFile: opts.readFile } : {})
+      ...(opts.readFile ? { readFile: opts.readFile } : {}),
+      ...(opts.mcpServers ? { mcpServers: opts.mcpServers } : {}),
+      ...(opts.requestPermission ? { requestPermission: opts.requestPermission } : {})
     }
   );
 

@@ -30,7 +30,16 @@ import {
   type ChatContext
 } from "../chat-prompt.js";
 import type { ChatMessage } from "../api-runner.js";
-import type { AcpSessionHandle, AcpStreamEvent } from "../acp-session.js";
+import type {
+  AcpCommand,
+  AcpSessionHandle,
+  AcpStreamEvent
+} from "../acp-session.js";
+import {
+  createFrameBatcher,
+  foldStreamSegments,
+  type ChatSegment
+} from "../chat-stream.js";
 
 /** An annotation pinned as the conversation's context (from a margin card). */
 type PinnedAnnotation = {
@@ -56,11 +65,14 @@ export class ChatView extends ItemView {
   private lastSentNotePath = ""; // so we can re-index OpenCode when the note changes
   private pinned: PinnedAnnotation | null = null;
   private readonly apiHistory: ChatMessage[] = [];
+  /** Slash commands the live OpenCode session has advertised (empty for API). */
+  private commands: AcpCommand[] = [];
 
   private messagesEl!: HTMLElement;
   private contextEl!: HTMLElement;
   private inputEl!: HTMLTextAreaElement;
   private sendBtn!: HTMLButtonElement;
+  private commandPopupEl!: HTMLElement;
 
   public constructor(
     leaf: WorkspaceLeaf,
@@ -143,14 +155,26 @@ export class ChatView extends ItemView {
     void this.renderContext();
 
     const inputRow = root.createDiv({ cls: "atl-chat-input-row" });
+    // The `/` command popup renders in-flow just above the input row; it is
+    // collapsed (hidden) until a slash query matches advertised commands.
+    inputRow.insertAdjacentElement(
+      "beforebegin",
+      (this.commandPopupEl = root.createDiv({ cls: "atl-chat-commands" }))
+    );
     this.inputEl = inputRow.createEl("textarea", { cls: "atl-chat-input" });
     this.inputEl.placeholder = t("chat.placeholder");
     this.inputEl.rows = 2;
     this.inputEl.addEventListener("keydown", (event) => {
+      if (this.navigateCommandPopup(event)) return;
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
         void this.send();
       }
+    });
+    this.inputEl.addEventListener("input", () => this.updateCommandPopup());
+    this.inputEl.addEventListener("blur", () => {
+      // Delay so a click inside the popup still lands before it hides.
+      window.setTimeout(() => this.hideCommandPopup(), 150);
     });
     this.sendBtn = inputRow.createEl("button", { cls: "atl-chat-send mod-cta" });
     setIcon(this.sendBtn, "send-horizontal");
@@ -198,6 +222,7 @@ export class ChatView extends ItemView {
     this.firstTurn = true;
     this.lastSentNotePath = "";
     this.pinned = null;
+    this.commands = [];
     this.render();
   }
 
@@ -365,10 +390,11 @@ export class ChatView extends ItemView {
       if (event.type === "message") {
         gotChunk = true;
         raw += event.text;
-        bubble.setRaw(raw);
+        bubble.appendRaw(raw);
         this.scrollToBottom();
-      } else if (event.type === "tool") {
-        bubble.setStatus(t("chat.usingTool", { tool: event.title }));
+      } else if (event.type === "thought" || event.type === "tool") {
+        bubble.addEvent(event);
+        this.scrollToBottom();
       }
     };
     const prompt = `${this.opencodeContextPrefix(ctx, rawText)}${engineText}`;
@@ -389,6 +415,7 @@ export class ChatView extends ItemView {
       this.addNotice(t("chat.empty"));
       return;
     }
+    bubble.finalize();
     await this.presentReply(finalText, bubble.el, target);
   }
 
@@ -466,21 +493,125 @@ export class ChatView extends ItemView {
   }
 
   private async ensureSession(): Promise<AcpSessionHandle> {
-    const key = `opencode:${this.plugin.settings.agentCommand}:${this.plugin.settings.agentModel}`;
+    const key = `opencode:${this.plugin.settings.agentCommand}:${this.plugin.settings.agentModel}:${this.plugin.settings.mcpServersJson}`;
     if (this.session && this.sessionKey === key && !this.session.session.error) {
       return this.session;
     }
     this.disposeSession();
     this.firstTurn = true;
     const handle = await this.plugin.startChatSession({
-      onUpdate: (event) => this.activeStream?.(event),
+      onUpdate: (event) => {
+        // Command broadcasts arrive right after session/new, between turns,
+        // so they are handled here rather than on the per-turn stream sink.
+        if (event.type === "commands") {
+          this.commands = event.commands;
+          this.updateCommandPopup();
+          return;
+        }
+        this.activeStream?.(event);
+      },
       onExit: () => {
         /* surfaced per-turn via prompt() resolving with an error */
       }
     });
     this.session = handle;
     this.sessionKey = key;
+    this.commands = handle.session.commands;
     return handle;
+  }
+
+  // --- slash command popup ---------------------------------------------------
+
+  /** The `/`-prefixed fragment being typed, when the popup should be visible. */
+  private commandQuery(): string | null {
+    const value = this.inputEl?.value ?? "";
+    if (!value.startsWith("/")) return null;
+    const firstSpace = value.indexOf(" ");
+    if (firstSpace >= 0) return null; // command chosen; args being typed
+    return value.slice(1).toLowerCase();
+  }
+
+  private updateCommandPopup(): void {
+    if (!this.commandPopupEl?.isConnected) return;
+    const query = this.commandQuery();
+    if (query === null || this.commands.length === 0) {
+      this.hideCommandPopup();
+      return;
+    }
+    const matches = this.commands.filter(
+      (command) =>
+        command.name.toLowerCase().includes(query) ||
+        (command.description ?? "").toLowerCase().includes(query)
+    );
+    if (matches.length === 0) {
+      this.hideCommandPopup();
+      return;
+    }
+    this.commandPopupEl.empty();
+    for (const [index, command] of matches.entries()) {
+      const item = this.commandPopupEl.createDiv({
+        cls: index === 0 ? "atl-chat-command is-active" : "atl-chat-command"
+      });
+      item.createSpan({ cls: "atl-chat-command-name", text: `/${command.name}` });
+      if (command.description) {
+        item.createSpan({ cls: "atl-chat-command-desc", text: command.description });
+      }
+      item.onmousedown = (event) => {
+        event.preventDefault(); // keep the textarea focused
+        this.chooseCommand(command);
+      };
+    }
+    this.commandPopupEl.show();
+  }
+
+  private chooseCommand(command: AcpCommand): void {
+    this.inputEl.value = `/${command.name} `;
+    this.hideCommandPopup();
+    this.inputEl.focus();
+  }
+
+  /** Arrow/Enter/Escape navigation while the popup is open. True = handled. */
+  private navigateCommandPopup(event: KeyboardEvent): boolean {
+    if (!this.commandPopupEl?.isConnected || this.commandPopupEl.hidden) return false;
+    const items = Array.from(
+      this.commandPopupEl.querySelectorAll<HTMLElement>(".atl-chat-command")
+    );
+    if (items.length === 0) return false;
+    const active = items.findIndex((item) => item.hasClass("is-active"));
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const next =
+        event.key === "ArrowDown"
+          ? (active + 1) % items.length
+          : (active - 1 + items.length) % items.length;
+      items.forEach((item, index) =>
+        item.toggleClass("is-active", index === next)
+      );
+      return true;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      this.hideCommandPopup();
+      return true;
+    }
+    if (event.key === "Enter" && !event.shiftKey && active >= 0) {
+      event.preventDefault();
+      const name = items[active]!
+        .querySelector(".atl-chat-command-name")
+        ?.getText();
+      if (name) {
+        this.inputEl.value = `${name} `;
+        this.hideCommandPopup();
+      }
+      return true;
+    }
+    return false;
+  }
+
+  private hideCommandPopup(): void {
+    if (!this.commandPopupEl?.isConnected) return;
+    this.commandPopupEl.empty();
+    this.commandPopupEl.hide();
   }
 
   private tryLocate(text: string): boolean {
@@ -530,23 +661,63 @@ export class ChatView extends ItemView {
 
   private addStreamingAssistant(): {
     el: HTMLElement;
-    setRaw: (text: string) => void;
-    setStatus: (text: string) => void;
+    appendRaw: (text: string) => void;
+    addEvent: (event: AcpStreamEvent) => void;
+    finalize: () => void;
     onUpdate: ((event: AcpStreamEvent) => void) | null;
   } {
     const el = this.messagesEl.createDiv({
       cls: "atl-chat-msg atl-chat-msg--assistant"
     });
+    const segmentsEl = el.createDiv({ cls: "atl-chat-segments" });
     const status = el.createDiv({ cls: "atl-chat-status", text: t("chat.thinking") });
     const body = el.createDiv({ cls: "atl-chat-body" });
+
+    // Message chunks arrive in bursts; coalesce them into one DOM write per
+    // animation frame instead of re-rendering per chunk.
+    let pendingText = "";
+    const batcher = createFrameBatcher(() => {
+      body.textContent = pendingText;
+    }, (callback) => window.requestAnimationFrame(callback));
+
+    // Thought/tool events fold into the segment blocks above the reply text.
+    const events: AcpStreamEvent[] = [];
+    const renderSegments = (): void => {
+      segmentsEl.empty();
+      for (const segment of foldStreamSegments(events)) {
+        if (segment.kind === "thought") {
+          const details = segmentsEl.createEl("details", { cls: "atl-chat-thought" });
+          details.createEl("summary", { text: t("chat.thought") });
+          details.createDiv({ cls: "atl-chat-thought-body", text: segment.text });
+        } else {
+          const card = segmentsEl.createDiv({ cls: "atl-chat-tool" });
+          setIcon(card.createSpan({ cls: "atl-chat-tool-icon" }), "wrench");
+          card.createSpan({ cls: "atl-chat-tool-title", text: segment.title });
+          if (segment.status) {
+            card.createSpan({
+              cls: `atl-chat-tool-status atl-chat-tool-status--${segment.status}`,
+              text: segment.status
+            });
+          }
+        }
+      }
+    };
+
     const handle = {
       el,
-      setRaw: (text: string): void => {
+      appendRaw: (text: string): void => {
         status.hide();
-        body.textContent = text;
+        pendingText = text;
+        batcher.dirty();
       },
-      setStatus: (text: string): void => {
-        status.setText(text);
+      addEvent: (event: AcpStreamEvent): void => {
+        events.push(event);
+        renderSegments();
+      },
+      /** Drop the live status/body so the final Markdown render replaces them. */
+      finalize: (): void => {
+        status.remove();
+        body.remove();
       },
       onUpdate: null as ((event: AcpStreamEvent) => void) | null
     };
@@ -563,10 +734,11 @@ export class ChatView extends ItemView {
   }
 
   private async renderInto(el: HTMLElement, text: string): Promise<void> {
-    el.empty();
-    el.addClass("atl-chat-md");
-    await MarkdownRenderer.render(this.app, text, el, "", this);
-    this.attachCopy(el, text);
+    // Render into a child so a streaming bubble's thought/tool segment blocks
+    // survive the final Markdown pass.
+    const md = el.createDiv({ cls: "atl-chat-md" });
+    await MarkdownRenderer.render(this.app, text, md, "", this);
+    this.attachCopy(md, text);
     this.scrollToBottom();
   }
 

@@ -1529,3 +1529,176 @@
     animation: none;
   }
 }
+
+/* Streaming segments: thought blocks and tool cards stack above the reply
+   text inside an assistant bubble while a turn streams in. */
+.atl-chat-segments {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-2);
+}
+
+.atl-chat-segments:empty {
+  display: none;
+}
+
+.atl-chat-thought {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.atl-chat-thought summary {
+  cursor: pointer;
+  padding: var(--size-2-2) var(--size-4-2);
+  user-select: none;
+}
+
+.atl-chat-thought-body {
+  padding: 0 var(--size-4-2) var(--size-2-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.atl-chat-tool {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: var(--size-2-2) var(--size-4-2);
+  background: var(--background-secondary);
+  font-size: var(--font-ui-smaller);
+}
+
+.atl-chat-tool-icon {
+  display: inline-flex;
+  color: var(--text-faint);
+}
+
+.atl-chat-tool-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.atl-chat-tool-status {
+  color: var(--text-faint);
+}
+
+.atl-chat-tool-status--completed {
+  color: var(--text-success);
+}
+
+.atl-chat-tool-status--failed,
+.atl-chat-tool-status--error {
+  color: var(--text-error);
+}
+
+.atl-chat-tool-status--pending,
+.atl-chat-tool-status--running {
+  color: var(--text-accent);
+}
+
+/* The reply markdown renders in its own child so streaming segments above it
+   survive re-renders. */
+.atl-chat-body .atl-chat-md:empty {
+  display: none;
+}
+
+/* Slash-command popup: an in-flow list just above the input row. */
+.atl-chat-commands {
+  display: flex;
+  flex-direction: column;
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+}
+
+.atl-chat-command {
+  display: flex;
+  align-items: baseline;
+  gap: var(--size-4-2);
+  padding: var(--size-2-2) var(--size-4-2);
+  cursor: pointer;
+  font-size: var(--font-ui-small);
+}
+
+.atl-chat-command.is-active,
+.atl-chat-command:hover {
+  background: var(--background-modifier-hover);
+}
+
+.atl-chat-command-name {
+  color: var(--text-accent);
+  font-weight: var(--font-medium);
+  white-space: nowrap;
+}
+
+.atl-chat-command-desc {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Agent permission dialog. */
+.atl-permission-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: var(--size-4-2) 0;
+  text-align: center;
+}
+
+.atl-permission-icon {
+  color: var(--text-warning);
+}
+
+.atl-permission-icon svg {
+  width: 32px;
+  height: 32px;
+}
+
+.atl-permission-tool {
+  font-weight: var(--font-semibold);
+  overflow-wrap: anywhere;
+}
+
+.atl-permission-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--size-4-2);
+  padding-top: var(--size-4-2);
+}
+
+/* Zotero CSL-JSON import modal. */
+.atl-zotero-input {
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+}
+
+.atl-zotero-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--size-4-2);
+}
+
+/* MCP config textarea in settings keeps a monospace face for JSON. */
+.atl-mcp-input {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+}

@@ -24,6 +24,19 @@ export type ReviewEngine = "api" | "opencode";
 
 export const reviewEngines: readonly ReviewEngine[] = ["api", "opencode"];
 
+/**
+ * How the chat answers agent write/execute permission prompts (OpenCode only).
+ * readonly = decline everything but reads (the old behavior); ask = show a
+ * confirmation dialog per prompt; auto = allow without asking.
+ */
+export type AgentPermissionPolicy = "readonly" | "ask" | "auto";
+
+export const agentPermissionPolicies: readonly AgentPermissionPolicy[] = [
+  "readonly",
+  "ask",
+  "auto"
+];
+
 export type PluginLanguage = "auto" | "en" | "zh-cn" | "zh-tw" | "ja";
 
 export const pluginLanguages: readonly PluginLanguage[] = [
@@ -128,6 +141,19 @@ export type AnnotationTutorLiteSettings = {
   enableWeaknessTraining: boolean;
   enableLearningSummary: boolean;
   enableStrengthReinforcement: boolean;
+  /**
+   * Stdio MCP servers for the OpenCode chat session, as canonical JSON
+   * (`{mcpServers: {...}}`). Empty = none. Parsed/normalized by mcp-config.ts.
+   */
+  mcpServersJson: string;
+  /** How write/execute permission prompts are answered in the tutor chat. */
+  agentPermissionPolicy: AgentPermissionPolicy;
+  /** Tool titles the learner chose "always allow" for; auto-allowed in ask mode. */
+  alwaysAllowTools: string[];
+  /** Extra embedded-browser viewTypes web-capture should recognize. */
+  webCaptureViewTypes: string;
+  /** Offer to repair + open agent-generated Excalidraw notes as drawings. */
+  excalidrawAssist: boolean;
   /** Per-annotation margin-card geometry, so each card keeps its own size/place. */
   cardGeom: Record<string, CardGeom>;
 };
@@ -173,6 +199,11 @@ export const DEFAULT_SETTINGS: AnnotationTutorLiteSettings = {
   enableWeaknessTraining: false,
   enableLearningSummary: false,
   enableStrengthReinforcement: false,
+  mcpServersJson: "",
+  agentPermissionPolicy: "ask",
+  alwaysAllowTools: [],
+  webCaptureViewTypes: "",
+  excalidrawAssist: true,
   cardGeom: {}
 };
 
@@ -290,6 +321,21 @@ export function migrateSettings(loaded: unknown): AnnotationTutorLiteSettings {
     settings.pretranslateChunkChars = DEFAULT_SETTINGS.pretranslateChunkChars;
   } else {
     settings.pretranslateChunkChars = Math.floor(settings.pretranslateChunkChars);
+  }
+  if (typeof settings.mcpServersJson !== "string") {
+    settings.mcpServersJson = DEFAULT_SETTINGS.mcpServersJson;
+  }
+  if (!agentPermissionPolicies.includes(settings.agentPermissionPolicy)) {
+    settings.agentPermissionPolicy = DEFAULT_SETTINGS.agentPermissionPolicy;
+  }
+  settings.alwaysAllowTools = Array.isArray(settings.alwaysAllowTools)
+    ? settings.alwaysAllowTools.filter((item): item is string => typeof item === "string")
+    : [];
+  if (typeof settings.webCaptureViewTypes !== "string") {
+    settings.webCaptureViewTypes = DEFAULT_SETTINGS.webCaptureViewTypes;
+  }
+  if (typeof settings.excalidrawAssist !== "boolean") {
+    settings.excalidrawAssist = DEFAULT_SETTINGS.excalidrawAssist;
   }
   // Always clone into a fresh object so we never alias DEFAULT_SETTINGS.cardGeom.
   settings.cardGeom =

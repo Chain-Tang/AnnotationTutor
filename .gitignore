@@ -4,3 +4,6 @@ dist/
 
 # Local dev vault (e.g. created by `pnpm install:vault`); not part of the plugin.
 Tutor/
+
+# Reference repos cloned for study; not part of the plugin.
+.reference/

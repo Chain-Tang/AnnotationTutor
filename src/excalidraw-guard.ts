@@ -100,11 +100,18 @@ export function sanitizeExcalidrawDoc(
   return { content: next, repaired: true };
 }
 
-/** Position of the ```json drawing block between the %% markers. */
+/**
+ * Position of the ```json drawing block. The drawing lives in the `%%` data
+ * region at the document tail; everything before the first `%%` marker is
+ * user-rendered Markdown and may contain ```json blocks of its own — never
+ * touch those.
+ */
 function locateJsonBlock(
   content: string
 ): { start: number; end: number; json: string } | null {
-  const openFence = content.indexOf("```json");
+  const dataRegion = content.indexOf("%%");
+  if (dataRegion < 0) return null;
+  const openFence = content.indexOf("```json", dataRegion);
   if (openFence < 0) return null;
   const start = content.indexOf("\n", openFence);
   if (start < 0) return null;

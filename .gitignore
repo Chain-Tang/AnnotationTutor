@@ -5,5 +5,10 @@ dist/
 # Local dev vault (e.g. created by `pnpm install:vault`); not part of the plugin.
 Tutor/
 
+# This repo doubles as the dev vault: ignore the Obsidian config and the
+# runtime memory files the plugin scaffolds inside it.
+.obsidian/
+Agent Memory/
+
 # Reference repos cloned for study; not part of the plugin.
 .reference/

@@ -207,9 +207,8 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   private notebook!: NotebookController;
   // Memory cells, SM-2 spaced review, and opt-in feedback, wired in onload.
   public review!: ReviewController;
-  // Excalidraw notes currently being repaired by the guard, so our own write
-  // does not re-trigger the sanitize hook in a loop.
-  private readonly excalidrawBusy = new Set<string>();
+  /** Per-path serialization of the Excalidraw repair queue (see sanitize). */
+  private readonly excalidrawQueue = new Map<string, Promise<void>>();
 
   /**
    * HTTP transport for the direct-API engine. Routes through Obsidian's
@@ -428,12 +427,24 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     }, 400);
   }
 
-  /** Resolve the active UI locale from the language setting (auto = Obsidian). */
+  /**
+   * Resolve the active UI locale from the language setting (auto = Obsidian).
+   * Detection chain: older Obsidian wrote the UI language to localStorage; the
+   * current build follows the OS UI language without persisting it, which the
+   * renderer surfaces via navigator.languages — and when Obsidian follows the
+   * OS it also syncs moment, so moment's locale is a last resort. The system
+   * *region* may disagree with the UI language (en-US region + zh UI), so
+   * navigator.languages beats a bare moment.locale().
+   */
   public applyLocale(): void {
-    setLanguage(
-      this.settings.language,
-      window.localStorage.getItem("language")
-    );
+    const detected =
+      window.localStorage.getItem("language") ??
+      [...(navigator.languages ?? []), navigator.language].find((code) =>
+        /^(zh|ja)/i.test(code)
+      ) ??
+      navigator.language ??
+      window.moment?.locale?.();
+    setLanguage(this.settings.language, detected);
   }
 
   public async changeMemoryRoot(
@@ -2179,13 +2190,21 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     content: string
   ): Promise<TFile> {
     await this.ensureVaultFolder(folder);
+    // Check-then-create can race (agent writes, two quick captures); on a
+    // collision retry with a bumped counter instead of surfacing the error.
     let path = normalizePath(`${folder}/${stem}.md`);
     let counter = 1;
-    while (this.app.vault.getAbstractFileByPath(path)) {
-      path = normalizePath(`${folder}/${stem} ${counter}.md`);
-      counter += 1;
+    for (;;) {
+      try {
+        return await this.app.vault.create(path, content);
+      } catch (error) {
+        if (counter >= 25 || !String(error).toLowerCase().includes("exists")) {
+          throw error;
+        }
+        path = normalizePath(`${folder}/${stem} ${counter}.md`);
+        counter += 1;
+      }
     }
-    return this.app.vault.create(path, content);
   }
 
   /** Install bundled OpenCode slash commands (excalidraw-diagram) into the Vault. */
@@ -2198,9 +2217,14 @@ export default class AnnotationTutorLitePlugin extends Plugin {
         skipped += 1;
         continue;
       }
-      await this.ensureVaultFolder(BUILTIN_COMMAND_DIR);
-      await this.app.vault.create(path, builtinCommandFile(command));
-      installed += 1;
+      try {
+        await this.ensureVaultFolder(BUILTIN_COMMAND_DIR);
+        await this.app.vault.create(path, builtinCommandFile(command));
+        installed += 1;
+      } catch {
+        new Notice(t("notice.writeFailed"));
+        return;
+      }
     }
     new Notice(t("notice.builtinInstalled", { installed, skipped }));
   }
@@ -2233,11 +2257,17 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       ...(url ? { url } : {}),
       ...(title ? { title } : {})
     };
-    const file = await this.createVaultNote(
-      this.captureDir(),
-      captureNoteStem(input),
-      buildCaptureNote(input, this.captureBlockId())
-    );
+    let file: TFile;
+    try {
+      file = await this.createVaultNote(
+        this.captureDir(),
+        captureNoteStem(input),
+        buildCaptureNote(input, this.captureBlockId())
+      );
+    } catch {
+      new Notice(t("notice.writeFailed"));
+      return;
+    }
     new Notice(t("notice.captureSaved", { path: file.path }));
     await this.app.workspace.getLeaf(false).openFile(file);
   }
@@ -2265,7 +2295,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     let url = fallbackUrl;
     for (const frame of frames) {
       const frameSrc =
-        frame.getAttribute("src") ?? (frame as HTMLIFrameElement).src ?? "";
+        (frame as HTMLIFrameElement).src || frame.getAttribute("src") || "";
       if (frame instanceof HTMLIFrameElement) {
         try {
           const inner = frame.contentDocument?.getSelection()?.toString().trim();
@@ -2355,8 +2385,14 @@ export default class AnnotationTutorLitePlugin extends Plugin {
             new Notice(t("zotero.parseError"));
             return;
           }
+          try {
+            await plugin.importZoteroEntries(result.entries);
+          } catch {
+            // Keep the modal open so the pasted export isn't lost.
+            new Notice(t("notice.writeFailed"));
+            return;
+          }
           this.close();
-          await plugin.importZoteroEntries(result.entries);
         };
       }
     })(this.app);
@@ -2478,23 +2514,33 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   }
 
   /**
-   * Excalidraw guard: repair LLM-generated drawing JSON in place. Only runs on
-   * Excalidraw notes and only rewrites when a repair actually changed content.
+   * Excalidraw guard: repair LLM-generated drawing JSON in place. Work is
+   * serialized per path so back-to-back writes can't race (read stale content
+   * → overwrite newer content), and reads go through vault.read because
+   * OpenCode's write tools bypass the Obsidian API and the cache may lag
+   * behind disk. Repair failures are swallowed — a guardrail must never break
+   * the save flow.
    */
   private async sanitizeExcalidrawFile(file: unknown): Promise<void> {
     if (!this.settings.excalidrawAssist) return;
     if (!(file instanceof TFile) || file.extension !== "md") return;
-    if (this.excalidrawBusy.has(file.path)) return;
-    const content = await this.app.vault.cachedRead(file);
-    if (!isExcalidrawDoc(content)) return;
-    const repaired = sanitizeExcalidrawDoc(content);
-    if (repaired === null || !repaired.repaired) return;
-    this.excalidrawBusy.add(file.path);
-    try {
-      await this.app.vault.modify(file, repaired.content);
-    } finally {
-      this.excalidrawBusy.delete(file.path);
-    }
+    const path = file.path;
+    const run = (this.excalidrawQueue.get(path) ?? Promise.resolve()).then(
+      async () => {
+        const content = await this.app.vault.read(file);
+        if (!isExcalidrawDoc(content)) return;
+        const repaired = sanitizeExcalidrawDoc(content);
+        if (repaired === null || !repaired.repaired) return;
+        await this.app.vault.modify(file, repaired.content);
+      }
+    );
+    const chained = run.catch(() => undefined);
+    this.excalidrawQueue.set(path, chained);
+    void chained.then(() => {
+      if (this.excalidrawQueue.get(path) === chained) {
+        this.excalidrawQueue.delete(path);
+      }
+    });
   }
 
   /** Find an annotation the learner is asking to locate (by id, else by text). */

@@ -119,4 +119,12 @@ describe("sanitizeExcalidrawDoc", () => {
     expect(sanitizeExcalidrawDoc(docWith('{"elements": "nope"}'))).toBeNull();
     expect(sanitizeExcalidrawDoc(docWith("not json at all"))).toBeNull();
   });
+
+  it("never touches a ```json block sitting before the %% data region", () => {
+    // User Markdown ahead of the drawing region may legitimately contain
+    // JSON code blocks; repairing those would corrupt note content.
+    const userBlock = '```json\n{"elements": [{"id": "user", "frameId": "x"}]}\n```';
+    const doc = HEADER.replace("%%", `${userBlock}\n%%`);
+    expect(sanitizeExcalidrawDoc(doc)).toBeNull();
+  });
 });

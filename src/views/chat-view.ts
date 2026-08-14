@@ -149,6 +149,23 @@ export class ChatView extends ItemView {
       const empty = this.messagesEl.createDiv({ cls: "atl-chat-empty" });
       setIcon(empty.createDiv({ cls: "atl-chat-empty-icon" }), "graduation-cap");
       empty.createDiv({ cls: "atl-chat-empty-text", text: t("chat.welcome") });
+      // One-tap starters: they send immediately, so the surface never sits
+      // blank waiting for the learner to think of a first question.
+      const suggest = empty.createDiv({ cls: "atl-chat-suggest" });
+      const prompts: Array<[string, string]> = [
+        ["pen-line", t("chat.suggest.review")],
+        ["book-open", t("chat.suggest.summarize")],
+        ["network", t("chat.suggest.diagram")]
+      ];
+      for (const [icon, label] of prompts) {
+        const chip = suggest.createEl("button", { cls: "atl-chat-suggest-btn" });
+        setIcon(chip.createSpan({ cls: "atl-chat-suggest-icon" }), icon);
+        chip.createSpan({ cls: "atl-chat-suggest-label", text: label });
+        chip.onclick = () => {
+          this.inputEl.value = label;
+          void this.send();
+        };
+      }
     }
 
     this.contextEl = root.createDiv({ cls: "atl-chat-context" });

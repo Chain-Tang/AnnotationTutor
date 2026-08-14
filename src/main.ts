@@ -2156,7 +2156,10 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     const name = (tool.title ?? tool.kind ?? "").trim().toLowerCase();
     const always = this.settings.alwaysAllowTools.some((allowed) => {
       const item = allowed.trim().toLowerCase();
-      return item !== "" && (name === item || name.includes(item));
+      if (item === "") return false;
+      // Exact entries always count; substring matching needs a reasonably
+      // specific entry so a stray "e" can't whitelist every tool.
+      return name === item || (item.length >= 4 && name.includes(item));
     });
     if (always) return Promise.resolve("allow_once");
     return new Promise((resolve) => openPermissionModal(this.app, tool, resolve));
@@ -2485,26 +2488,31 @@ export default class AnnotationTutorLitePlugin extends Plugin {
         const results = this.contentEl.createDiv({
           cls: "atl-findpaper-results"
         });
+        // Debounce: large vaults scan thousands of files per keystroke.
+        let timer: number | undefined;
         const search = (): void => {
-          results.empty();
-          const matches = plugin.findPapers(input.value);
-          if (input.value.trim() === "") return;
-          if (matches.length === 0) {
-            results.createEl("p", {
-              cls: "atl-muted",
-              text: t("findPaper.noResults")
-            });
-            return;
-          }
-          for (const match of matches) {
-            const row = results.createDiv({ cls: "atl-findpaper-item" });
-            setIcon(row.createSpan({ cls: "atl-findpaper-icon" }), match.icon);
-            row.createSpan({ cls: "atl-findpaper-name", text: match.label });
-            row.onclick = () => {
-              this.close();
-              void plugin.openPaper(match.path);
-            };
-          }
+          window.clearTimeout(timer);
+          timer = window.setTimeout(() => {
+            results.empty();
+            const matches = plugin.findPapers(input.value);
+            if (input.value.trim() === "") return;
+            if (matches.length === 0) {
+              results.createEl("p", {
+                cls: "atl-muted",
+                text: t("findPaper.noResults")
+              });
+              return;
+            }
+            for (const match of matches) {
+              const row = results.createDiv({ cls: "atl-findpaper-item" });
+              setIcon(row.createSpan({ cls: "atl-findpaper-icon" }), match.icon);
+              row.createSpan({ cls: "atl-findpaper-name", text: match.label });
+              row.onclick = () => {
+                this.close();
+                void plugin.openPaper(match.path);
+              };
+            }
+          }, 120);
         };
         input.addEventListener("input", search);
         input.focus();

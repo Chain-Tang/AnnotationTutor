@@ -13,7 +13,8 @@ import {
   TFolder,
   normalizePath,
   requestUrl,
-  setIcon
+  setIcon,
+  type View
 } from "obsidian";
 import type { EditorView } from "@codemirror/view";
 import {
@@ -123,7 +124,7 @@ import {
   type WebCaptureInput
 } from "./web-capture.js";
 import {
-  parseCslJson,
+  parseImport,
   zoteroCaptureNote,
   type ZoteroEntry
 } from "./zotero-import.js";
@@ -876,6 +877,11 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       id: "import-zotero-csl",
       name: t("cmd.importZotero"),
       callback: () => this.openZoteroImportModal()
+    });
+    this.addCommand({
+      id: "find-paper-pdf",
+      name: t("cmd.findPaper"),
+      callback: () => this.openFindPaperModal()
     });
   }
 
@@ -2214,15 +2220,15 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       new Notice(t("notice.captureNotBrowser"));
       return;
     }
-    const selection = window.getSelection()?.toString().trim() ?? "";
-    if (!selection) {
+    const extracted = await this.extractBrowserSelection(view);
+    if (!extracted.selection) {
       new Notice(t("notice.captureNoSelection"));
       return;
     }
-    const url = this.browserViewUrl(view);
+    const url = extracted.url;
     const title = url ? await this.fetchPageTitle(url) : undefined;
     const input: WebCaptureInput = {
-      selection,
+      selection: extracted.selection,
       capturedAt: nowIso(),
       ...(url ? { url } : {}),
       ...(title ? { title } : {})
@@ -2234,6 +2240,58 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     );
     new Notice(t("notice.captureSaved", { path: file.path }));
     await this.app.workspace.getLeaf(false).openFile(file);
+  }
+
+  /**
+   * Three-tier selection extraction for embedded browsers: the host document
+   * first, then same-origin iframes, then Electron `<webview>` elements via
+   * executeJavaScript. Embedded browser plugins differ in which layer holds
+   * the page, so each tier is a best-effort fallback. Cross-origin frames
+   * throw and are skipped silently.
+   */
+  private async extractBrowserSelection(
+    view: View
+  ): Promise<{ selection: string; url: string }> {
+    const fallbackUrl = this.browserViewUrl(view);
+    const docSelection = window.getSelection()?.toString().trim() ?? "";
+    const frames = Array.from(
+      (view.containerEl as HTMLElement | undefined)?.querySelectorAll(
+        "iframe, webview"
+      ) ?? []
+    );
+    // Prefer a document-level selection, but only as long as no embedded
+    // frame reports one — a selection inside a frame is the more specific hit.
+    let selection = docSelection;
+    let url = fallbackUrl;
+    for (const frame of frames) {
+      const frameSrc =
+        frame.getAttribute("src") ?? (frame as HTMLIFrameElement).src ?? "";
+      if (frame instanceof HTMLIFrameElement) {
+        try {
+          const inner = frame.contentDocument?.getSelection()?.toString().trim();
+          if (inner) return { selection: inner, url: frameSrc || fallbackUrl };
+        } catch {
+          // Cross-origin frame — unreachable, fall through.
+        }
+      } else {
+        const webview = frame as {
+          executeJavaScript?: (code: string) => Promise<unknown>;
+        };
+        if (typeof webview.executeJavaScript === "function") {
+          try {
+            const value = await webview.executeJavaScript(
+              "window.getSelection().toString()"
+            );
+            if (typeof value === "string" && value.trim()) {
+              return { selection: value.trim(), url: frameSrc || fallbackUrl };
+            }
+          } catch {
+            // Webview not ready — fall through.
+          }
+        }
+      }
+    }
+    return { selection, url };
   }
 
   /** Best-effort current URL of an embedded browser view (plugins differ). */
@@ -2292,7 +2350,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
           text: t("zotero.import")
         });
         button.onclick = async () => {
-          const result = parseCslJson(area.value);
+          const result = parseImport(area.value);
           if (!result.ok) {
             new Notice(t("zotero.parseError"));
             return;
@@ -2324,6 +2382,99 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     }
     new Notice(t("zotero.done", { count: entries.length }));
     if (first) await this.app.workspace.getLeaf(false).openFile(first);
+  }
+
+  /**
+   * Keyword search over the Vault's PDFs and capture notes — the local half of
+   * paper discovery. Matches are ranked by keyword overlap; clicking one opens
+   * it (Obsidian renders PDFs natively; the Excalidraw/reader plugins take
+   * over when installed).
+   */
+  public findPapers(query: string): Array<{
+    path: string;
+    label: string;
+    icon: string;
+  }> {
+    const words = query
+      .toLowerCase()
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((word) => word.length >= 2);
+    if (words.length === 0) return [];
+    const captureRoot = normalizePath(this.captureDir());
+    const scored: Array<{
+      path: string;
+      label: string;
+      icon: string;
+      score: number;
+    }> = [];
+    for (const file of this.app.vault.getFiles()) {
+      const isPdf = file.extension === "pdf";
+      const isCapture =
+        file.extension === "md" && file.parent?.path === captureRoot;
+      if (!isPdf && !isCapture) continue;
+      const hay = file.path.toLowerCase();
+      let score = 0;
+      for (const word of words) if (hay.includes(word)) score += 1;
+      if (score > 0) {
+        scored.push({
+          path: file.path,
+          label: file.name,
+          icon: isPdf ? "file-text" : "sticky-note",
+          score
+        });
+      }
+    }
+    scored.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label));
+    return scored.slice(0, 10);
+  }
+
+  public async openPaper(path: string): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (file instanceof TFile) {
+      await this.app.workspace.getLeaf(false).openFile(file);
+    }
+  }
+
+  /** Live-filtering search modal feeding findPapers/openPaper. */
+  private openFindPaperModal(): void {
+    const plugin = this;
+    const modal = new (class extends Modal {
+      public override onOpen(): void {
+        this.contentEl.empty();
+        this.titleEl.setText(t("findPaper.title"));
+        const input = this.contentEl.createEl("input", {
+          cls: "atl-findpaper-input"
+        });
+        input.placeholder = t("findPaper.placeholder");
+        const results = this.contentEl.createDiv({
+          cls: "atl-findpaper-results"
+        });
+        const search = (): void => {
+          results.empty();
+          const matches = plugin.findPapers(input.value);
+          if (input.value.trim() === "") return;
+          if (matches.length === 0) {
+            results.createEl("p", {
+              cls: "atl-muted",
+              text: t("findPaper.noResults")
+            });
+            return;
+          }
+          for (const match of matches) {
+            const row = results.createDiv({ cls: "atl-findpaper-item" });
+            setIcon(row.createSpan({ cls: "atl-findpaper-icon" }), match.icon);
+            row.createSpan({ cls: "atl-findpaper-name", text: match.label });
+            row.onclick = () => {
+              this.close();
+              void plugin.openPaper(match.path);
+            };
+          }
+        };
+        input.addEventListener("input", search);
+        input.focus();
+      }
+    })(this.app);
+    modal.open();
   }
 
   /**

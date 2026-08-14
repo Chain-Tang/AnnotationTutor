@@ -76,6 +76,150 @@ function normalizeCslItem(obj: Record<string, unknown>): ZoteroEntry | null {
   };
 }
 
+/**
+ * Detect the pasted format and route to the right parser. CSL-JSON starts
+ * with `[` or `{`; BibTeX entries start with `@type{`. Anything else is
+ * handed to the CSL parser so its error messages surface unchanged.
+ */
+export function parseImport(text: string): CslParseResult {
+  const trimmed = text.trim();
+  if (!trimmed) return { ok: false, error: "no-entries" };
+  if (trimmed.startsWith("@")) return parseBibTeX(trimmed);
+  if (trimmed.startsWith("[") || trimmed.startsWith("{")) return parseCslJson(trimmed);
+  // A leading comment before the first entry is common in .bib exports.
+  if (/@\w+\s*\{/.test(trimmed)) return parseBibTeX(trimmed);
+  return parseCslJson(trimmed);
+}
+
+/**
+ * Parse a BibTeX export (one or more `@type{key, field = value}` entries)
+ * into the same ZoteroEntry shape CSL-JSON produces. Values may be wrapped in
+ * `{...}` (possibly nested) or `"..."`, or bare (years, numbers).
+ */
+export function parseBibTeX(text: string): CslParseResult {
+  const entries: ZoteroEntry[] = [];
+  let index = 0;
+  while (index < text.length) {
+    const head = /@(\w+)\s*\{\s*([^,\s{}]*)\s*,/.exec(text.slice(index));
+    if (!head) break;
+    const bodyStart = index + head.index + head[0].length;
+    const bodyEnd = matchClosingBrace(text, bodyStart);
+    if (bodyEnd < 0) break;
+    const type = head[1]!.toLowerCase();
+    if (type !== "string" && type !== "comment" && type !== "preamble") {
+      const fields = parseBibFields(text.slice(bodyStart, bodyEnd));
+      const entry = bibtexToEntry(fields);
+      if (entry) entries.push(entry);
+    }
+    index = bodyEnd + 1;
+  }
+  if (entries.length === 0) return { ok: false, error: "no-entries" };
+  return { ok: true, entries };
+}
+
+/** Index of the `}` closing the entry whose body starts at `start` (depth 1). */
+function matchClosingBrace(text: string, start: number): number {
+  let depth = 1;
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === "{") depth += 1;
+    else if (text[i] === "}") {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/** Read `name = value` pairs out of one entry body. */
+function parseBibFields(body: string): Record<string, string> {
+  const fields: Record<string, string> = {};
+  let i = 0;
+  while (i < body.length) {
+    const name = /^\s*([\w-]+)\s*=\s*/.exec(body.slice(i));
+    if (!name) {
+      i += 1;
+      continue;
+    }
+    i += name[0].length;
+    const { value, end } = readBibValue(body, i);
+    fields[name[1]!.toLowerCase()] = value;
+    i = end;
+    const comma = body.indexOf(",", i);
+    if (comma < 0) break;
+    i = comma + 1;
+  }
+  return fields;
+}
+
+/** One field value: balanced braces, a quoted string, or a bare token. */
+function readBibValue(body: string, start: number): { value: string; end: number } {
+  const ch = body[start];
+  if (ch === "{") {
+    let depth = 1;
+    for (let i = start + 1; i < body.length; i++) {
+      if (body[i] === "{") depth += 1;
+      else if (body[i] === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          return { value: body.slice(start + 1, i).trim(), end: i + 1 };
+        }
+      }
+    }
+    return { value: body.slice(start + 1).trim(), end: body.length };
+  }
+  if (ch === '"') {
+    const close = body.indexOf('"', start + 1);
+    const stop = close < 0 ? body.length : close;
+    return {
+      value: body.slice(start + 1, stop).trim(),
+      end: close < 0 ? body.length : close + 1
+    };
+  }
+  const bare = /^[^,\s]+/.exec(body.slice(start));
+  const value = bare ? bare[0] : "";
+  return { value, end: start + value.length };
+}
+
+/** Map one parsed field bag onto the shared ZoteroEntry shape. */
+function bibtexToEntry(fields: Record<string, string>): ZoteroEntry | null {
+  const title = cleanBibValue(fields.title ?? "");
+  if (!title) return null;
+  const authors: string[] = [];
+  const authorField = fields.author ?? "";
+  if (authorField) {
+    for (const part of authorField.split(/\s+and\s+/i)) {
+      const name = cleanBibValue(part);
+      if (name) authors.push(name);
+    }
+  }
+  const pick = (...keys: string[]): string | undefined => {
+    for (const key of keys) {
+      const value = cleanBibValue(fields[key] ?? "");
+      if (value) return value;
+    }
+    return undefined;
+  };
+  const year = pick("year", "date");
+  const url = pick("url");
+  const doi = pick("doi");
+  const venue = pick("journal", "booktitle");
+  const abstract = pick("abstract");
+  return {
+    title,
+    authors,
+    ...(year ? { year } : {}),
+    ...(url ? { url } : {}),
+    ...(doi ? { doi } : {}),
+    ...(venue ? { venue } : {}),
+    ...(abstract ? { abstract } : {})
+  };
+}
+
+/** Strip LaTeX grouping braces and collapse whitespace for display. */
+function cleanBibValue(value: string): string {
+  return value.replace(/[{}]+/g, "").replace(/\s+/g, " ").trim();
+}
+
 /** A BibTeX snippet for one entry (the lightweight citation output). */
 export function toBibTeX(entry: ZoteroEntry): string {
   const key = bibtexKey(entry);

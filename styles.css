@@ -1702,3 +1702,41 @@
   font-family: var(--font-monospace);
   font-size: var(--font-ui-smaller);
 }
+
+/* Find-paper modal: live-filtering list of PDFs and capture notes. */
+.atl-findpaper-input {
+  width: 100%;
+  margin-bottom: var(--size-4-2);
+}
+
+.atl-findpaper-results {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.atl-findpaper-item {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: var(--size-4-1) var(--size-4-2);
+  border-radius: var(--radius-s);
+  cursor: var(--cursor);
+}
+
+.atl-findpaper-item:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.atl-findpaper-icon svg {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  color: var(--text-muted);
+}
+
+.atl-findpaper-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-ui-small);
+}

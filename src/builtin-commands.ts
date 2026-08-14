@@ -1,12 +1,12 @@
 // Bundled OpenCode commands the plugin can install into the Vault's
-// `.opencode/command/` folder. The first one is the Excalidraw diagram
+// `.opencode/command/` folder. Currently two: the Excalidraw diagram
 // generator — content adapted from the community `excalidraw-diagram` skill
-// (axtonliu/axton-obsidian-visual-skills, MIT; see CREDITS.md). Once installed
-// it shows up in the chat's `/` command list via ACP's
-// `available_commands_update`, and the agent writes Obsidian-format Excalidraw
-// notes that the Excalidraw plugin renders — no drawing code in this plugin.
-// Kept as a TS constant (not a loose asset file) so the single-file esbuild
-// bundle carries it without extra loader config.
+// (axtonliu/axton-obsidian-visual-skills, MIT; see CREDITS.md) — and the
+// read-only paper/PDF finder that routes the agent through the Vault without
+// a local shell. Once installed they show up in the chat's `/` command list
+// via ACP's `available_commands_update`.
+// Kept as TS constants (not loose asset files) so the single-file esbuild
+// bundle carries them without extra loader config.
 
 export type BuiltinCommand = {
   /** File name under .opencode/command/ (also the /slash name). */
@@ -79,12 +79,37 @@ text.length * fontSize * 0.5 (CJK characters * 1.0) and set x = centerX - width 
 After writing the file, tell the learner the path and remind them to switch the note to
 Excalidraw view via the More Options menu.`;
 
+const FIND_PAPER_BODY = `Search the learner's Vault for papers and notes matching the given keywords.
+This is a read-only flow — never modify files or run shell commands.
+
+## Steps
+
+1. Use your read-only file tools (glob/grep/read) to scan the Vault for:
+   - PDF files (*.pdf) whose file name matches any keyword;
+   - Capture notes (frontmatter "type: web-capture") whose title, source-url,
+     or quoted selection mentions the keywords.
+2. Rank matches by keyword overlap and list at most 10 as a Markdown list:
+   - PDFs: relative path, one line each — the learner opens them in Obsidian's
+     built-in PDF view;
+   - Notes: a [[wikilink]] with a one-line summary of the captured quote.
+3. If the learner is looking for a specific paper, also check capture notes'
+   "source-url" and "Reference" BibTeX blocks for DOIs/titles.
+4. If nothing matches, say so plainly and suggest refining the keywords.
+
+Never create or edit files during this flow.`;
+
 export const BUILTIN_COMMANDS: BuiltinCommand[] = [
   {
     name: "excalidraw-diagram",
     description:
       "Generate an Excalidraw diagram (mind map, flowchart, relationship…) as an Obsidian drawing note.",
     body: EXCALIDRAW_BODY
+  },
+  {
+    name: "find-paper",
+    description:
+      "Search the vault for PDFs and capture notes matching a topic; read-only, no file writes.",
+    body: FIND_PAPER_BODY
   }
 ];
 

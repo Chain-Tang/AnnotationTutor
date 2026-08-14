@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  parseBibTeX,
   parseCslJson,
+  parseImport,
   toBibTeX,
   zoteroCaptureNote,
   type ZoteroEntry
@@ -126,5 +128,100 @@ describe("zoteroCaptureNote", () => {
       "cap-z2"
     );
     expect(note).toContain("> Only Title ^cap-z2");
+  });
+});
+
+const BIB_SAMPLE = `@article{dunlosky2013impr,
+  title = {Improving Students' {Learning} With Effective Learning Techniques},
+  author = {Dunlosky, John and Rawson, Katherine A.},
+  year = 2013,
+  journal = {Psychological Science in the Public Interest},
+  doi = {10.1177/1529100612453266},
+  url = "https://example.org/paper",
+  abstract = {Practice testing and distributed practice beat rereading.}
+}
+
+@comment{this should be skipped}
+
+@inproceedings{smith2024deep,
+  title = "Deep Learning for Memory",
+  author = {Smith, Ada and Chen, Bo},
+  booktitle = {Nature Learning},
+  year = {2024}
+}`;
+
+describe("parseBibTeX", () => {
+  it("parses multiple entries with mixed value styles", () => {
+    const result = parseBibTeX(BIB_SAMPLE);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.entries).toHaveLength(2);
+    const first = result.entries[0]!;
+    expect(first.title).toBe(
+      "Improving Students' Learning With Effective Learning Techniques"
+    );
+    expect(first.authors).toEqual(["Dunlosky, John", "Rawson, Katherine A."]);
+    expect(first.year).toBe("2013");
+    expect(first.venue).toBe("Psychological Science in the Public Interest");
+    expect(first.doi).toBe("10.1177/1529100612453266");
+    expect(first.url).toBe("https://example.org/paper");
+    expect(first.abstract).toContain("distributed practice");
+    const second = result.entries[1]!;
+    expect(second.title).toBe("Deep Learning for Memory");
+    expect(second.authors).toEqual(["Smith, Ada", "Chen, Bo"]);
+    expect(second.venue).toBe("Nature Learning");
+  });
+
+  it("strips LaTeX grouping braces from values", () => {
+    const result = parseBibTeX(
+      "@article{k, title = {A {Nested} {Brace} Title}, year = {1999}}"
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.entries[0]!.title).toBe("A Nested Brace Title");
+  });
+
+  it("skips entries without a title", () => {
+    const result = parseBibTeX("@misc{k, author = {Nobody}, year = {2001}}");
+    expect(result).toEqual({ ok: false, error: "no-entries" });
+  });
+
+  it("rejects text without entries", () => {
+    expect(parseBibTeX("just some text")).toEqual({
+      ok: false,
+      error: "no-entries"
+    });
+  });
+});
+
+describe("parseImport", () => {
+  it("routes CSL-JSON pastes to the CSL parser", () => {
+    const result = parseImport(CSL_SAMPLE);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.entries).toHaveLength(2);
+    expect(result.entries[0]!.year).toBe("2013");
+  });
+
+  it("routes BibTeX pastes to the BibTeX parser", () => {
+    const result = parseImport(BIB_SAMPLE);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.entries).toHaveLength(2);
+  });
+
+  it("finds a BibTeX entry after a leading comment line", () => {
+    const result = parseImport("% exported by hand\n@article{k, title = {Hi}}");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.entries[0]!.title).toBe("Hi");
+  });
+
+  it("rejects empty and unparseable pastes", () => {
+    expect(parseImport("")).toEqual({ ok: false, error: "no-entries" });
+    expect(parseImport("hello world")).toEqual({
+      ok: false,
+      error: "invalid-json"
+    });
   });
 });

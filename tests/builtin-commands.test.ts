@@ -23,6 +23,17 @@ describe("BUILTIN_COMMANDS", () => {
       expect(command.name).toMatch(/^[a-z0-9][a-z0-9-]*$/);
     }
   });
+
+  it("ships the read-only find-paper command", () => {
+    const finder = BUILTIN_COMMANDS.find(
+      (command) => command.name === "find-paper"
+    );
+    expect(finder).toBeDefined();
+    // The agent must stay read-only: file tools only, no shell, no writes.
+    expect(finder!.body).toContain("read-only");
+    expect(finder!.body).toContain("*.pdf");
+    expect(finder!.body).not.toMatch(/\bbash\b/i);
+  });
 });
 
 describe("builtinCommandFile", () => {

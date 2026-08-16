@@ -27,6 +27,9 @@ export class DashboardView extends ItemView {
 
   public override async onOpen(): Promise<void> {
     this.render();
+    // First sidebar open of the session offers to install the Web Clipper
+    // (no-op once enabled or dismissed).
+    this.plugin.maybeShowWebInstallPrompt();
   }
 
   public refresh(): void {

@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Web Clipper</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1 id="title" class="title">Web Clipper</h1>
+      <p id="status" class="status">Not paired yet</p>
+
+      <button id="clip-page" class="primary" type="button">Clip whole page</button>
+      <p id="clip-hint" class="hint">Sends the article body as Markdown plus raw HTML.</p>
+
+      <hr />
+
+      <div class="hl-head">
+        <span id="hl-title" class="label">Highlights on this page</span>
+        <button id="hl-clear" class="link" type="button">Clear all</button>
+      </div>
+      <ul id="hl-list" class="hl-list"></ul>
+      <p id="hl-empty" class="hint">No highlights on this page yet</p>
+
+      <hr />
+
+      <label id="token-label" class="label" for="token">Bridge token</label>
+      <input id="token" class="input" type="text" autocomplete="off" spellcheck="false" />
+
+      <label id="port-label" class="label" for="port">Bridge port</label>
+      <input id="port" class="input" type="number" min="1024" max="65535" />
+
+      <div class="row">
+        <button id="save" class="secondary" type="button">Save</button>
+        <button id="test" class="secondary" type="button">Test pairing</button>
+      </div>
+      <p id="feedback" class="feedback"></p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

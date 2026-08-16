@@ -98,20 +98,22 @@ export function parseImport(text: string): CslParseResult {
  */
 export function parseBibTeX(text: string): CslParseResult {
   const entries: ZoteroEntry[] = [];
-  let index = 0;
-  while (index < text.length) {
-    const head = /@(\w+)\s*\{\s*([^,\s{}]*)\s*,/.exec(text.slice(index));
-    if (!head) break;
-    const bodyStart = index + head.index + head[0].length;
+  // A sticky cursor over the whole string: slicing `text.slice(index)` each turn
+  // rebuilt the tail on every entry, making a big `.bib` O(n²). `lastIndex` walks
+  // the same buffer instead.
+  const head = /@(\w+)\s*\{\s*([^,\s{}]*)\s*,/g;
+  let match: RegExpExecArray | null;
+  while ((match = head.exec(text)) !== null) {
+    const bodyStart = match.index + match[0].length;
     const bodyEnd = matchClosingBrace(text, bodyStart);
     if (bodyEnd < 0) break;
-    const type = head[1]!.toLowerCase();
+    const type = match[1]!.toLowerCase();
     if (type !== "string" && type !== "comment" && type !== "preamble") {
       const fields = parseBibFields(text.slice(bodyStart, bodyEnd));
       const entry = bibtexToEntry(fields);
       if (entry) entries.push(entry);
     }
-    index = bodyEnd + 1;
+    head.lastIndex = bodyEnd + 1;
   }
   if (entries.length === 0) return { ok: false, error: "no-entries" };
   return { ok: true, entries };

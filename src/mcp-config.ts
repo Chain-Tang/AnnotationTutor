@@ -7,7 +7,7 @@
 import type { McpServerConfig } from "./acp-session.js";
 
 export type McpParseResult =
-  | { ok: true; servers: McpServerConfig[] }
+  | { ok: true; servers: McpServerConfig[]; dropped?: string[] }
   | { ok: false; error: string };
 
 /** Normalize one raw server object; returns null when it is not usable. */
@@ -19,6 +19,10 @@ function normalizeServer(
   const obj = raw as Record<string, unknown>;
   const command = typeof obj.command === "string" ? obj.command.trim() : "";
   if (!command || !name.trim()) return null;
+  // Reject shell metacharacters in the command: a config pasted from anywhere
+  // could chain commands ("node ; rm -rf ~") if it ever reaches a shell. Args
+  // and env are passed as an argv array / map, so only `command` needs this.
+  if (/[\n\r;|&`$]/.test(command)) return null;
   const args = Array.isArray(obj.args)
     ? obj.args.filter((arg): arg is string => typeof arg === "string")
     : [];
@@ -78,12 +82,16 @@ export function parseMcpConfig(text: string): McpParseResult {
 
 function collectServers(entries: Record<string, unknown>): McpParseResult {
   const servers: McpServerConfig[] = [];
+  const dropped: string[] = [];
   for (const [name, raw] of Object.entries(entries)) {
     const server = normalizeServer(name, raw);
     if (server) servers.push(server);
+    // A named entry we could not use (HTTP-only, no command, unsafe command) is
+    // worth surfacing rather than silently swallowing.
+    else if (name.trim()) dropped.push(name.trim());
   }
   if (servers.length === 0) return { ok: false, error: "no-servers" };
-  return { ok: true, servers };
+  return { ok: true, servers, ...(dropped.length > 0 ? { dropped } : {}) };
 }
 
 /** Canonical JSON for persisting a parsed server list back into settings. */

@@ -12,13 +12,14 @@
 import {
   ItemView,
   MarkdownRenderer,
+  Modal,
   setIcon,
   setTooltip,
   type WorkspaceLeaf
 } from "obsidian";
 import type AnnotationTutorLitePlugin from "../main.js";
 import type { EditTarget } from "../main.js";
-import type { IndexRecord } from "../model.js";
+import type { ChatLog, ChatLogHead, IndexRecord } from "../model.js";
 import { t } from "../i18n.js";
 import { classifyIntent } from "../intent.js";
 import { detectLanguageName } from "../lang.js";
@@ -40,6 +41,9 @@ import {
   foldStreamSegments,
   type ChatSegment
 } from "../chat-stream.js";
+import { ConfirmModal } from "./annotation-modal.js";
+import { makeId, nowIso } from "../ids.js";
+import { capChatLog, chatTitleFrom } from "../markdown/chat-log-file.js";
 
 /** An annotation pinned as the conversation's context (from a margin card). */
 type PinnedAnnotation = {
@@ -67,12 +71,18 @@ export class ChatView extends ItemView {
   private readonly apiHistory: ChatMessage[] = [];
   /** Slash commands the live OpenCode session has advertised (empty for API). */
   private commands: AcpCommand[] = [];
+  /** The saved session this conversation persists into (null until the first turn). */
+  private currentLog: ChatLog | null = null;
+  /** True until the first reply after a restore; the recap is prefixed once. */
+  private restoredFromHistory = false;
 
   private messagesEl!: HTMLElement;
   private contextEl!: HTMLElement;
   private inputEl!: HTMLTextAreaElement;
   private sendBtn!: HTMLButtonElement;
   private commandPopupEl!: HTMLElement;
+  /** Set when the learner hits the stop control mid-turn; guards the result. */
+  private stopRequested = false;
 
   public constructor(
     leaf: WorkspaceLeaf,
@@ -98,6 +108,7 @@ export class ChatView extends ItemView {
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", () => void this.renderContext())
     );
+    void this.restoreLatestSession();
   }
 
   public override async onClose(): Promise<void> {
@@ -127,6 +138,7 @@ export class ChatView extends ItemView {
     const spacer = header.createSpan({ cls: "atl-spacer" });
     spacer.style.flex = "1";
     this.iconButton(header, "plus", t("chat.new"), () => this.newChat());
+    this.iconButton(header, "history", t("chat.history"), () => void this.showHistory());
     this.iconButton(header, "settings", t("panel.settings"), () =>
       this.plugin.openSettings()
     );
@@ -196,7 +208,11 @@ export class ChatView extends ItemView {
     this.sendBtn = inputRow.createEl("button", { cls: "atl-chat-send mod-cta" });
     setIcon(this.sendBtn, "send-horizontal");
     setTooltip(this.sendBtn, t("chat.send"));
-    this.sendBtn.onclick = () => void this.send();
+    // Dual-purpose: send when idle, stop the in-flight turn while generating.
+    this.sendBtn.onclick = () => {
+      if (this.busy) this.stop();
+      else void this.send();
+    };
   }
 
   private async renderContext(): Promise<void> {
@@ -240,6 +256,8 @@ export class ChatView extends ItemView {
     this.lastSentNotePath = "";
     this.pinned = null;
     this.commands = [];
+    this.currentLog = null;
+    this.restoredFromHistory = false;
     this.render();
   }
 
@@ -256,6 +274,8 @@ export class ChatView extends ItemView {
     this.apiHistory.length = 0;
     this.firstTurn = true;
     this.lastSentNotePath = "";
+    this.currentLog = null;
+    this.restoredFromHistory = false;
     this.pinned = {
       annotationId: record.annotationId,
       notePath: record.sourceFile,
@@ -270,6 +290,263 @@ export class ChatView extends ItemView {
       this.inputEl.value = send;
       void this.send();
     }
+  }
+
+  // --- session persistence ----------------------------------------------------
+
+  /**
+   * Persist one turn to the session file, creating the session on the first
+   * turn. Best-effort: a write failure surfaces a notice but never breaks the
+   * conversation.
+   */
+  private async persistTurn(
+    role: "user" | "assistant",
+    text: string
+  ): Promise<void> {
+    if (!this.plugin.settings.persistChatLog) return;
+    try {
+      const now = nowIso();
+      if (!this.currentLog) {
+        const heads = await this.plugin.store.listChatLogs();
+        this.currentLog = {
+          id: makeId("CHAT", heads.map((head) => head.id)),
+          title: chatTitleFrom(text),
+          engine: this.plugin.settings.chatEngine,
+          mode: this.mode,
+          status: "active",
+          turns: [],
+          createdAt: now,
+          updatedAt: now
+        };
+      }
+      this.currentLog = {
+        ...this.currentLog,
+        // The engine may have been toggled mid-conversation; keep the file honest.
+        engine: this.plugin.settings.chatEngine,
+        mode: this.mode,
+        turns: [...this.currentLog.turns, { role, text, at: now }],
+        updatedAt: now
+      };
+      await this.plugin.store.saveChatLog(this.currentLog);
+    } catch {
+      this.addNotice(t("chat.persistError"));
+    }
+  }
+
+  /**
+   * Show a saved session and continue it in place: capped turns render behind a
+   * divider, `apiHistory` is rebuilt so the API engine keeps its memory, and the
+   * next OpenCode turn gets a transcript recap (it is a brand-new session).
+   */
+  private loadSession(log: ChatLog): void {
+    this.disposeSession();
+    this.apiHistory.length = 0;
+    this.firstTurn = true;
+    this.lastSentNotePath = "";
+    this.pinned = null;
+    this.commands = [];
+    this.currentLog = log;
+    this.restoredFromHistory = log.turns.length > 0;
+    const { turns, truncated } = capChatLog(log.turns);
+    this.apiHistory.push(
+      ...turns.map((turn) => ({ role: turn.role, content: turn.text }))
+    );
+    this.render();
+    const divider = this.messagesEl.createDiv({ cls: "atl-chat-divider" });
+    divider.createSpan({
+      text: t("chat.earlierSession", {
+        date: log.updatedAt.slice(0, 10),
+        count: log.turns.length
+      })
+    });
+    for (const turn of turns) {
+      if (turn.role === "user") this.addMessage("user", turn.text);
+      else void this.renderAssistant(turn.text);
+    }
+    if (truncated > 0) {
+      this.addNotice(t("chat.truncatedNotice", { count: truncated }));
+    }
+    this.scrollToBottom();
+  }
+
+  /** After a restart, reload the newest saved session so the chat survives. */
+  private async restoreLatestSession(): Promise<void> {
+    if (!this.plugin.settings.persistChatLog) return;
+    if (
+      this.currentLog ||
+      this.apiHistory.length > 0 ||
+      this.messagesEl.childElementCount > 0
+    ) {
+      return;
+    }
+    try {
+      const [latest] = await this.plugin.store.listChatLogs();
+      if (!latest) return;
+      const log = await this.plugin.store.loadChatLog(latest.id);
+      if (log && log.turns.length > 0) this.loadSession(log);
+    } catch {
+      /* history is best-effort: a read failure must not break the chat */
+    }
+  }
+
+  /** A modal listing saved sessions on a timeline: click to reopen, trash to delete. */
+  private async showHistory(): Promise<void> {
+    let heads: ChatLogHead[] = [];
+    try {
+      heads = await this.plugin.store.listChatLogs();
+    } catch {
+      /* fall through to the empty list */
+    }
+    const modal = new Modal(this.app);
+    modal.titleEl.setText(t("chat.history"));
+    modal.modalEl.addClass("atl-history-modal");
+    const list = modal.contentEl.createDiv({ cls: "atl-chat-history" });
+    if (heads.length === 0) {
+      const empty = list.createDiv({ cls: "atl-chat-history-empty" });
+      setIcon(empty.createDiv({ cls: "atl-chat-history-empty-icon" }), "messages-square");
+      empty.createDiv({ text: t("chat.historyEmpty") });
+    }
+    // Load full logs for previews. The modal is on-demand and sessions are
+    // capped (chatLogKeepSessions), so a handful of small file reads is fine.
+    const logs = await Promise.all(
+      heads.map((head) => this.plugin.store.loadChatLog(head.id).catch(() => null))
+    );
+    let lastBucket = "";
+    for (const [index, head] of heads.entries()) {
+      const bucket = this.historyBucket(head.updatedAt);
+      if (bucket !== lastBucket) {
+        list.createDiv({ cls: "atl-chat-history-group", text: bucket });
+        lastBucket = bucket;
+      }
+      const row = list.createDiv({ cls: "atl-chat-history-item" });
+      const open = row.createEl("button", { cls: "atl-chat-history-open" });
+      const titleRow = open.createDiv({ cls: "atl-chat-history-titlerow" });
+      titleRow.createSpan({ cls: "atl-chat-history-title", text: head.title });
+      titleRow.createSpan({
+        cls: "atl-chat-history-time",
+        text: this.historyTime(head.updatedAt)
+      });
+      const preview = this.previewOf(logs[index] ?? null);
+      if (preview) {
+        open.createDiv({ cls: "atl-chat-history-preview", text: preview });
+      }
+      const meta = open.createDiv({ cls: "atl-chat-history-meta" });
+      meta.createSpan({
+        cls: "atl-chat-history-badge",
+        text: head.engine === "api" ? "API" : "OpenCode"
+      });
+      meta.createSpan({
+        cls: "atl-chat-history-badge atl-chat-history-badge--mode",
+        text: t(`chat.mode.${head.mode}`)
+      });
+      meta.createSpan({
+        cls: "atl-muted",
+        text: t("chat.turnsCount", { count: head.turns })
+      });
+      open.onclick = () => {
+        void this.plugin.store.loadChatLog(head.id).then((log) => {
+          if (log) this.loadSession(log);
+        });
+        modal.close();
+      };
+      const del = row.createEl("button", { cls: "atl-iconbtn atl-chat-history-del" });
+      setIcon(del, "trash-2");
+      setTooltip(del, t("chat.deleteSession"));
+      del.onclick = () => {
+        new ConfirmModal(this.app, {
+          title: t("chat.deleteSession"),
+          body: t("chat.deleteSessionBody", { title: head.title }),
+          confirmText: t("chat.deleteSession"),
+          warning: true,
+          onConfirm: async () => {
+            await this.plugin.store.deleteChatLog(head.id);
+            row.remove();
+            if (this.currentLog?.id === head.id) {
+              this.currentLog = null;
+              this.restoredFromHistory = false;
+            }
+          }
+        }).open();
+      };
+    }
+    const footer = modal.contentEl.createDiv({ cls: "atl-chat-history-footer" });
+    const clearAll = footer.createEl("button", {
+      text: t("chat.deleteAllSessions"),
+      cls: "mod-warning"
+    });
+    clearAll.onclick = () => {
+      new ConfirmModal(this.app, {
+        title: t("chat.deleteAllSessions"),
+        body: t("chat.deleteAllBody"),
+        confirmText: t("chat.deleteAllSessions"),
+        warning: true,
+        onConfirm: async () => {
+          await this.plugin.store.clearChatLogs();
+          this.currentLog = null;
+          this.restoredFromHistory = false;
+          modal.close();
+          this.newChat();
+        }
+      }).open();
+    };
+    modal.open();
+  }
+
+  /** Group a session into a human date bucket for the history timeline. */
+  private historyBucket(iso: string): string {
+    const days = this.daysAgo(iso);
+    if (days <= 0) return t("chat.history.today");
+    if (days === 1) return t("chat.history.yesterday");
+    if (days < 7) return t("chat.history.week");
+    return t("chat.history.older");
+  }
+
+  /** Time-of-day for recent sessions, a calendar date for older ones. */
+  private historyTime(iso: string): string {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return iso.slice(0, 10);
+    if (this.daysAgo(iso) < 2) {
+      return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    }
+    return date.toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric"
+    });
+  }
+
+  /** Whole calendar days between `iso` and today (0 = today, 1 = yesterday). */
+  private daysAgo(iso: string): number {
+    const then = new Date(iso);
+    if (Number.isNaN(then.getTime())) return Number.POSITIVE_INFINITY;
+    const startToday = new Date();
+    startToday.setHours(0, 0, 0, 0);
+    then.setHours(0, 0, 0, 0);
+    return Math.round((startToday.getTime() - then.getTime()) / 86_400_000);
+  }
+
+  /** A one-line preview from the first user message of a saved session. */
+  private previewOf(log: ChatLog | null): string {
+    if (!log) return "";
+    const first = log.turns.find((turn) => turn.role === "user") ?? log.turns[0];
+    if (!first) return "";
+    const oneLine = first.text.replace(/\s+/g, " ").trim();
+    return oneLine.length > 120 ? `${oneLine.slice(0, 119)}\u2026` : oneLine;
+  }
+
+  /**
+   * A bounded transcript recap for the engine: a restored OpenCode session is a
+   * brand-new process with no memory, so its first prompt replays the tail of
+   * the saved conversation (the API engine needs no recap — apiHistory carries it).
+   */
+  private transcriptRecap(): string {
+    const { turns } = capChatLog(this.currentLog?.turns ?? [], 20, 1200);
+    const lines = turns.map((turn) => {
+      const who = turn.role === "user" ? "Learner" : "Tutor";
+      const text = turn.text.replace(/\s+/g, " ").trim();
+      return `${who}: ${text.length > 300 ? `${text.slice(0, 300)}…` : text}`;
+    });
+    return `[This conversation was restored from an earlier session. Recent transcript:\n${lines.join("\n").slice(0, 1500)}\nContinue from here.]`;
   }
 
   private async toggleEngine(): Promise<void> {
@@ -308,22 +585,31 @@ export class ChatView extends ItemView {
     const intent = classifyIntent(text);
     if (intent === "locate" && this.tryLocate(text)) return;
 
+    // Local-only turns (locate above) are not worth a session file; everything
+    // that reaches an engine is.
+    await this.persistTurn("user", text);
+
+    this.stopRequested = false;
     this.setBusy(true);
-    const ctx = await this.resolveContext();
-    // The agent may propose an edit when in Build mode or when the message
-    // clearly asks for one ("insert a table…", "draw a diagram…") — so writing
-    // and inserting work without first switching to Build. Capture where the
-    // edit would land and append the edit protocol to the message the engine
-    // receives. With an annotation pinned (e.g. a "polish" routed from a card),
-    // prefer its selected text so the edit replaces the annotated span.
-    const wantsEdit = this.mode === "build" || intent === "write";
-    const target = wantsEdit
-      ? this.plugin.captureEditTarget(this.pinned?.selection)
-      : null;
-    const engineText = wantsEdit
-      ? `${buildEditInstruction(target?.hasSelection ?? false)}\n\n${text}`
-      : text;
+    // Everything from here on lives inside the try: `resolveContext()` reads the
+    // Vault and `captureEditTarget()` touches the editor, so either can throw —
+    // and outside the try that left `busy` stuck on, silently swallowing every
+    // later message (callers use `void this.send()`, so nothing else catches it).
     try {
+      const ctx = await this.resolveContext();
+      // The agent may propose an edit when in Build mode or when the message
+      // clearly asks for one ("insert a table…", "draw a diagram…") — so writing
+      // and inserting work without first switching to Build. Capture where the
+      // edit would land and append the edit protocol to the message the engine
+      // receives. With an annotation pinned (e.g. a "polish" routed from a card),
+      // prefer its selected text so the edit replaces the annotated span.
+      const wantsEdit = this.mode === "build" || intent === "write";
+      const target = wantsEdit
+        ? this.plugin.captureEditTarget(this.pinned?.selection)
+        : null;
+      const engineText = wantsEdit
+        ? `${buildEditInstruction(target?.hasSelection ?? false)}\n\n${text}`
+        : text;
       if (this.plugin.settings.chatEngine === "opencode") {
         await this.runOpenCodeWithFallback(ctx, engineText, text, target);
       } else {
@@ -383,6 +669,7 @@ export class ChatView extends ItemView {
     );
     const result = await this.plugin.chatApiTurn(messages);
     thinking.remove();
+    if (this.stopRequested) return;
     if (!result.ok || !result.reviewText) {
       this.addNotice(result.error ? t("chat.error", { detail: result.error }) : t("chat.empty"));
       return;
@@ -390,6 +677,7 @@ export class ChatView extends ItemView {
     // Keep the conversation history clean (the raw message, not the protocol).
     this.apiHistory.push({ role: "user", content: rawText });
     this.apiHistory.push({ role: "assistant", content: result.reviewText });
+    await this.persistTurn("assistant", result.reviewText);
     await this.presentReply(result.reviewText, null, target);
   }
 
@@ -419,6 +707,12 @@ export class ChatView extends ItemView {
     if (ctx.notePath) this.lastSentNotePath = ctx.notePath;
     const result = await session.session.prompt(prompt, { mode: ACP_MODE[this.mode] });
     bubble.onUpdate = null;
+    if (this.stopRequested) {
+      // Keep whatever streamed so far; skip the error/empty notices and don't persist.
+      if (gotChunk) bubble.finalize();
+      else bubble.el.remove();
+      return;
+    }
     const finalText = result.text || raw;
     if (!result.ok && !finalText) {
       bubble.el.remove();
@@ -434,6 +728,7 @@ export class ChatView extends ItemView {
     }
     bubble.finalize();
     await this.presentReply(finalText, bubble.el, target);
+    await this.persistTurn("assistant", finalText);
   }
 
   /**
@@ -446,6 +741,8 @@ export class ChatView extends ItemView {
     container: HTMLElement | null,
     target: EditTarget | null
   ): Promise<void> {
+    // The engine answered, so the restored-session recap must not repeat.
+    this.restoredFromHistory = false;
     // `target` is non-null exactly when this turn asked the agent to write; also
     // handle a reply that carries edit markers even if there's no note to apply
     // to, so the raw markers are never shown as text.
@@ -698,27 +995,75 @@ export class ChatView extends ItemView {
     }, (callback) => window.requestAnimationFrame(callback));
 
     // Thought/tool events fold into the segment blocks above the reply text.
-    const events: AcpStreamEvent[] = [];
-    const renderSegments = (): void => {
-      segmentsEl.empty();
-      for (const segment of foldStreamSegments(events)) {
-        if (segment.kind === "thought") {
-          const details = segmentsEl.createEl("details", { cls: "atl-chat-thought" });
-          details.createEl("summary", { text: t("chat.thought") });
-          details.createDiv({ cls: "atl-chat-thought-body", text: segment.text });
-        } else {
-          const card = segmentsEl.createDiv({ cls: "atl-chat-tool" });
-          setIcon(card.createSpan({ cls: "atl-chat-tool-icon" }), "wrench");
-          card.createSpan({ cls: "atl-chat-tool-title", text: segment.title });
-          if (segment.status) {
-            card.createSpan({
-              cls: `atl-chat-tool-status atl-chat-tool-status--${segment.status}`,
-              text: segment.status
-            });
+    // Each block keeps its own updater so a re-render touches only what moved:
+    // rebuilding the list wholesale collapsed every <details> the learner had
+    // expanded, and cost O(segments) DOM writes per streamed chunk.
+    type SegmentNode = {
+      kind: ChatSegment["kind"];
+      el: HTMLElement;
+      update: (segment: ChatSegment) => void;
+    };
+    const createThoughtNode = (): SegmentNode => {
+      const details = segmentsEl.createEl("details", { cls: "atl-chat-thought" });
+      details.createEl("summary", { text: t("chat.thought") });
+      const thoughtBody = details.createDiv({ cls: "atl-chat-thought-body" });
+      return {
+        kind: "thought",
+        el: details,
+        update: (segment): void => {
+          if (segment.kind !== "thought") return;
+          if (thoughtBody.textContent !== segment.text) {
+            thoughtBody.textContent = segment.text;
           }
         }
-      }
+      };
     };
+    const createToolNode = (): SegmentNode => {
+      const card = segmentsEl.createDiv({ cls: "atl-chat-tool" });
+      setIcon(card.createSpan({ cls: "atl-chat-tool-icon" }), "wrench");
+      const titleEl = card.createSpan({ cls: "atl-chat-tool-title" });
+      let statusEl: HTMLElement | null = null;
+      return {
+        kind: "tool",
+        el: card,
+        update: (segment): void => {
+          if (segment.kind !== "tool") return;
+          if (titleEl.textContent !== segment.title) titleEl.textContent = segment.title;
+          if (!segment.status) {
+            statusEl?.remove();
+            statusEl = null;
+            return;
+          }
+          statusEl ??= card.createSpan({});
+          statusEl.className = `atl-chat-tool-status atl-chat-tool-status--${segment.status}`;
+          if (statusEl.textContent !== segment.status) statusEl.textContent = segment.status;
+        }
+      };
+    };
+
+    const events: AcpStreamEvent[] = [];
+    const nodes: SegmentNode[] = [];
+    const renderSegments = (): void => {
+      const segments = foldStreamSegments(events);
+      for (const [index, segment] of segments.entries()) {
+        let node: SegmentNode | undefined = nodes[index];
+        if (node && node.kind !== segment.kind) {
+          // The fold only ever appends or updates its tail, so this cannot happen
+          // today; drop the tail rather than append out of order if it ever does.
+          for (const stale of nodes.splice(index)) stale.el.remove();
+          node = undefined;
+        }
+        if (!node) {
+          node = segment.kind === "thought" ? createThoughtNode() : createToolNode();
+          nodes.push(node);
+        }
+        node.update(segment);
+      }
+      for (const stale of nodes.splice(segments.length)) stale.el.remove();
+    };
+    const segmentBatcher = createFrameBatcher(renderSegments, (callback) =>
+      window.requestAnimationFrame(callback)
+    );
 
     const handle = {
       el,
@@ -729,10 +1074,13 @@ export class ChatView extends ItemView {
       },
       addEvent: (event: AcpStreamEvent): void => {
         events.push(event);
-        renderSegments();
+        segmentBatcher.dirty();
       },
       /** Drop the live status/body so the final Markdown render replaces them. */
       finalize: (): void => {
+        // Land any batched segment state now: the turn may end inside the same
+        // frame as its last tool update, and segmentsEl outlives this bubble.
+        renderSegments();
         status.remove();
         body.remove();
       },
@@ -754,7 +1102,11 @@ export class ChatView extends ItemView {
     // Render into a child so a streaming bubble's thought/tool segment blocks
     // survive the final Markdown pass.
     const md = el.createDiv({ cls: "atl-chat-md" });
-    await MarkdownRenderer.render(this.app, text, md, "", this);
+    // The source path resolves relative links, [[wikilinks]] and embeds in the
+    // reply against the note under discussion; "" resolved them against the Vault
+    // root, so a link the agent wrote next to the note silently dead-ended.
+    const sourcePath = this.pinned?.notePath ?? this.lastSentNotePath;
+    await MarkdownRenderer.render(this.app, text, md, sourcePath, this);
     this.attachCopy(md, text);
     this.scrollToBottom();
   }
@@ -805,15 +1157,18 @@ export class ChatView extends ItemView {
    * changed since the last turn (so the agent re-indexes the new file).
    */
   private opencodeContextPrefix(ctx: ChatContext, text: string): string {
+    let prefix = "";
     if (this.firstTurn) {
-      return `${opencodePreamble(ctx, this.languageTarget(text))}\n\n`;
-    }
-    if (ctx.notePath && ctx.notePath !== this.lastSentNotePath) {
+      prefix = `${opencodePreamble(ctx, this.languageTarget(text))}\n\n`;
+    } else if (ctx.notePath && ctx.notePath !== this.lastSentNotePath) {
       const sel = ctx.selection?.trim();
       const selPart = sel ? `, selected: "${sel}"` : "";
-      return `[The learner is now reading: ${ctx.notePath}${selPart}. Read it with your file tools if helpful.]\n\n`;
+      prefix = `[The learner is now reading: ${ctx.notePath}${selPart}. Read it with your file tools if helpful.]\n\n`;
     }
-    return "";
+    if (this.restoredFromHistory) {
+      prefix += `${this.transcriptRecap()}\n\n`;
+    }
+    return prefix;
   }
 
   private engineLabel(): string {
@@ -824,8 +1179,23 @@ export class ChatView extends ItemView {
 
   private setBusy(busy: boolean): void {
     this.busy = busy;
-    this.sendBtn.disabled = busy;
+    // The send button stays clickable while busy — it morphs into the stop control.
+    this.sendBtn.toggleClass("is-generating", busy);
+    setIcon(this.sendBtn, busy ? "square" : "send-horizontal");
+    setTooltip(this.sendBtn, busy ? t("chat.stop") : t("chat.send"));
     this.inputEl.disabled = busy;
+  }
+
+  /** Abort the in-flight turn (the send button morphs into this stop control). */
+  private stop(): void {
+    if (!this.busy) return;
+    this.stopRequested = true;
+    // OpenCode: tearing the session down settles the pending prompt at once.
+    // API: requestUrl can't be aborted mid-flight, so the pending result is
+    // discarded when it returns (see the stopRequested guards in the run* turns).
+    if (this.plugin.settings.chatEngine === "opencode") this.disposeSession();
+    this.setBusy(false);
+    this.addNotice(t("chat.stopped"));
   }
 
   private clearEmpty(): void {
@@ -841,6 +1211,10 @@ export class ChatView extends ItemView {
     this.session = null;
     this.sessionKey = "";
     this.activeStream = null;
+    // Second line of defence for the busy flag: tearing the session down mid-turn
+    // (new chat / engine switch / pinning a card) must never leave the composer
+    // disabled-in-spirit, because `send()` returns early on `busy` without a word.
+    this.setBusy(false);
   }
 
   private iconButton(

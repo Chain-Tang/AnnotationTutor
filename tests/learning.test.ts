@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  calibrateProfileClaims,
   classifyCells,
+  deriveMasterySnapshot,
   deriveProfileSummary,
+  deriveStudyPlan,
   isStrength,
-  isWeakness
+  isWeakness,
+  summarizeMastery,
+  summarizeStudyPlan
 } from "../src/learning.js";
 import type { MemoryCell } from "../src/model.js";
 import type { ReviewState } from "../src/srs.js";
@@ -108,5 +113,163 @@ describe("deriveProfileSummary", () => {
 
   it("returns an empty string when there are no cells", () => {
     expect(deriveProfileSummary([])).toBe("");
+  });
+});
+
+describe("deriveMasterySnapshot", () => {
+  it("grades by measured recall: >=3 reps mastered, 1-2 developing, fresh new", () => {
+    const snapshot = deriveMasterySnapshot([
+      cell({ id: "M", concept: "Mastered", review: review({ reps: 3 }) }),
+      cell({ id: "D", concept: "Developing", review: review({ reps: 1 }) }),
+      cell({ id: "N", concept: "New", type: "progress", confidence: 0.6 })
+    ]);
+    const levels = Object.fromEntries(
+      snapshot.concepts.map((item) => [item.concept, item.mastery])
+    );
+    expect(levels).toEqual({ Mastered: "mastered", Developing: "developing", New: "new" });
+  });
+
+  it("lets a fresh lapse pull a concept to struggling and sums its lapses", () => {
+    const snapshot = deriveMasterySnapshot([
+      cell({ id: "L", concept: "Chain rule", confidence: 0.9, review: review({ reps: 0, lapses: 2 }) })
+    ]);
+    expect(snapshot.concepts[0]?.mastery).toBe("struggling");
+    expect(snapshot.concepts[0]?.lapses).toBe(2);
+  });
+
+  it("forces struggling for an unresolved misconception even beside a mastered cell", () => {
+    const snapshot = deriveMasterySnapshot([
+      cell({ id: "OK", concept: "Attention", type: "understanding", review: review({ reps: 4 }) }),
+      cell({ id: "BUG", concept: "Attention", type: "misconception", review: review({ reps: 0 }) })
+    ]);
+    expect(snapshot.concepts).toHaveLength(1);
+    expect(snapshot.concepts[0]?.mastery).toBe("struggling");
+    expect(snapshot.concepts[0]?.cellIds).toEqual(["BUG", "OK"]);
+    expect(snapshot.misconceptions.map((item) => item.concept)).toEqual(["Attention"]);
+  });
+
+  it("treats a misconception now recalled reliably as resolved (measured recall wins)", () => {
+    const snapshot = deriveMasterySnapshot([
+      cell({ id: "FIXED", concept: "Query vs Key", type: "misconception", review: review({ reps: 3, lapses: 1 }) })
+    ]);
+    expect(snapshot.concepts[0]?.mastery).toBe("mastered");
+    expect(snapshot.misconceptions).toEqual([]);
+  });
+
+  it("falls back to the heuristic when a concept has no review history", () => {
+    const snapshot = deriveMasterySnapshot([
+      cell({ id: "W", concept: "Weak", status: "needs_review", confidence: 0.3 }),
+      cell({ id: "S", concept: "Solid", type: "understanding", confidence: 0.9 })
+    ]);
+    const levels = Object.fromEntries(
+      snapshot.concepts.map((item) => [item.concept, item.mastery])
+    );
+    expect(levels).toEqual({ Weak: "struggling", Solid: "developing" });
+  });
+
+  it("orders struggling-first, then by lapses, and skips blank concepts", () => {
+    const snapshot = deriveMasterySnapshot([
+      cell({ id: "A", concept: "Mastered", review: review({ reps: 5 }) }),
+      cell({ id: "B", concept: "BadLots", confidence: 0.4, review: review({ reps: 0, lapses: 3 }) }),
+      cell({ id: "C", concept: "BadFew", confidence: 0.4, review: review({ reps: 0, lapses: 1 }) }),
+      cell({ id: "D", concept: "   " })
+    ]);
+    expect(snapshot.concepts.map((item) => item.concept)).toEqual([
+      "BadLots",
+      "BadFew",
+      "Mastered"
+    ]);
+  });
+});
+
+describe("summarizeMastery", () => {
+  it("names concepts per level and calls out misconceptions explicitly", () => {
+    const summary = summarizeMastery(
+      deriveMasterySnapshot([
+        cell({ id: "A", concept: "Backprop", review: review({ reps: 4 }) }),
+        cell({ id: "B", concept: "Gradients", review: review({ reps: 1 }) }),
+        cell({ id: "C", concept: "Chain rule", type: "misconception", review: review({ reps: 0 }) })
+      ])
+    );
+    expect(summary).toContain("Mastered: Backprop.");
+    expect(summary).toContain("Developing: Gradients.");
+    expect(summary).toContain("Struggling: Chain rule.");
+    expect(summary).toContain("Misconceptions to address: Chain rule.");
+  });
+
+  it("returns an empty string when there are no graded concepts", () => {
+    expect(summarizeMastery(deriveMasterySnapshot([]))).toBe("");
+  });
+});
+
+describe("calibrateProfileClaims", () => {
+  const cells = [
+    cell({ id: "MEM-weak", concept: "Chain rule", type: "misconception", review: review({ reps: 0 }) }),
+    cell({ id: "MEM-ok", concept: "Backprop", review: review({ reps: 4 }) })
+  ];
+
+  it("flags a claim whose evidence cites a struggling concept", () => {
+    const result = calibrateProfileClaims(
+      [
+        { statement: "Understands the chain rule.", evidence: ["MEM-weak", "MEM-ok"] },
+        { statement: "Understands backprop.", evidence: ["MEM-ok"] }
+      ],
+      cells
+    );
+    expect(result).toEqual([{ claimIndex: 0, strugglingConcepts: ["Chain rule"] }]);
+  });
+
+  it("ignores evidence that is not a memory cell (e.g. a scene id)", () => {
+    expect(
+      calibrateProfileClaims(
+        [{ statement: "Likes examples.", evidence: ["SCENE-transformers"] }],
+        cells
+      )
+    ).toEqual([]);
+  });
+});
+
+describe("deriveStudyPlan / summarizeStudyPlan", () => {
+  const now = "2026-06-15T10:00:00.000Z";
+  const past = "2026-06-14T10:00:00.000Z";
+  const future = "2026-06-20T10:00:00.000Z";
+
+  it("collects active goals and cells due now, excluding archived", () => {
+    const plan = deriveStudyPlan(
+      [
+        cell({ id: "G1", type: "goal", concept: "Finish transformers", review: review({ dueAt: future }) }),
+        cell({ id: "G2", type: "goal", concept: "Archived goal", status: "archived", review: review({ dueAt: future }) }),
+        cell({ id: "DUE", concept: "Attention", review: review({ dueAt: past }) }),
+        cell({ id: "NEW", concept: "Unscheduled" }),
+        cell({ id: "LATER", concept: "Later", review: review({ dueAt: future }) })
+      ],
+      now
+    );
+    expect(plan.goals.map((c) => c.id)).toEqual(["G1"]);
+    expect(plan.due.map((c) => c.id)).toEqual(["NEW", "DUE"]);
+  });
+
+  it("summarizes goals and the due-review concepts", () => {
+    const summary = summarizeStudyPlan(
+      deriveStudyPlan(
+        [
+          cell({ id: "G1", type: "goal", concept: "Master attention", review: review({ dueAt: future }) }),
+          cell({ id: "DUE", concept: "Backprop", review: review({ dueAt: past }) })
+        ],
+        now
+      )
+    );
+    expect(summary).toContain("Goals: Master attention.");
+    expect(summary).toContain("Due for review (1): Backprop.");
+  });
+
+  it("returns an empty string with no goals and nothing due", () => {
+    const summary = summarizeStudyPlan(
+      deriveStudyPlan(
+        [cell({ id: "X", concept: "X", review: review({ dueAt: "2999-01-01T00:00:00.000Z" }) })],
+        now
+      )
+    );
+    expect(summary).toBe("");
   });
 });

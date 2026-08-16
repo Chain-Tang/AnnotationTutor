@@ -64,6 +64,42 @@ describe("memory library markdown", () => {
     expect(parseSceneFile(markdown)).toEqual(scene);
   });
 
+  it("round-trips course, document, and project scenes", () => {
+    for (const type of ["course", "document", "project"] as const) {
+      const scene: Scene = {
+        id: `SCENE-${type}-example`,
+        type,
+        title: `${type} scene`,
+        status: "active",
+        summary: `A ${type} study scene.`,
+        cells: ["CELL-20260607-001"],
+        tags: [],
+        createdAt: "2026-06-07T10:00:00.000Z",
+        updatedAt: "2026-06-07T10:00:00.000Z"
+      };
+      const parsed = parseSceneFile(serializeScene(scene, "Agent Memory"));
+      expect(parsed?.type).toBe(type);
+      expect(parsed).toEqual(scene);
+    }
+  });
+
+  it("round-trips an archived scene without losing its status", () => {
+    const scene: Scene = {
+      id: "SCENE-archived-topic",
+      type: "topic",
+      title: "Archived topic",
+      status: "archived",
+      summary: "An archived scene keeps its archived status on reload.",
+      cells: [],
+      tags: ["auto"],
+      createdAt: "2026-06-07T10:00:00.000Z",
+      updatedAt: "2026-06-08T10:00:00.000Z"
+    };
+    const parsed = parseSceneFile(serializeScene(scene, "Agent Memory"));
+    expect(parsed?.status).toBe("archived");
+    expect(parsed).toEqual(scene);
+  });
+
   it("requires two evidence links for every learner-profile claim", () => {
     const profile: LearnerProfile = {
       id: "learner-profile",
@@ -91,5 +127,27 @@ describe("memory library markdown", () => {
       "Agent Memory"
     );
     expect(parseProfileFile(invalid)).toBeNull();
+  });
+
+  it("round-trips a preferences profile with a single-evidence claim", () => {
+    const preferences: LearnerProfile = {
+      id: "preferences",
+      kind: "preferences",
+      title: "Preferences",
+      status: "active",
+      summary: "How the learner likes to be taught.",
+      claims: [
+        {
+          statement: "Prefers concise, example-first answers.",
+          evidence: ["CELL-20260607-001"]
+        }
+      ],
+      tags: [],
+      updatedAt: "2026-06-07T10:00:00.000Z"
+    };
+    // Preferences relax the learner-profile rule: one evidence link is enough.
+    expect(
+      parseProfileFile(serializeProfile(preferences, "Agent Memory"))
+    ).toEqual(preferences);
   });
 });

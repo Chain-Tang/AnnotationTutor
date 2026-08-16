@@ -6,8 +6,13 @@
 // plugin chokes on it. Pure, unit-tested; the file-format rules mirror the
 // excalidraw-diagram skill spec (see docs/improvement-proposal.md §1.3).
 
-/** Fields the Excalidraw parsers reject or mis-handle when LLMs add them. */
-const FORBIDDEN_FIELDS = ["frameId", "index", "versionNonce", "rawText"];
+/**
+ * Fields the Excalidraw parsers reject or mis-handle when LLMs invent them.
+ * Keep this list minimal and evidence-based: `frameId` (frame membership),
+ * `index` (fractional index = z-order) and `versionNonce` are fields Excalidraw
+ * itself writes, so stripping them corrupted real drawings.
+ */
+const FORBIDDEN_FIELDS = ["rawText"];
 
 /** True when a note's content is an Obsidian Excalidraw document. */
 export function isExcalidrawDoc(content: string): boolean {
@@ -28,11 +33,16 @@ export function repairExcalidrawElement(
     }
   }
   // `boundElements` must be null (not []) and `updated` must be 1 (not a
-  // timestamp) for excalidraw.com compatibility.
+  // timestamp) for excalidraw.com compatibility. Only flag `changed` when the
+  // value really moves — a non-empty array is already valid, and claiming a
+  // repair on it made every sanitize pass rewrite the file.
   if ("boundElements" in element && element.boundElements !== null) {
     const bound = element.boundElements;
-    element.boundElements = Array.isArray(bound) && bound.length > 0 ? bound : null;
-    changed = true;
+    const next = Array.isArray(bound) && bound.length > 0 ? bound : null;
+    if (next !== bound) {
+      element.boundElements = next;
+      changed = true;
+    }
   }
   if ("updated" in element && element.updated !== 1) {
     element.updated = 1;
@@ -97,6 +107,9 @@ export function sanitizeExcalidrawDoc(
   const rebuilt = `${JSON.stringify(doc, null, 2)}\n`;
   const next =
     content.slice(0, fence.start) + rebuilt + content.slice(fence.end);
+  // Last line of defence against a write-event-write loop: a repair that ends up
+  // byte-identical is not a repair, however the flags above were set.
+  if (next === content) return { content, repaired: false };
   return { content: next, repaired: true };
 }
 

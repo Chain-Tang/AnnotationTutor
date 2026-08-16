@@ -1,24 +1,11 @@
-// Web-capture helpers: turn a selection from an embedded browser view (Surfing
-// and friends) into a learning annotation. This mirrors Zotero's "capture into
+// Web-capture helpers: turn a page or selection sent by the external browser
+// extension into a learning annotation. This mirrors Zotero's "capture into
 // library" step, but the destination is the learning loop — the capture note
 // becomes the annotation's source file, and the annotation flows straight into
-// review / memory cells. Matching and note assembly are pure (unit-tested);
-// the DOM extraction itself lives on the plugin side.
+// review / memory cells. Note assembly is pure (unit-tested); the DOM
+// extraction and Markdown conversion happen in the browser extension.
 
-/** viewType fragments that mark a leaf as an embedded browser (case-insensitive). */
-export const BROWSER_VIEW_HINTS = ["surfing", "browser", "webview"];
-
-/**
- * True when a leaf's viewType looks like an embedded browser. Learners can add
- * their plugin's viewType via settings (`webCaptureViewTypes`), so an exact
- * match against the configured list wins before the heuristic hints.
- */
-export function isBrowserLikeView(viewType: string, extra: string[] = []): boolean {
-  const type = viewType.trim().toLowerCase();
-  if (!type) return false;
-  if (extra.some((item) => item.trim().toLowerCase() === type)) return true;
-  return BROWSER_VIEW_HINTS.some((hint) => type.includes(hint));
-}
+import type { CapturePayload } from "./web-bridge/protocol.js";
 
 export type WebCaptureInput = {
   selection: string;
@@ -44,14 +31,28 @@ export function captureNoteStem(input: WebCaptureInput): string {
 }
 
 /**
+ * Wrap a value as a YAML double-quoted scalar. Backslash must be escaped before
+ * the quote, or a LaTeX/BibTeX title like `$\alpha$` emits `\a` — an illegal
+ * YAML escape that breaks the whole frontmatter block.
+ */
+function yamlQuote(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+/** Inverse of {@link yamlQuote}: undo `\"`→`"` first, then `\\`→`\`. */
+function yamlUnquote(value: string): string {
+  return value.replace(/^"|"$/g, "").replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+}
+
+/**
  * The Markdown capture note. The selection lives in a quote block so the
  * annotation can anchor to it with a block id; source metadata goes into
  * frontmatter so later citation export can read it back.
  */
 export function buildCaptureNote(input: WebCaptureInput, blockId: string): string {
   const lines = ["---", "type: web-capture"];
-  if (input.title?.trim()) lines.push(`title: "${input.title.trim().replace(/"/g, "'")}"`);
-  if (input.url?.trim()) lines.push(`source-url: "${input.url.trim()}"`);
+  if (input.title?.trim()) lines.push(`title: ${yamlQuote(input.title.trim())}`);
+  if (input.url?.trim()) lines.push(`source-url: ${yamlQuote(input.url.trim())}`);
   lines.push(`captured-at: ${input.capturedAt}`);
   lines.push("tags:", "  - web-capture", "---", "");
   const selection = input.selection.trim();
@@ -61,6 +62,69 @@ export function buildCaptureNote(input: WebCaptureInput, blockId: string): strin
     .join("\n");
   lines.push(quoted + ` ^${blockId}`, "");
   lines.push("## My understanding", "");
+  return lines.join("\n");
+}
+
+/** Frontmatter head shared by capture notes assembled from an extension payload. */
+function captureHead(payload: CapturePayload): string[] {
+  const lines = ["---", "type: web-capture"];
+  if (payload.title.trim()) lines.push(`title: ${yamlQuote(payload.title.trim())}`);
+  if (payload.url.trim()) lines.push(`source-url: ${yamlQuote(payload.url.trim())}`);
+  lines.push(`captured-at: ${payload.capturedAt}`);
+  return lines;
+}
+
+/**
+ * A capture note for one or more highlighted selections sent by the browser
+ * extension. The primary selection's TextQuoteSelector goes into frontmatter so
+ * a later visit can relocate it; each selection becomes an anchorable quote
+ * block, and any learner notes collect under "## My understanding".
+ */
+export function buildSelectionCaptureNote(
+  payload: CapturePayload,
+  blockId: string
+): string {
+  const selections = payload.selections ?? [];
+  const lines = captureHead(payload);
+  const primary = selections[0];
+  if (primary) {
+    lines.push(`anchor-exact: ${yamlQuote(primary.exact)}`);
+    lines.push(`anchor-prefix: ${yamlQuote(primary.prefix)}`);
+    lines.push(`anchor-suffix: ${yamlQuote(primary.suffix)}`);
+  }
+  lines.push("tags:", "  - web-capture", "---", "");
+  selections.forEach((selection, index) => {
+    const id = index === 0 ? blockId : `${blockId}-${index}`;
+    const quoted = selection.exact
+      .trim()
+      .split(/\r?\n/)
+      .map((line) => `> ${line}`)
+      .join("\n");
+    lines.push(`${quoted} ^${id}`, "");
+  });
+  lines.push("## My understanding", "");
+  const notes = selections
+    .map((selection) => selection.note?.trim())
+    .filter((note): note is string => Boolean(note));
+  if (notes.length > 0) lines.push(notes.join("\n\n"), "");
+  return lines.join("\n");
+}
+
+/**
+ * A capture note for a full-page archive: frontmatter plus the extension's
+ * Turndown output. Sibling raw-HTML paths (rendered DOM, server source) are
+ * recorded in frontmatter when stored, so the note links back to the originals.
+ */
+export function buildPageCaptureNote(
+  payload: CapturePayload,
+  raw: { rendered?: string; source?: string } = {}
+): string {
+  const lines = captureHead(payload);
+  if (raw.rendered) lines.push(`raw-rendered: ${yamlQuote(raw.rendered)}`);
+  if (raw.source) lines.push(`raw-source: ${yamlQuote(raw.source)}`);
+  lines.push("tags:", "  - web-capture", "  - web-page", "---", "");
+  const body = payload.markdown.trim();
+  if (body) lines.push(body, "");
   return lines.join("\n");
 }
 
@@ -74,7 +138,7 @@ export function parseCaptureFrontmatter(
   for (const line of match[1]!.split(/\r?\n/)) {
     const kv = /^(title|source-url|captured-at):\s*(.+)$/.exec(line.trim());
     if (!kv) continue;
-    const value = kv[2]!.trim().replace(/^"|"$/g, "");
+    const value = yamlUnquote(kv[2]!.trim());
     if (kv[1] === "title") out.title = value;
     else if (kv[1] === "source-url") out.url = value;
     else out.capturedAt = value;

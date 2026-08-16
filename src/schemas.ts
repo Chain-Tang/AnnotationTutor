@@ -112,6 +112,40 @@ export const learnerProfileSchema = z
     }
   });
 
+export const chatLogEngineSchema = z.enum(["opencode", "api"]);
+export const chatLogModeSchema = z.enum(["ask", "plan", "build"]);
+
+const chatLogTurnSchema = z.object({
+  role: z.enum(["user", "assistant"]),
+  text: z.string(),
+  at: z.string()
+});
+
+// A saved sidebar chat session (raw transcript; deliberately outside the
+// cell/profile knowledge model). Dates are plain strings, like reviewState.
+export const chatLogSchema = z.object({
+  id: idSchema.regex(/^CHAT-[A-Za-z0-9_-]+$/),
+  title: z.string().trim().min(1),
+  engine: chatLogEngineSchema,
+  mode: chatLogModeSchema,
+  status: z.enum(["active", "archived"]),
+  turns: z.array(chatLogTurnSchema),
+  createdAt: isoDateSchema,
+  updatedAt: isoDateSchema
+});
+
+/** Frontmatter-only head (turn count instead of turns) for cheap listings. */
+export const chatLogHeadSchema = z.object({
+  id: idSchema.regex(/^CHAT-[A-Za-z0-9_-]+$/),
+  title: z.string().trim().min(1),
+  engine: chatLogEngineSchema,
+  mode: chatLogModeSchema,
+  status: z.enum(["active", "archived"]),
+  turns: z.number().int().min(0),
+  createdAt: isoDateSchema,
+  updatedAt: isoDateSchema
+});
+
 export const proposalSchema = z.object({
   id: idSchema.regex(/^PROP-[A-Za-z0-9_-]+$/),
   operation: z.enum(["create", "update"]),

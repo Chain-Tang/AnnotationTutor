@@ -59,6 +59,9 @@ describe("overview generation", () => {
     // The agent is now told to read the learner profile + recent learning.
     expect(instructions).toContain("Agent Memory/profiles/learner-profile.md");
     expect(instructions).toContain("Agent Memory/recent-learning.md");
+    // Typed-scene proposal guidance points at the spec doc.
+    expect(instructions).toContain("targetKind: scene");
+    expect(instructions).toContain("docs/scene-proposals.md");
   });
 
   it("builds a copyable per-annotation prompt", () => {

@@ -172,7 +172,7 @@ describe("memory library index", () => {
     expect(parseLibraryCache('{"version":1}')).toBeNull();
   });
 
-  it("excludes a learner-profile claim whose evidence is not in the library", () => {
+  it("drops only the claims whose evidence is missing and keeps the profile", () => {
     const snapshot = buildLibrarySnapshot({
       annotations: [],
       cells: [],
@@ -185,10 +185,93 @@ describe("memory library index", () => {
       ],
       proposals: []
     });
-    expect(snapshot.profiles).toEqual([]);
+    // The lone claim's evidence is absent, so the claim is dropped but the
+    // profile itself survives (now claim-less) and the loss is recoverable.
+    expect(snapshot.profiles).toHaveLength(1);
+    expect(snapshot.profiles[0]?.claims).toEqual([]);
     expect(snapshot.diagnostics[0]?.message).toBe(
-      "Profile evidence does not exist in the memory library"
+      "Dropped profile claims whose evidence is missing from the memory library"
     );
-    expect(snapshot.diagnostics[0]?.recoverable).toBe(false);
+    expect(snapshot.diagnostics[0]?.recoverable).toBe(true);
+  });
+
+  it("keeps sound claims while dropping a dangling one from the same profile", () => {
+    const mixed: LearnerProfile = {
+      ...profile,
+      claims: [
+        { statement: "Benefits from examples.", evidence: [cell.id, scene.id] },
+        {
+          statement: "Dangling claim.",
+          evidence: ["CELL-missing-001", "CELL-missing-002"]
+        }
+      ]
+    };
+    const snapshot = buildLibrarySnapshot({
+      annotations: [],
+      cells: [
+        {
+          path: `Agent Memory/memory-cells/${cell.id}.md`,
+          content: serializeMemoryCell(cell)
+        }
+      ],
+      scenes: [
+        {
+          path: `Agent Memory/scenes/${scene.id}.md`,
+          content: serializeScene(scene)
+        }
+      ],
+      profiles: [
+        {
+          path: "Agent Memory/profiles/learner-profile.md",
+          content: serializeProfile(mixed)
+        }
+      ],
+      proposals: []
+    });
+    expect(snapshot.profiles).toHaveLength(1);
+    expect(snapshot.profiles[0]?.claims).toEqual([
+      { statement: "Benefits from examples.", evidence: [cell.id, scene.id] }
+    ]);
+    expect(snapshot.diagnostics[0]?.recoverable).toBe(true);
+  });
+
+  it("does not duplicate a claim-filtered profile on an incremental rebuild", () => {
+    const mixed: LearnerProfile = {
+      ...profile,
+      claims: [
+        { statement: "Benefits from examples.", evidence: [cell.id, scene.id] },
+        {
+          statement: "Dangling claim.",
+          evidence: ["CELL-missing-001", "CELL-missing-002"]
+        }
+      ]
+    };
+    const files = {
+      annotations: [],
+      cells: [
+        {
+          path: `Agent Memory/memory-cells/${cell.id}.md`,
+          content: serializeMemoryCell(cell)
+        }
+      ],
+      scenes: [
+        {
+          path: `Agent Memory/scenes/${scene.id}.md`,
+          content: serializeScene(scene)
+        }
+      ],
+      profiles: [
+        {
+          path: "Agent Memory/profiles/learner-profile.md",
+          content: serializeProfile(mixed)
+        }
+      ],
+      proposals: []
+    };
+    const first = buildLibrarySnapshot(files);
+    const second = buildLibrarySnapshot(files, first);
+    expect(
+      second.profiles.filter((item) => item.id === "learner-profile")
+    ).toHaveLength(1);
   });
 });

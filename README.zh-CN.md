@@ -28,6 +28,9 @@ OpenCode、Codex）都能读取并扩展它。
 - 🔌 **自带引擎，按需选用。** 使用你已登录认证的 **OpenCode** CLI，或任意
   **兼容 OpenAI 的 API** —— 密钥只存在你 Vault 本地的插件数据里。
 - 🌏 **界面完整本地化**：English、简体中文、繁體中文、日本語。
+- ✂️ **也能剪藏网页** _(0.2.0 新增)_。配套的 **Web Clipper** 浏览器扩展让你在任意网页上
+  高亮、加批注 —— 标注按 URL 持久化并在重新加载时自动重新锚定 —— 还能把选区或整篇可读
+  正文以 Markdown 形式直接送入你的 Vault。
 
 ## 下载与安装
 
@@ -78,6 +81,37 @@ pnpm package
 ```
 
 随后 [连接一个引擎](#连接一个引擎)，即可开始使用。
+
+## 网页剪藏（Web Clipper）
+
+_(0.2.0 新增)_ 配套的**浏览器扩展**（Chromium 内核 —— Chrome / Edge / Brave）让开放网页
+也成为你 Vault 的素材来源。它独立于插件构建与版本化（见 [`extension/`](extension/)）。
+
+**你能做什么**
+
+- **高亮**任意段落（四种颜色），并为高亮**附加批注**。
+- **持久化并自动重新锚定。** 每条高亮都会按该网页的 URL 保存在浏览器本地存储中，并在你
+  下次访问时通过 W3C 文本引用锚点（前缀 / 精确文本 / 后缀）重新绘制，因此能在页面重新
+  加载、甚至轻微改动后依然保留。
+- **在弹窗中管理。** 工具栏弹窗会列出当前页面的所有高亮 —— 点击任意一条即可跳转，或
+  **全部清除**。
+- **剪藏进 Obsidian。** 把**选区**（走 `obsidian://` 链接）或整篇**可读正文**（转换为
+  Markdown + 归档 HTML，经本地回环桥接）送入 Vault 的剪藏文件夹。
+
+**安装与配对**
+
+1. 在 Obsidian 中打开 **设置 → Annotation Tutor Lite → TutorWeb**：开启 **Enable the Web
+   Clipper bridge**（启用网页剪藏桥接），再用 **Install extension** / **Open extension
+   folder** 打开随插件附带的扩展文件（或自行构建：`cd extension && pnpm install && pnpm
+   build` → `extension/dist/`）。
+2. 打开 `chrome://extensions`（Edge：`edge://extensions`），开启**开发者模式**，点击
+   **加载已解压的扩展程序**，选择该文件夹。
+3. 回到 **TutorWeb** 标签页，**复制配对令牌**。打开扩展弹窗，把它粘贴到 **Bridge
+   token**，并对齐 **Bridge port**（默认 `51256`），然后 **Save（保存）→ Test
+   pairing（测试配对）**。
+
+高亮功能在任意网页上无需配对即可使用；只有把剪藏送入 Vault 时才需要配对。完整说明见
+**[extension/README.md](extension/README.md)**。
 
 ## 首次运行
 

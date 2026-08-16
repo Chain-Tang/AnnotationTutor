@@ -78,6 +78,10 @@ export function renderAgentInstructions(options: OverviewOptions): string {
     ? `13. Preference memory is enabled; evidence-backed preferences may be updated in \`${root}/profiles/preferences.md\`.`
     : "13. Do not read or update `profiles/preferences.md`; preference memory is disabled.";
   const languageInstruction = `14. ${reviewLanguageInstruction(options.reviewLanguage)}`;
+  const sceneInstruction =
+    `15. Scenes group related cells. Auto-derived scenes are always \`topic\` scenes and carry the \`auto\` tag — never hand-edit or duplicate them. ` +
+    `To create a \`course\`, \`document\`, or \`project\` scene, add a scene proposal under \`${root}/proposals/pending/\` with \`targetKind: scene\` ` +
+    `(frontmatter and evidence rules are in \`docs/scene-proposals.md\`); every cell you list must already exist.`;
   return [
     "# Annotation Tutor Agent Instructions",
     "",
@@ -96,6 +100,7 @@ export function renderAgentInstructions(options: OverviewOptions): string {
     ...writeInstructions,
     preferenceInstruction,
     languageInstruction,
+    sceneInstruction,
     ""
   ].join("\n");
 }

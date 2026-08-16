@@ -14,6 +14,8 @@ export type ChatContext = {
   content?: string;
   /** A short summary of the learner (from their profile), to personalize replies. */
   profileSummary?: string;
+  /** A short summary of the learner's active study scenes, for extra context. */
+  sceneSummary?: string;
 };
 
 /** How many characters of the note body to inline for the API engine. */
@@ -34,6 +36,9 @@ export function contextBlock(ctx: ChatContext, includeContent: boolean): string 
   const lines: string[] = [];
   if (ctx.profileSummary && ctx.profileSummary.trim()) {
     lines.push(`What you know about this learner:\n"""\n${ctx.profileSummary.trim()}\n"""`);
+  }
+  if (ctx.sceneSummary && ctx.sceneSummary.trim()) {
+    lines.push(`The learner's active study scenes:\n"""\n${ctx.sceneSummary.trim()}\n"""`);
   }
   if (ctx.notePath) lines.push(`Current note: ${ctx.notePath}`);
   if (ctx.selection && ctx.selection.trim()) {

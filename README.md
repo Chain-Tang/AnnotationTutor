@@ -8,7 +8,6 @@
 
 **Turn what you read into learning memory your AI tutor can actually use —
 all in plain Markdown, all on your machine.**
-![Uploading image.png…]()
 
 [![Release](https://img.shields.io/github/v/release/Chain-Tang/AnnotationTutor?label=release&color=7c3aed)](https://github.com/Chain-Tang/AnnotationTutor/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/Chain-Tang/AnnotationTutor/total?color=7c3aed)](https://github.com/Chain-Tang/AnnotationTutor/releases)
@@ -40,6 +39,9 @@ file in your Vault, so any agent (Claude Code, OpenCode, Codex) can read and ext
 - 🔌 **Bring your own engine.** Use the already-authenticated **OpenCode** CLI or any
   **OpenAI-compatible API** — your key lives only in your Vault's local plugin data.
 - 🌏 **Fully localized UI** in English, 简体中文, 繁體中文, and 日本語.
+- ✂️ **Clip the web, too** _(new in 0.2.0)_. A companion **Web Clipper** browser extension lets
+  you highlight and note any web page — highlights persist per URL and re-anchor on reload — and
+  send selections or whole readable pages straight into your Vault as Markdown.
 
 ## ⌨️ Keyboard shortcuts
 
@@ -124,6 +126,42 @@ pnpm package
 ```
 
 Then [connect an engine](#-connect-an-engine) and you're ready.
+
+</details>
+
+<details>
+<summary>🌐 <b>Web Clipper</b> — highlight, note &amp; clip any web page <i>(new in 0.2.0)</i></summary>
+
+A companion **browser extension** (Chromium — Chrome / Edge / Brave) that makes the open web
+another source for your Vault. It is built and versioned independently of the plugin (see
+[`extension/`](extension/)).
+
+**What you can do**
+
+- **Highlight** any passage in four colors and **attach a note** to it.
+- **Persistent & re-anchored.** Each highlight is saved for that page's URL in the browser's
+  local storage and re-drawn on your next visit via a W3C text-quote anchor
+  (prefix / exact / suffix), so it survives reloads and small page edits.
+- **Manage from the popup.** The toolbar popup lists every highlight on the current page —
+  click one to jump to it, or **Clear all**.
+- **Clip into Obsidian.** Send a **selection** (rides an `obsidian://` link) or a whole
+  **readable page** (converted to Markdown + archived HTML, over a localhost bridge) into your
+  Vault's capture folder.
+
+**Install &amp; pair**
+
+1. In Obsidian → **Settings → Annotation Tutor Lite → TutorWeb**: turn on **Enable the Web
+   Clipper bridge**, then use **Install extension** / **Open extension folder** to reveal the
+   bundled extension files (or build them yourself with `cd extension && pnpm install && pnpm
+   build` → `extension/dist/`).
+2. Open `chrome://extensions` (Edge: `edge://extensions`), enable **Developer mode**, click
+   **Load unpacked**, and choose that folder.
+3. Back in the **TutorWeb** tab, **copy the pairing token**. Open the extension's popup, paste
+   it into **Bridge token**, match the **Bridge port** (default `51256`), then **Save → Test
+   pairing**.
+
+Highlighting works on any page without pairing; pairing is only needed to send clips into the
+Vault. Full details in **[extension/README.md](extension/README.md)**.
 
 </details>
 

@@ -6,7 +6,7 @@
 import { Notice, type App } from "obsidian";
 import { t } from "./i18n.js";
 import { dueCells, initReviewState, scheduleNext } from "./srs.js";
-import { classifyCells } from "./learning.js";
+import { classifyCells, deriveStudyPlan, summarizeStudyPlan } from "./learning.js";
 import {
   asCellType,
   asConfidence,
@@ -256,6 +256,52 @@ export class ReviewController {
       instruction:
         "For each strength below, suggest one concrete next-step extension or application that deepens mastery. Keep it brief. Write in {lang}."
     });
+  }
+
+  /**
+   * A deterministic self-regulated-study plan (Zimmerman): the learner's active
+   * goals plus every cell due for spaced review now, written to a dated doc.
+   * There is no engine call — it is a faithful readout of the memory — and it is
+   * gated by its own opt-in setting like the other feedback commands.
+   */
+  public async refreshStudyPlan(): Promise<void> {
+    if (!this.deps.settings().enableStudyPlan) {
+      new Notice(t("notice.feedbackDisabled"));
+      return;
+    }
+    const plan = deriveStudyPlan(this.deps.cells(), nowIso());
+    if (plan.goals.length === 0 && plan.due.length === 0) {
+      new Notice(t("notice.feedbackNone"));
+      return;
+    }
+    const lines = [
+      `# ${t("feedback.studyPlanTitle")}`,
+      "",
+      `_${nowIso()}_`,
+      "",
+      summarizeStudyPlan(plan)
+    ];
+    if (plan.goals.length > 0) {
+      lines.push("", `## ${t("feedback.planGoals")}`);
+      for (const goal of plan.goals) {
+        lines.push(`- ${goal.concept}${goal.summary ? ` — ${goal.summary}` : ""}`);
+      }
+    }
+    lines.push("", `## ${t("feedback.planDue", { count: plan.due.length })}`);
+    if (plan.due.length === 0) {
+      lines.push(`_${t("feedback.planNothingDue")}_`);
+    } else {
+      for (const cell of plan.due) {
+        lines.push(
+          `- [${cell.type}] ${cell.concept}${cell.summary ? ` — ${cell.summary}` : ""}`
+        );
+      }
+    }
+    const path = await this.deps.store.writeMemoryDoc(
+      "Learning plan.md",
+      `${lines.join("\n")}\n`
+    );
+    await this.deps.openPath(path);
   }
 
   /**

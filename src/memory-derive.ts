@@ -56,3 +56,11 @@ function slug(value: string): string {
     .replace(/^-+|-+$/g, "");
   return out || "topic";
 }
+
+/**
+ * The scene id for a hand-authored scene with the given title, using the same
+ * slug rule as the auto-derived scenes so manual and derived ids never diverge.
+ */
+export function sceneIdFromTitle(title: string): string {
+  return `SCENE-${slug(title.trim())}`;
+}

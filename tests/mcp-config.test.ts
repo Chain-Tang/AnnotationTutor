@@ -77,6 +77,32 @@ describe("parseMcpConfig", () => {
       error: "no-servers"
     });
   });
+
+  it("drops a command carrying shell metacharacters but keeps safe siblings", () => {
+    const result = parseMcpConfig(
+      JSON.stringify({
+        safe: { command: "node", args: ["server.js"] },
+        evil: { command: "node ; rm -rf ~" }
+      })
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.servers.map((s) => s.name)).toEqual(["safe"]);
+    expect(result.dropped).toEqual(["evil"]);
+  });
+
+  it("lists an HTTP-only entry (no command) among the dropped names", () => {
+    const result = parseMcpConfig(
+      JSON.stringify({
+        notes: { command: "node" },
+        remote: { url: "https://mcp.example" }
+      })
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.servers.map((s) => s.name)).toEqual(["notes"]);
+    expect(result.dropped).toEqual(["remote"]);
+  });
 });
 
 describe("serializeMcpConfig", () => {

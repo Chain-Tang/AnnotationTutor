@@ -200,20 +200,23 @@ export function buildLibrarySnapshot(
       diagnostics.push(invalid(file.path, "profile"));
       return [];
     }
-    if (
-      profile.claims.some((claim) =>
-        claim.evidence.some((id) => !evidenceIds.has(id))
-      )
-    ) {
+    // Keep the profile but drop only the claims whose evidence has gone missing.
+    // A whole claim is dropped, never a partial evidence strip, so a kept
+    // learner-profile claim still satisfies its two-distinct-evidence invariant.
+    // A recoverable diagnostic surfaces the loss without discarding sound claims.
+    const validClaims = profile.claims.filter((claim) =>
+      claim.evidence.every((id) => evidenceIds.has(id))
+    );
+    if (validClaims.length !== profile.claims.length) {
       diagnostics.push({
         path: file.path,
         kind: "profile",
-        message: "Profile evidence does not exist in the memory library",
-        recoverable: false
+        message:
+          "Dropped profile claims whose evidence is missing from the memory library",
+        recoverable: true
       });
-      return [];
     }
-    return [profile];
+    return [{ ...profile, claims: validClaims }];
   });
 
   const proposals = files.proposals.flatMap((file) => {
@@ -288,7 +291,11 @@ function retainLastValid(
     } else if (diagnostic.kind === "profile") {
       const id = fileStem(diagnostic.path);
       const record = previous.profiles.find((item) => item.id === id);
-      if (record) current.profiles.push(record);
+      // A claim-filtered profile is already present under this id (recoverable),
+      // so guard against re-adding the previous copy and duplicating it.
+      if (record && !current.profiles.some((item) => item.id === id)) {
+        current.profiles.push(record);
+      }
     } else if (diagnostic.kind === "proposal") {
       const id = fileStem(diagnostic.path);
       const record = previous.proposals.find((item) => item.id === id);

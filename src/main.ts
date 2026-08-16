@@ -1,6 +1,7 @@
 import {
   type Editor,
   type EditorPosition,
+  FileSystemAdapter,
   type MarkdownFileInfo,
   type MarkdownPostProcessorContext,
   MarkdownRenderer,
@@ -21,6 +22,9 @@ import {
   type Annotation,
   type DialogueTurn,
   type IndexRecord,
+  type ProfileKind,
+  type Scene,
+  type SceneType,
   type Task,
   bareBlockId
 } from "./model.js";
@@ -118,11 +122,20 @@ import {
 import { parseMcpConfig, type McpParseResult } from "./mcp-config.js";
 import { openPermissionModal } from "./views/permission-modal.js";
 import {
-  buildCaptureNote,
-  captureNoteStem,
-  isBrowserLikeView,
-  type WebCaptureInput
+  buildPageCaptureNote,
+  buildSelectionCaptureNote,
+  captureNoteStem
 } from "./web-capture.js";
+import {
+  decodeCapturePayload,
+  type CapturePayload
+} from "./web-bridge/protocol.js";
+import { WebBridgeServer } from "./web-bridge/server.js";
+import {
+  aggregateWebStats,
+  type WebCaptureMeta,
+  type WebStats
+} from "./web-bridge/stats.js";
 import {
   parseImport,
   zoteroCaptureNote,
@@ -142,7 +155,12 @@ import { detectLanguageName } from "./lang.js";
 import { TranslationController } from "./translation-controller.js";
 import { NotebookController } from "./notebook-controller.js";
 import { ReviewController } from "./review-controller.js";
-import { deriveProfileSummary } from "./learning.js";
+import {
+  deriveMasterySnapshot,
+  deriveProfileSummary,
+  summarizeMastery
+} from "./learning.js";
+import { sceneIdFromTitle } from "./memory-derive.js";
 import type { ReviewOutcome } from "./review-outcome.js";
 import {
   basename,
@@ -174,7 +192,8 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   public override settings: AnnotationTutorLiteSettings = { ...DEFAULT_SETTINGS };
   public indexTable = new IndexTable();
   public librarySnapshot: LibrarySnapshot = emptyLibrarySnapshot();
-  private store!: VaultStore;
+  /** Public for the chat view (session persistence talks to the vault directly). */
+  public store!: VaultStore;
   private watcher!: MemoryWatcher;
   private settingTab!: AnnotationTutorLiteSettingTab;
   private readonly readingRail = new ReadingRail();
@@ -201,6 +220,11 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   private stashedStyle: HighlightStyle = "dotted-underline";
   // Debounce handle for persisting margin-card geometry as it is dragged/resized.
   private cardGeomTimer: ReturnType<typeof setTimeout> | null = null;
+  // Localhost half of the Web Clipper bridge; null while disabled/stopped.
+  private webBridge: WebBridgeServer | null = null;
+  // Guards against re-opening the "install the Web Clipper" prompt each time the
+  // sidebar re-renders in one session.
+  private webPromptShown = false;
   // Inline translation + background pre-translation (Alt+T), wired in onload.
   private translation!: TranslationController;
   // Study-notebook commands (build / enrich / open), wired in onload.
@@ -265,8 +289,16 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       ask: (id, note) => void this.askFromCard(id, note),
       discuss: (id) => void this.openChatForAnnotation(id),
       reply: (id, message) => this.replyInAnnotation(id, message),
-      render: (el, markdown) =>
-        MarkdownRenderer.render(this.app, markdown, el, "", this),
+      render: (el, markdown, annotationId) =>
+        MarkdownRenderer.render(
+          this.app,
+          markdown,
+          el,
+          // Resolve the reply's relative links and embeds against the annotated
+          // note, not the Vault root.
+          (annotationId ? this.indexTable.get(annotationId)?.sourceFile : "") ?? "",
+          this
+        ),
       saveCell: (id) => void this.review.createCellFromAnnotation(id),
       remove: (id) => this.confirmDeleteById(id),
       settings: () => this.openSettings()
@@ -294,6 +326,13 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       (leaf) => new DashboardView(leaf, this)
     );
     this.registerView(CHAT_VIEW_TYPE, (leaf) => new ChatView(leaf, this));
+    // Web Clipper: small selection captures arrive as base64url JSON on an
+    // obsidian:// URI (the extension can't reach the vault directly); large
+    // full-page archives come over the localhost bridge instead.
+    this.registerObsidianProtocolHandler("atl-web-capture", (params) => {
+      void this.receiveWebCapture(params.payload ?? "");
+    });
+    void this.applyWebBridge();
     this.addRibbonIcon("graduation-cap", t("ribbon.openChat"), () => {
       void this.openChat();
     });
@@ -385,13 +424,12 @@ export default class AnnotationTutorLitePlugin extends Plugin {
         this.watcher.notify(oldPath);
       })
     );
-    // Repair agent-generated Excalidraw JSON as soon as it lands, so the
-    // drawing plugin can parse it even when the LLM bent the format rules.
+    // Repair agent-generated Excalidraw JSON the moment the file first appears.
+    // Only on `create`: a learner editing an existing drawing fires `modify`, and
+    // the normalization rules (updated:1, handwritten font) are right for fresh
+    // LLM output only — never for a diagram someone drew by hand.
     this.registerEvent(
       this.app.vault.on("create", (file) => void this.sanitizeExcalidrawFile(file))
-    );
-    this.registerEvent(
-      this.app.vault.on("modify", (file) => void this.sanitizeExcalidrawFile(file))
     );
 
     this.app.workspace.onLayoutReady(() => void this.initialize());
@@ -399,6 +437,8 @@ export default class AnnotationTutorLitePlugin extends Plugin {
 
   public override onunload(): void {
     this.watcher?.dispose();
+    void this.webBridge?.stop();
+    this.webBridge = null;
     this.readingRail.detach();
     this.skinLoader?.unload();
     document.body.style.removeProperty("--atl-hl-color");
@@ -875,14 +915,14 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       callback: () => void this.review.generateStrengthReinforcement()
     });
     this.addCommand({
+      id: "refresh-study-plan",
+      name: t("cmd.studyPlan"),
+      callback: () => void this.review.refreshStudyPlan()
+    });
+    this.addCommand({
       id: "install-builtin-commands",
       name: t("cmd.installBuiltin"),
       callback: () => void this.installBuiltinCommands()
-    });
-    this.addCommand({
-      id: "capture-web-selection",
-      name: t("cmd.captureWeb"),
-      callback: () => void this.captureWebSelection()
     });
     this.addCommand({
       id: "import-zotero-csl",
@@ -1214,7 +1254,8 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       const prompt = buildReviewPrompt(
         record,
         this.settings.reviewLanguage,
-        this.learnerProfileSummary()
+        this.learnerProfileSummary(),
+        this.activeSceneSummary()
       );
       const timeoutMs =
         Math.max(MIN_AGENT_TIMEOUT_SECONDS, this.settings.agentTimeoutSeconds) *
@@ -1562,6 +1603,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   /** System prompt for an in-annotation dialogue turn (persona + the annotation). */
   private dialogueSystemPrompt(record: IndexRecord, lang: string): string {
     const profile = this.learnerProfileSummary();
+    const scenes = this.activeSceneSummary();
     const parts = [
       tutorSystemPrompt(lang),
       [
@@ -1574,6 +1616,9 @@ export default class AnnotationTutorLitePlugin extends Plugin {
           : []),
         ...(profile
           ? [`What you know about this learner:\n"""\n${profile}\n"""`]
+          : []),
+        ...(scenes
+          ? [`The learner's active study scenes:\n"""\n${scenes}\n"""`]
           : []),
         "Answer the learner's follow-up about this passage, using the conversation so far."
       ].join("\n")
@@ -1890,6 +1935,58 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     await this.rebuildIndex(false);
   }
 
+  public async archiveScene(sceneId: string): Promise<void> {
+    const result = await this.store.archiveScene(sceneId);
+    new Notice(result ? t("notice.sceneArchived") : t("notice.sceneArchiveFailed"));
+    await this.rebuildIndex(false);
+  }
+
+  public async deleteProfileClaim(
+    kind: ProfileKind,
+    claimIndex: number
+  ): Promise<void> {
+    const result = await this.store.deleteProfileClaim(kind, claimIndex);
+    new Notice(result ? t("notice.claimDeleted") : t("notice.claimDeleteFailed"));
+    await this.rebuildIndex(false);
+  }
+
+  /**
+   * Create a hand-authored scene from the settings form. Returns the new scene
+   * id on success, or null when the title has no id-safe characters or a scene
+   * with that id already exists (so the caller can surface a validation error
+   * instead of silently overwriting).
+   */
+  public async createScene(input: {
+    title: string;
+    type: SceneType;
+    summary: string;
+    cells: string[];
+  }): Promise<string | null> {
+    const title = input.title.trim();
+    const summary = input.summary.trim();
+    if (!title || !summary) return null;
+    const id = sceneIdFromTitle(title);
+    if (this.librarySnapshot.scenes.some((scene) => scene.id === id)) {
+      return null;
+    }
+    const now = nowIso();
+    const scene: Scene = {
+      id,
+      type: input.type,
+      title,
+      status: "active",
+      summary,
+      cells: input.cells,
+      tags: [],
+      createdAt: now,
+      updatedAt: now
+    };
+    await this.store.createScene(scene);
+    new Notice(t("notice.sceneCreated"));
+    await this.rebuildIndex(false);
+    return id;
+  }
+
   public async proposalDiff(
     proposal: LibrarySnapshot["proposals"][number]
   ): Promise<string> {
@@ -1975,12 +2072,14 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       selection = "";
     }
     const profileSummary = this.learnerProfileSummary();
+    const sceneSummary = this.activeSceneSummary();
     return {
       notePath: view.file.path,
       noteTitle: view.file.basename,
       selection,
       content: await this.noteContent(view.file.path),
-      ...(profileSummary ? { profileSummary } : {})
+      ...(profileSummary ? { profileSummary } : {}),
+      ...(sceneSummary ? { sceneSummary } : {})
     };
   }
 
@@ -1996,11 +2095,39 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     // Once the agent has written claims, trust its summary; until then the stored
     // summary is just the init placeholder, so derive one from the learner's cells
     // instead — useful context, and never the meaningless default.
-    const summary =
+    const base =
       profile && profile.claims.length > 0
         ? (profile.summary?.trim() ?? "")
         : deriveProfileSummary(this.librarySnapshot.cells);
+    // Ground that prose in measured mastery (SM-2): what the learner has actually
+    // retained vs. what still needs work, misconceptions first — regardless of
+    // whether the agent has written any claims yet (P3 closed-loop calibration).
+    const mastery = summarizeMastery(
+      deriveMasterySnapshot(this.librarySnapshot.cells)
+    );
+    const summary = [base, mastery].filter((part) => part.trim()).join(" ");
     if (!summary) return "";
+    return summary.length > 600 ? `${summary.slice(0, 600)}…` : summary;
+  }
+
+  /**
+   * A short, deterministic summary of the learner's active study scenes (drawn
+   * from the library snapshot). Names each active scene with its type and cell
+   * count. Gated behind `injectSceneContext`; returns "" when the toggle is off or
+   * there are no active scenes, so callers can omit the block. Capped at 600 chars.
+   */
+  public activeSceneSummary(): string {
+    if (!this.settings.injectSceneContext) return "";
+    const active = this.librarySnapshot.scenes
+      .filter((scene) => scene.status === "active")
+      .sort(
+        (a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id)
+      );
+    if (active.length === 0) return "";
+    const summary = active
+      .slice(0, 8)
+      .map((scene) => `${scene.title} (${scene.type}, ${scene.cells.length} cells)`)
+      .join("; ");
     return summary.length > 600 ? `${summary.slice(0, 600)}…` : summary;
   }
 
@@ -2129,6 +2256,11 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       ? parseMcpConfig(rawMcp)
       : { ok: true, servers: [] };
     if (!parsed.ok) new Notice(t("notice.mcpConfigError", { detail: parsed.error }));
+    else if (parsed.dropped?.length) {
+      // Parsed, but some named entries were unusable (HTTP-only, missing or
+      // unsafe command); name them so the drop isn't silent.
+      new Notice(t("notice.mcpConfigError", { detail: parsed.dropped.join(", ") }));
+    }
     return startAcpSession({
       command: this.settings.agentCommand.trim() || "opencode",
       model: this.settings.agentModel,
@@ -2176,7 +2308,10 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   private async ensureVaultFolder(folder: string): Promise<void> {
     const path = normalizePath(folder);
     if (!path || path === "." || path === "/") return;
-    if (this.app.vault.getAbstractFileByPath(path)) return;
+    // Ask the adapter, not the file index: dot-folders such as `.opencode` are
+    // excluded from the index, so getAbstractFileByPath() reports them missing
+    // forever and createFolder() then throws "already exists" on every call.
+    if (await this.app.vault.adapter.exists(path)) return;
     const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
     if (parent) await this.ensureVaultFolder(parent);
     try {
@@ -2214,9 +2349,13 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   private async installBuiltinCommands(): Promise<void> {
     let installed = 0;
     let skipped = 0;
+    let failed = 0;
     for (const command of BUILTIN_COMMANDS) {
       const path = normalizePath(`${BUILTIN_COMMAND_DIR}/${command.name}.md`);
-      if (this.app.vault.getAbstractFileByPath(path)) {
+      // `.opencode` never enters the file index (see ensureVaultFolder), so the
+      // index-based check always said "missing" and every install retried a
+      // create that could only fail.
+      if (await this.app.vault.adapter.exists(path)) {
         skipped += 1;
         continue;
       }
@@ -2225,143 +2364,250 @@ export default class AnnotationTutorLitePlugin extends Plugin {
         await this.app.vault.create(path, builtinCommandFile(command));
         installed += 1;
       } catch {
-        new Notice(t("notice.writeFailed"));
-        return;
+        // One unwritable command must not hide the others: keep going and report
+        // the tally once, so a partial install is visible instead of silent.
+        failed += 1;
       }
     }
     new Notice(t("notice.builtinInstalled", { installed, skipped }));
-  }
-
-  /**
-   * Capture the current selection from an embedded browser view (Surfing and
-   * friends) into a learning capture note — the Zotero-style "into library"
-   * step, except the destination is the annotation loop.
-   */
-  private async captureWebSelection(): Promise<void> {
-    const view = this.app.workspace.activeLeaf?.view;
-    const extra = this.settings.webCaptureViewTypes
-      .split(",")
-      .map((item) => item.trim())
-      .filter((item) => item !== "");
-    if (!view || !isBrowserLikeView(view.getViewType(), extra)) {
-      new Notice(t("notice.captureNotBrowser"));
-      return;
-    }
-    const extracted = await this.extractBrowserSelection(view);
-    if (!extracted.selection) {
-      new Notice(t("notice.captureNoSelection"));
-      return;
-    }
-    const url = extracted.url;
-    const title = url ? await this.fetchPageTitle(url) : undefined;
-    const input: WebCaptureInput = {
-      selection: extracted.selection,
-      capturedAt: nowIso(),
-      ...(url ? { url } : {}),
-      ...(title ? { title } : {})
-    };
-    let file: TFile;
-    try {
-      file = await this.createVaultNote(
-        this.captureDir(),
-        captureNoteStem(input),
-        buildCaptureNote(input, this.captureBlockId())
-      );
-    } catch {
-      new Notice(t("notice.writeFailed"));
-      return;
-    }
-    new Notice(t("notice.captureSaved", { path: file.path }));
-    await this.app.workspace.getLeaf(false).openFile(file);
-  }
-
-  /**
-   * Three-tier selection extraction for embedded browsers: the host document
-   * first, then same-origin iframes, then Electron `<webview>` elements via
-   * executeJavaScript. Embedded browser plugins differ in which layer holds
-   * the page, so each tier is a best-effort fallback. Cross-origin frames
-   * throw and are skipped silently.
-   */
-  private async extractBrowserSelection(
-    view: View
-  ): Promise<{ selection: string; url: string }> {
-    const fallbackUrl = this.browserViewUrl(view);
-    const docSelection = window.getSelection()?.toString().trim() ?? "";
-    const frames = Array.from(
-      (view.containerEl as HTMLElement | undefined)?.querySelectorAll(
-        "iframe, webview"
-      ) ?? []
-    );
-    // Prefer a document-level selection, but only as long as no embedded
-    // frame reports one — a selection inside a frame is the more specific hit.
-    let selection = docSelection;
-    let url = fallbackUrl;
-    for (const frame of frames) {
-      const frameSrc =
-        (frame as HTMLIFrameElement).src || frame.getAttribute("src") || "";
-      if (frame instanceof HTMLIFrameElement) {
-        try {
-          const inner = frame.contentDocument?.getSelection()?.toString().trim();
-          if (inner) return { selection: inner, url: frameSrc || fallbackUrl };
-        } catch {
-          // Cross-origin frame — unreachable, fall through.
-        }
-      } else {
-        const webview = frame as {
-          executeJavaScript?: (code: string) => Promise<unknown>;
-        };
-        if (typeof webview.executeJavaScript === "function") {
-          try {
-            const value = await webview.executeJavaScript(
-              "window.getSelection().toString()"
-            );
-            if (typeof value === "string" && value.trim()) {
-              return { selection: value.trim(), url: frameSrc || fallbackUrl };
-            }
-          } catch {
-            // Webview not ready — fall through.
-          }
-        }
-      }
-    }
-    return { selection, url };
-  }
-
-  /** Best-effort current URL of an embedded browser view (plugins differ). */
-  private browserViewUrl(view: unknown): string {
-    const candidate = view as {
-      getUrl?: () => unknown;
-      navigation?: { url?: unknown };
-      currentUrl?: unknown;
-      url?: unknown;
-    };
-    try {
-      const fromFn =
-        typeof candidate.getUrl === "function" ? candidate.getUrl() : undefined;
-      const value =
-        fromFn ?? candidate.navigation?.url ?? candidate.currentUrl ?? candidate.url;
-      return typeof value === "string" && /^https?:\/\//.test(value) ? value : "";
-    } catch {
-      return "";
-    }
-  }
-
-  /** Fetch a page just to read its <title>; any failure leaves title unset. */
-  private async fetchPageTitle(url: string): Promise<string | undefined> {
-    try {
-      const response = await requestUrl({ url, method: "GET", throw: false });
-      if (response.status < 200 || response.status >= 300) return undefined;
-      const match = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(response.text);
-      const title = match?.[1]?.replace(/\s+/g, " ").trim();
-      return title ? title.slice(0, 120) : undefined;
-    } catch {
-      return undefined;
-    }
+    if (failed > 0) new Notice(t("notice.writeFailed"));
   }
 
   /** A block id the capture note's quote can anchor to. */
   private captureBlockId(): string {
     return `cap-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  /** Where web captures are written: the configured override, else the default. */
+  private webCaptureDir(): string {
+    const override = this.settings.webCaptureDir.trim();
+    return override ? normalizePath(override) : this.captureDir();
+  }
+
+  /** The default capture folder, shown as the settings placeholder. */
+  public defaultCaptureDir(): string {
+    return this.captureDir();
+  }
+
+  /**
+   * Handle an obsidian:// selection capture: decode + validate the base64url
+   * payload, write the note, then open it. Invalid payloads are ignored beyond
+   * a notice — the URI is attacker-reachable, so a bad decode must never throw.
+   */
+  private async receiveWebCapture(encoded: string): Promise<void> {
+    const payload = decodeCapturePayload(encoded);
+    if (!payload) {
+      new Notice(t("notice.webCaptureInvalid"));
+      return;
+    }
+    try {
+      const file =
+        payload.kind === "selection"
+          ? await this.createWebSelectionCapture(payload)
+          : await this.createWebPageCapture(payload);
+      new Notice(t("notice.captureSaved", { path: file.path }));
+      await this.app.workspace.getLeaf(false).openFile(file);
+    } catch {
+      new Notice(t("notice.writeFailed"));
+    }
+  }
+
+  /** Write a selection capture note (reuses the shared capture folder + stem). */
+  private async createWebSelectionCapture(payload: CapturePayload): Promise<TFile> {
+    const stem = captureNoteStem({
+      selection: payload.selections?.[0]?.exact ?? payload.title,
+      title: payload.title,
+      url: payload.url,
+      capturedAt: payload.capturedAt
+    });
+    return this.createVaultNote(
+      this.webCaptureDir(),
+      stem,
+      buildSelectionCaptureNote(payload, this.captureBlockId())
+    );
+  }
+
+  /**
+   * Archive a full page: one Markdown note plus up to two raw-HTML siblings
+   * (rendered DOM, server source) under `_raw/`. The note is reserved first so
+   * the siblings can share its final stem even if a same-day capture bumped it.
+   */
+  private async createWebPageCapture(payload: CapturePayload): Promise<TFile> {
+    const dir = this.webCaptureDir();
+    const stem = captureNoteStem({
+      selection: payload.title || payload.url,
+      title: payload.title,
+      url: payload.url,
+      capturedAt: payload.capturedAt
+    });
+    const file = await this.createVaultNote(dir, stem, "");
+    const finalStem = file.basename;
+    const rawDir = normalizePath(`${dir}/_raw`);
+    const raw: { rendered?: string; source?: string } = {};
+    if (this.settings.webSaveRenderedHtml && payload.renderedHtml) {
+      await this.writeRawHtml(rawDir, `${finalStem}.rendered.html`, payload.renderedHtml);
+      raw.rendered = `_raw/${finalStem}.rendered.html`;
+    }
+    if (this.settings.webSaveSourceHtml && payload.sourceHtml) {
+      await this.writeRawHtml(rawDir, `${finalStem}.source.html`, payload.sourceHtml);
+      raw.source = `_raw/${finalStem}.source.html`;
+    }
+    // Drop the Markdown body when auto-convert is off (archive HTML only), but
+    // keep frontmatter + raw links so the page still appears in usage stats.
+    const forNote = this.settings.webAutoConvertMarkdown
+      ? payload
+      : { ...payload, markdown: "" };
+    await this.app.vault.modify(file, buildPageCaptureNote(forNote, raw));
+    return file;
+  }
+
+  /** Write a raw-HTML sibling via the adapter (not indexed as a note). */
+  private async writeRawHtml(dir: string, name: string, html: string): Promise<void> {
+    await this.ensureVaultFolder(dir);
+    await this.app.vault.adapter.write(normalizePath(`${dir}/${name}`), html);
+  }
+
+  private newToken(): string {
+    try {
+      return crypto.randomUUID();
+    } catch {
+      // Runtimes without randomUUID: two random base-36 segments. The token
+      // only gates a localhost port on the same machine, not a secret store.
+      return `${Math.random().toString(36).slice(2)}${Math.random()
+        .toString(36)
+        .slice(2)}`;
+    }
+  }
+
+  private ensureWebBridgeToken(): string {
+    if (!this.settings.webBridgeToken) this.settings.webBridgeToken = this.newToken();
+    return this.settings.webBridgeToken;
+  }
+
+  /** Rotate the bridge token; the caller persists + restarts the server. */
+  public regenerateWebToken(): void {
+    this.settings.webBridgeToken = this.newToken();
+  }
+
+  /**
+   * (Re)build the localhost bridge from current settings — stop any running
+   * server first so an enable/port/token change takes effect cleanly. A bind
+   * failure (port in use) surfaces a notice and leaves the bridge off.
+   */
+  public async applyWebBridge(): Promise<void> {
+    if (this.webBridge) {
+      await this.webBridge.stop();
+      this.webBridge = null;
+    }
+    if (!this.settings.webEnabled) return;
+    const token = this.ensureWebBridgeToken();
+    await this.persistSettings();
+    const server = new WebBridgeServer({
+      port: this.settings.webBridgePort,
+      token,
+      onCapture: (payload) => this.onBridgeCapture(payload),
+      onError: (error) => console.error("[atl web-bridge]", error)
+    });
+    try {
+      await server.start();
+      this.webBridge = server;
+    } catch {
+      new Notice(
+        t("notice.webBridgeFailed", { port: String(this.settings.webBridgePort) })
+      );
+    }
+  }
+
+  private async onBridgeCapture(payload: CapturePayload): Promise<void> {
+    const file =
+      payload.kind === "selection"
+        ? await this.createWebSelectionCapture(payload)
+        : await this.createWebPageCapture(payload);
+    new Notice(t("notice.captureSaved", { path: file.path }));
+  }
+
+  /**
+   * The bundled Web Clipper extension folder, shipped inside the plugin at
+   * `<plugin>/web-clipper` so it can be loaded unpacked until a store listing
+   * exists. Null on mobile (no real filesystem) or when the plugin dir is
+   * unknown — callers then fall back to a "not bundled" hint.
+   */
+  public webClipperExtensionDir(): string | null {
+    const adapter = this.app.vault.adapter;
+    const dir = this.manifest.dir;
+    if (!(adapter instanceof FileSystemAdapter) || !dir) return null;
+    return adapter.getFullPath(normalizePath(`${dir}/web-clipper`));
+  }
+
+  /**
+   * Open the bundled extension folder in the OS file manager (desktop only) so
+   * the user can point "Load unpacked" at it. Returns false when the folder
+   * can't be resolved or the shell refused to open it.
+   */
+  public async openWebClipperExtensionDir(): Promise<boolean> {
+    const full = this.webClipperExtensionDir();
+    if (!full) return false;
+    const electron = require("electron") as {
+      shell?: { openPath?: (target: string) => Promise<string> };
+    };
+    const openPath = electron.shell?.openPath;
+    if (!openPath) return false;
+    // openPath resolves to "" on success, or an error message string.
+    return (await openPath(full)) === "";
+  }
+
+  /** Aggregate the Web Clipper usage overview from capture notes in the vault. */
+  public webUsageStats(): WebStats {
+    const dir = normalizePath(this.webCaptureDir());
+    const metas: WebCaptureMeta[] = [];
+    for (const file of this.app.vault.getMarkdownFiles()) {
+      if (file.parent?.path !== dir) continue;
+      const cache = this.app.metadataCache.getFileCache(file);
+      const fm = cache?.frontmatter;
+      if (!fm || fm["type"] !== "web-capture") continue;
+      let selections = 0;
+      for (const id of Object.keys(cache?.blocks ?? {})) {
+        if (id.startsWith("cap-")) selections += 1;
+      }
+      const meta: WebCaptureMeta = { path: file.path, selections };
+      if (typeof fm["title"] === "string") meta.title = fm["title"];
+      if (typeof fm["source-url"] === "string") meta.url = fm["source-url"];
+      if (typeof fm["captured-at"] === "string") meta.capturedAt = fm["captured-at"];
+      metas.push(meta);
+    }
+    return aggregateWebStats(metas);
+  }
+
+  /** On first sidebar open, offer to install the Web Clipper unless dismissed. */
+  public maybeShowWebInstallPrompt(): void {
+    if (this.webPromptShown) return;
+    if (this.settings.webEnabled || this.settings.webInstallPromptDismissed) return;
+    this.webPromptShown = true;
+    const plugin = this;
+    new (class extends Modal {
+      public override onOpen(): void {
+        this.titleEl.setText(t("web.prompt.title"));
+        this.contentEl.createEl("p", { text: t("web.prompt.body") });
+        const row = this.contentEl.createDiv({ cls: "atl-actions" });
+        const install = row.createEl("button", {
+          text: t("web.prompt.install"),
+          cls: "mod-cta"
+        });
+        install.onclick = () => {
+          plugin.openSettings();
+          this.close();
+        };
+        const dismiss = row.createEl("button", { text: t("web.prompt.dismiss") });
+        dismiss.onclick = () => {
+          plugin.settings.webInstallPromptDismissed = true;
+          void plugin.persistSettings();
+          this.close();
+        };
+      }
+      public override onClose(): void {
+        this.contentEl.empty();
+      }
+    })(this.app).open();
   }
 
   /** Paste-a-CSL-JSON modal feeding importZoteroEntries. */
@@ -2478,6 +2724,9 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   private openFindPaperModal(): void {
     const plugin = this;
     const modal = new (class extends Modal {
+      // Held on the instance so onClose can cancel a scan still pending after the
+      // learner closes the modal (otherwise it fires into a detached results el).
+      private timer: number | undefined;
       public override onOpen(): void {
         this.contentEl.empty();
         this.titleEl.setText(t("findPaper.title"));
@@ -2489,10 +2738,9 @@ export default class AnnotationTutorLitePlugin extends Plugin {
           cls: "atl-findpaper-results"
         });
         // Debounce: large vaults scan thousands of files per keystroke.
-        let timer: number | undefined;
         const search = (): void => {
-          window.clearTimeout(timer);
-          timer = window.setTimeout(() => {
+          window.clearTimeout(this.timer);
+          this.timer = window.setTimeout(() => {
             results.empty();
             const matches = plugin.findPapers(input.value);
             if (input.value.trim() === "") return;
@@ -2516,6 +2764,10 @@ export default class AnnotationTutorLitePlugin extends Plugin {
         };
         input.addEventListener("input", search);
         input.focus();
+      }
+      public override onClose(): void {
+        window.clearTimeout(this.timer);
+        this.contentEl.empty();
       }
     })(this.app);
     modal.open();
@@ -2604,6 +2856,11 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       : pathResolve(base, requested);
     const rel = pathRelative(base, abs);
     if (!rel || rel.startsWith("..") || isAbsolute(rel)) return null;
+    // The Vault root holds `.obsidian`, and its data.json carries the plugin's
+    // API key. The path is inside the Vault, so the escape guard above lets it
+    // through; refuse the config dir explicitly so a prompt-injected read can't
+    // exfiltrate secrets.
+    if (rel.split(/[\\/]/)[0] === ".obsidian") return null;
     try {
       const text = await fsReadFile(abs, "utf8");
       // Strip a UTF-8 BOM so the agent doesn't echo a stray ﻿ (which shows

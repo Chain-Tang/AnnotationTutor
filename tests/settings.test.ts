@@ -155,4 +155,57 @@ describe("migrateSettings", () => {
       "Agent Memory"
     );
   });
+
+  it("fills the new Web Clipper fields with defaults", () => {
+    const migrated = migrateSettings({});
+    expect(migrated.webEnabled).toBe(false);
+    expect(migrated.webBridgePort).toBe(51256);
+    expect(migrated.webBridgeToken).toBe("");
+    expect(migrated.webCaptureDir).toBe("");
+    expect(migrated.webAutoConvertMarkdown).toBe(true);
+    expect(migrated.webSaveRenderedHtml).toBe(true);
+    expect(migrated.webSaveSourceHtml).toBe(true);
+    expect(migrated.webInstallPromptDismissed).toBe(false);
+  });
+
+  it("coerces non-boolean Web Clipper flags back to their defaults", () => {
+    const migrated = migrateSettings({
+      webEnabled: "yes",
+      webAutoConvertMarkdown: 0,
+      webSaveRenderedHtml: null,
+      webSaveSourceHtml: "true",
+      webInstallPromptDismissed: 1
+    });
+    expect(migrated.webEnabled).toBe(false);
+    expect(migrated.webAutoConvertMarkdown).toBe(true);
+    expect(migrated.webSaveRenderedHtml).toBe(true);
+    expect(migrated.webSaveSourceHtml).toBe(true);
+    expect(migrated.webInstallPromptDismissed).toBe(false);
+  });
+
+  it("keeps valid Web Clipper flag and string overrides", () => {
+    const migrated = migrateSettings({
+      webEnabled: true,
+      webAutoConvertMarkdown: false,
+      webBridgeToken: "tok-123",
+      webCaptureDir: "Clips/Web"
+    });
+    expect(migrated.webEnabled).toBe(true);
+    expect(migrated.webAutoConvertMarkdown).toBe(false);
+    expect(migrated.webBridgeToken).toBe("tok-123");
+    expect(migrated.webCaptureDir).toBe("Clips/Web");
+  });
+
+  it("rejects out-of-range / non-integer bridge ports, keeping valid ones", () => {
+    expect(migrateSettings({ webBridgePort: 80 }).webBridgePort).toBe(51256);
+    expect(migrateSettings({ webBridgePort: 70000 }).webBridgePort).toBe(51256);
+    expect(migrateSettings({ webBridgePort: 8080.5 }).webBridgePort).toBe(51256);
+    expect(migrateSettings({ webBridgePort: "5000" }).webBridgePort).toBe(51256);
+    expect(migrateSettings({ webBridgePort: 8080 }).webBridgePort).toBe(8080);
+  });
+
+  it("coerces a non-string bridge token / capture dir to empty", () => {
+    expect(migrateSettings({ webBridgeToken: 42 }).webBridgeToken).toBe("");
+    expect(migrateSettings({ webCaptureDir: [] }).webCaptureDir).toBe("");
+  });
 });

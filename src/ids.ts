@@ -4,7 +4,7 @@
 // The daily sequence number is derived from existing IDs so the plugin never
 // needs a persistent counter.
 
-export type IdPrefix = "ANN" | "MEM" | "TASK";
+export type IdPrefix = "ANN" | "MEM" | "TASK" | "CHAT";
 
 export function dateStamp(date = new Date()): string {
   const year = date.getFullYear();

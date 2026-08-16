@@ -1,0 +1,23 @@
+{
+  "name": "annotation-tutor-web-clipper",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Browser extension (Web Clipper) for Annotation Tutor Lite. Built and released independently of the Obsidian plugin.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.287",
+    "@types/turndown": "^5.0.5",
+    "esbuild": "^0.28.0",
+    "typescript": "^5.9.0"
+  },
+  "dependencies": {
+    "@mozilla/readability": "^0.5.0",
+    "annotation-tutor-lite": "file:..",
+    "turndown": "^7.2.0",
+    "turndown-plugin-gfm": "^1.0.2"
+  }
+}

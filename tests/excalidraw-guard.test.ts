@@ -40,7 +40,9 @@ describe("isExcalidrawDoc", () => {
 });
 
 describe("repairExcalidrawElement", () => {
-  it("strips forbidden fields", () => {
+  it("strips only rawText, preserving Excalidraw's own fields", () => {
+    // frameId/index/versionNonce are fields Excalidraw itself writes; stripping
+    // them corrupted real drawings, so only the hallucinated rawText goes.
     const element: Record<string, unknown> = {
       id: "a",
       frameId: "f1",
@@ -50,7 +52,18 @@ describe("repairExcalidrawElement", () => {
     };
     const { changed } = repairExcalidrawElement(element);
     expect(changed).toBe(true);
-    expect(element).toEqual({ id: "a" });
+    expect(element).toEqual({ id: "a", frameId: "f1", index: "a0", versionNonce: 9 });
+  });
+
+  it("reports no change for a non-empty boundElements array", () => {
+    // A populated array is already valid; claiming a repair on it made every
+    // sanitize pass rewrite the file and fed a write-event-write loop.
+    const element: Record<string, unknown> = {
+      id: "a",
+      boundElements: [{ id: "x", type: "arrow" }],
+      updated: 1
+    };
+    expect(repairExcalidrawElement(element).changed).toBe(false);
   });
 
   it("normalizes boundElements [] and timestamp updated", () => {
@@ -112,6 +125,43 @@ describe("sanitizeExcalidrawDoc", () => {
     const doc = docWith(json);
     const result = sanitizeExcalidrawDoc(doc);
     expect(result).toEqual({ content: doc, repaired: false });
+  });
+
+  it("is idempotent — a second pass reports no change and identical bytes", () => {
+    const json = JSON.stringify({
+      elements: [
+        { id: "r", type: "rectangle", boundElements: [], updated: 1723500000000 }
+      ]
+    });
+    const first = sanitizeExcalidrawDoc(docWith(json));
+    expect(first?.repaired).toBe(true);
+    const second = sanitizeExcalidrawDoc(first!.content);
+    expect(second).toEqual({ content: first!.content, repaired: false });
+  });
+
+  it("preserves frameId/index/versionNonce through a full sanitize", () => {
+    const json = JSON.stringify({
+      elements: [
+        {
+          id: "r",
+          type: "rectangle",
+          frameId: "f1",
+          index: "a0",
+          versionNonce: 9,
+          rawText: "x",
+          boundElements: []
+        }
+      ]
+    });
+    const result = sanitizeExcalidrawDoc(docWith(json));
+    const block = /```json\n([\s\S]*?)\n```/.exec(result!.content);
+    const parsed = JSON.parse(block![1]!) as {
+      elements: Array<Record<string, unknown>>;
+    };
+    expect(parsed.elements[0]!.frameId).toBe("f1");
+    expect(parsed.elements[0]!.index).toBe("a0");
+    expect(parsed.elements[0]!.versionNonce).toBe(9);
+    expect(parsed.elements[0]!.rawText).toBeUndefined();
   });
 
   it("returns null when there is no drawing block or no elements array", () => {

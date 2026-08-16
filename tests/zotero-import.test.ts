@@ -192,6 +192,28 @@ describe("parseBibTeX", () => {
       error: "no-entries"
     });
   });
+
+  it("walks many entries in order with skippable blocks interleaved", () => {
+    // Guards the sticky-cursor rewrite (L6): the parser must advance past each
+    // body and every @comment without dropping, duplicating, or reordering the
+    // real entries.
+    const many = Array.from(
+      { length: 6 },
+      (_, i) =>
+        `@article{k${i}, title = {Paper ${i}}, year = {${2000 + i}}}\n@comment{skip ${i}}`
+    ).join("\n");
+    const result = parseBibTeX(many);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.entries.map((e) => e.title)).toEqual([
+      "Paper 0",
+      "Paper 1",
+      "Paper 2",
+      "Paper 3",
+      "Paper 4",
+      "Paper 5"
+    ]);
+  });
 });
 
 describe("parseImport", () => {

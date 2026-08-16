@@ -1,0 +1,14 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Annotation Tutor Web Clipper icon: a page of web text with the middle
+       line highlighted — "capture + annotate the web". -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#6d28d9"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="url(#tile)"/>
+  <rect x="34" y="38" width="58" height="8" rx="4" fill="#ffffff" fill-opacity="0.5"/>
+  <rect x="28" y="57" width="76" height="20" rx="10" fill="#fbbf24"/>
+  <rect x="34" y="84" width="48" height="8" rx="4" fill="#ffffff" fill-opacity="0.5"/>
+</svg>

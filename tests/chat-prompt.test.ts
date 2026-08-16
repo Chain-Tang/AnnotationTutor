@@ -50,6 +50,19 @@ describe("contextBlock", () => {
       "What you know about this learner:"
     );
   });
+
+  it("surfaces the learner's active study scenes when provided", () => {
+    const block = contextBlock(
+      { notePath: "A.md", sceneSummary: "Transformers (topic, 3 cells)" },
+      false
+    );
+    expect(block).toContain("The learner's active study scenes:");
+    expect(block).toContain("Transformers (topic, 3 cells)");
+    // Absent when no scenes are known.
+    expect(contextBlock({ notePath: "A.md" }, false)).not.toContain(
+      "The learner's active study scenes:"
+    );
+  });
 });
 
 describe("opencodePreamble", () => {

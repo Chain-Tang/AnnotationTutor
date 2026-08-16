@@ -4,6 +4,7 @@ import { t } from "./i18n.js";
 import { isFreeModel } from "./agent-models.js";
 import { queryCells, queryScenes } from "./library-query.js";
 import type { CellQuery, SceneQuery } from "./library-query.js";
+import { calibrateProfileClaims } from "./learning.js";
 import { dueCells } from "./srs.js";
 import {
   SHORTCUT_COMMAND_IDS,
@@ -14,10 +15,13 @@ import {
   type ShortcutCommandId
 } from "./hotkeys.js";
 import { AnnotationTable } from "./views/annotation-table.js";
+import { ConfirmModal } from "./views/annotation-modal.js";
+import { SceneCreateModal } from "./views/scene-modal.js";
 import { parseMcpConfig } from "./mcp-config.js";
 import {
   DEFAULT_SETTINGS,
   MIN_AGENT_TIMEOUT_SECONDS,
+  MIN_CHAT_LOG_KEEP_SESSIONS,
   MIN_PRETRANSLATE_CHUNK_CHARS,
   agentPermissionPolicies,
   type AgentPermissionPolicy,
@@ -48,7 +52,8 @@ type SettingsPage =
   | "scenes"
   | "feedback"
   | "profile"
-  | "proposals";
+  | "proposals"
+  | "web";
 
 const PAGES: SettingsPage[] = [
   "general",
@@ -57,7 +62,8 @@ const PAGES: SettingsPage[] = [
   "scenes",
   "feedback",
   "profile",
-  "proposals"
+  "proposals",
+  "web"
 ];
 
 export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
@@ -108,6 +114,7 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     if (this.activePage === "feedback") this.renderFeedback(body);
     if (this.activePage === "profile") this.renderProfile(body);
     if (this.activePage === "proposals") void this.renderProposals(body);
+    if (this.activePage === "web") this.renderWeb(body);
   }
 
   private renderGeneral(container: HTMLElement): void {
@@ -169,6 +176,11 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       container,
       "set.allowPreferences",
       "allowPreferenceWrites"
+    );
+    this.addToggle(
+      container,
+      "set.injectSceneContext",
+      "injectSceneContext"
     );
     new Setting(container)
       .setName(t("set.highlight"))
@@ -261,15 +273,22 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
 
     this.addToggle(container, "set.excalidrawAssist", "excalidrawAssist");
 
+    this.addToggle(container, "set.persistChatLog", "persistChatLog");
+
     new Setting(container)
-      .setName(t("set.webCaptureViewTypes"))
-      .setDesc(t("set.webCaptureViewTypesDesc"))
+      .setName(t("set.chatLogKeep"))
+      .setDesc(t("set.chatLogKeepDesc"))
       .addText((text) => {
-        text
-          .setPlaceholder("surfing-book-view")
-          .setValue(this.plugin.settings.webCaptureViewTypes);
+        text.inputEl.type = "number";
+        text.setValue(String(this.plugin.settings.chatLogKeepSessions));
         text.inputEl.addEventListener("blur", () => {
-          this.plugin.settings.webCaptureViewTypes = text.getValue().trim();
+          const parsed = Number.parseInt(text.getValue(), 10);
+          const next =
+            Number.isFinite(parsed) && parsed >= MIN_CHAT_LOG_KEEP_SESSIONS
+              ? parsed
+              : DEFAULT_SETTINGS.chatLogKeepSessions;
+          this.plugin.settings.chatLogKeepSessions = next;
+          text.setValue(String(next));
           void this.plugin.persistSettings();
         });
       });
@@ -550,6 +569,15 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       [
         t("settings.openMarkdownIndex"),
         () => this.plugin.openLibraryPath(paths.sceneIndex)
+      ],
+      [
+        t("scene.create"),
+        () => {
+          new SceneCreateModal(
+            this.app,
+            async (input) => (await this.plugin.createScene(input)) !== null
+          ).open();
+        }
       ]
     ]);
     const controls = container.createDiv({ cls: "atl-toolbar" });
@@ -600,7 +628,8 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       t("dash.col.status"),
       t("settings.cells"),
       t("settings.sources"),
-      t("dash.col.updated")
+      t("dash.col.updated"),
+      t("settings.actions")
     ]);
     for (const scene of rows) {
       const row = table.createEl("tr");
@@ -611,6 +640,24 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       row.createEl("td", { text: String(scene.cells.length) });
       row.createEl("td", { text: String(scene.sourceAnnotations.length) });
       row.createEl("td", { text: date(scene.updatedAt) });
+      const actions = row.createEl("td");
+      if (scene.status === "active") {
+        const archive = actions.createEl("button", {
+          text: t("settings.archive"),
+          cls: "atl-link-button"
+        });
+        archive.onclick = () => {
+          new ConfirmModal(this.app, {
+            title: t("settings.archiveSceneTitle"),
+            body: t("settings.archiveSceneBody", { title: scene.title }),
+            confirmText: t("settings.archive"),
+            warning: true,
+            onConfirm: () => this.plugin.archiveScene(scene.id)
+          }).open();
+        };
+      } else {
+        actions.setText("—");
+      }
     }
     this.renderDiagnostics(container, "scene");
   }
@@ -642,8 +689,17 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
         })
       });
       if (profile) {
+        // OLM calibration: flag claims whose evidence cites a concept the SRS now
+        // measures as struggling, so the learner can reconcile the discrepancy.
+        const calibration =
+          kind === "learner-profile"
+            ? calibrateProfileClaims(
+                profile.claims,
+                this.plugin.librarySnapshot.cells
+              )
+            : [];
         const claims = card.createEl("ul", { cls: "atl-profile-claims" });
-        for (const claim of profile.claims) {
+        for (const [claimIndex, claim] of profile.claims.entries()) {
           const item = claims.createEl("li");
           item.createSpan({ text: `${claim.statement} ` });
           for (const [index, evidence] of claim.evidence.entries()) {
@@ -660,6 +716,32 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
             if (index < claim.evidence.length - 1) {
               item.createSpan({ text: ", " });
             }
+          }
+          const remove = item.createEl("button", {
+            text: t("settings.deleteClaim"),
+            cls: "atl-link-button mod-warning"
+          });
+          remove.onclick = () => {
+            new ConfirmModal(this.app, {
+              title: t("settings.deleteClaimTitle"),
+              body: t("settings.deleteClaimBody", {
+                statement: claim.statement
+              }),
+              confirmText: t("settings.deleteClaim"),
+              warning: true,
+              onConfirm: () => this.plugin.deleteProfileClaim(kind, claimIndex)
+            }).open();
+          };
+          const conflict = calibration.find(
+            (entry) => entry.claimIndex === claimIndex
+          );
+          if (conflict) {
+            item.createDiv({
+              cls: "atl-muted mod-warning",
+              text: t("settings.claimConflict", {
+                concepts: conflict.strugglingConcepts.join(", ")
+              })
+            });
           }
         }
       }
@@ -949,7 +1031,7 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       .setDesc(t("set.alwaysAllowToolsDesc"))
       .addText((text) => {
         text
-          .setPlaceholder("write, edit")
+          .setPlaceholder("read, search")
           .setValue(this.plugin.settings.alwaysAllowTools.join(", "));
         text.inputEl.addEventListener("blur", () => {
           this.plugin.settings.alwaysAllowTools = text
@@ -1096,6 +1178,192 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       "set.enableStrengthReinforcement",
       "enableStrengthReinforcement"
     );
+    this.addToggle(container, "set.enableStudyPlan", "enableStudyPlan");
+  }
+
+  private renderWeb(container: HTMLElement): void {
+    // The master switch starts/stops the localhost server, so it can't reuse
+    // the generic toggle helper (which only persists + repaints).
+    new Setting(container)
+      .setName(t("set.web.enabled"))
+      .setDesc(t("set.web.enabledDesc"))
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.webEnabled)
+          .onChange(async (value) => {
+            this.plugin.settings.webEnabled = value;
+            await this.plugin.persistSettings();
+            await this.plugin.applyWebBridge();
+            this.display();
+          })
+      );
+    this.renderWebInstall(container);
+    if (!this.plugin.settings.webEnabled) return;
+
+    new Setting(container)
+      .setName(t("set.web.port"))
+      .setDesc(t("set.web.portDesc"))
+      .addText((text) => {
+        text
+          .setPlaceholder(String(DEFAULT_SETTINGS.webBridgePort))
+          .setValue(String(this.plugin.settings.webBridgePort));
+        text.inputEl.type = "number";
+        text.inputEl.addEventListener("blur", async () => {
+          const parsed = Number.parseInt(text.getValue(), 10);
+          if (Number.isInteger(parsed) && parsed >= 1024 && parsed <= 65535) {
+            this.plugin.settings.webBridgePort = parsed;
+          }
+          text.setValue(String(this.plugin.settings.webBridgePort));
+          await this.plugin.persistSettings();
+          await this.plugin.applyWebBridge();
+        });
+      });
+
+    new Setting(container)
+      .setName(t("set.web.token"))
+      .setDesc(t("set.web.tokenDesc"))
+      .addText((text) => {
+        text.setValue(this.plugin.settings.webBridgeToken);
+        text.inputEl.readOnly = true;
+      })
+      .addExtraButton((button) =>
+        button
+          .setIcon("copy")
+          .setTooltip(t("set.web.copyToken"))
+          .onClick(async () => {
+            await navigator.clipboard.writeText(
+              this.plugin.settings.webBridgeToken
+            );
+            new Notice(t("notice.webTokenCopied"));
+          })
+      )
+      .addExtraButton((button) =>
+        button
+          .setIcon("refresh-cw")
+          .setTooltip(t("set.web.regenToken"))
+          .onClick(async () => {
+            this.plugin.regenerateWebToken();
+            await this.plugin.persistSettings();
+            await this.plugin.applyWebBridge();
+            this.display();
+          })
+      );
+
+    new Setting(container)
+      .setName(t("set.web.captureDir"))
+      .setDesc(t("set.web.captureDirDesc"))
+      .addText((text) => {
+        text
+          .setPlaceholder(this.plugin.defaultCaptureDir())
+          .setValue(this.plugin.settings.webCaptureDir);
+        text.inputEl.addEventListener("blur", () => {
+          this.plugin.settings.webCaptureDir = text.getValue().trim();
+          void this.plugin.persistSettings();
+        });
+      });
+
+    this.addToggle(container, "set.web.autoConvert", "webAutoConvertMarkdown");
+    this.addToggle(container, "set.web.saveRendered", "webSaveRenderedHtml");
+    this.addToggle(container, "set.web.saveSource", "webSaveSourceHtml");
+
+    this.renderWebStats(container);
+  }
+
+  /** The install-the-extension callout, shown whether or not the bridge is on. */
+  private renderWebInstall(container: HTMLElement): void {
+    const extDir = this.plugin.webClipperExtensionDir();
+
+    // Header + two one-click helpers: open the bundled folder, and copy the
+    // chrome://extensions URL (browsers block window.open on chrome:// pages,
+    // so the best we can do is put it on the clipboard for a manual paste).
+    new Setting(container)
+      .setName(t("set.web.install"))
+      .setDesc(t("set.web.installDesc"))
+      .addButton((button) =>
+        button
+          .setButtonText(t("set.web.openFolder"))
+          .setCta()
+          .setDisabled(!extDir)
+          .onClick(async () => {
+            if (await this.plugin.openWebClipperExtensionDir()) return;
+            new Notice(t("notice.webOpenFolderFailed"));
+          })
+      )
+      .addExtraButton((button) =>
+        button
+          .setIcon("copy")
+          .setTooltip(t("set.web.copyExtUrl"))
+          .onClick(async () => {
+            await navigator.clipboard.writeText("chrome://extensions");
+            new Notice(t("notice.webExtUrlCopied"));
+          })
+      );
+
+    // Numbered, do-this-then-that steps for loading the folder unpacked.
+    const steps = container.createEl("ol", { cls: "atl-web-steps" });
+    for (const key of [
+      "set.web.step1",
+      "set.web.step2",
+      "set.web.step3",
+      "set.web.step4",
+      "set.web.step5"
+    ]) {
+      steps.createEl("li", { text: t(key) });
+    }
+
+    // The resolved folder path + copy button — the manual fallback when the
+    // one-click open is blocked; or a "rebuild to bundle it" hint when absent.
+    if (extDir) {
+      new Setting(container)
+        .setName(t("set.web.folderPath"))
+        .setDesc(extDir)
+        .addExtraButton((button) =>
+          button
+            .setIcon("copy")
+            .setTooltip(t("set.web.copyFolderPath"))
+            .onClick(async () => {
+              await navigator.clipboard.writeText(extDir);
+              new Notice(t("notice.webPathCopied"));
+            })
+        );
+    } else {
+      container.createEl("p", {
+        text: t("set.web.notBundled"),
+        cls: "atl-web-missing"
+      });
+    }
+  }
+
+  /** Read-only usage overview, aggregated from capture notes in the vault. */
+  private renderWebStats(container: HTMLElement): void {
+    const stats = this.plugin.webUsageStats();
+    container.createEl("h3", { text: t("web.stats.title") });
+    container.createEl("p", {
+      text: t("web.stats.totalPages", { count: stats.totalPages })
+    });
+    if (stats.pages.length === 0) {
+      container.createEl("p", { text: t("web.stats.empty") });
+      return;
+    }
+    const body = this.table(container, [
+      t("web.stats.colPage"),
+      t("web.stats.colUrl"),
+      t("web.stats.colSelections"),
+      t("web.stats.colCaptured")
+    ]);
+    for (const page of stats.pages) {
+      const row = body.createEl("tr");
+      const stem = page.path.replace(/^.*\//, "").replace(/\.md$/, "");
+      this.openCell(row, page.title ?? stem, page.path);
+      const urlCell = row.createEl("td");
+      if (page.url) {
+        const link = urlCell.createEl("a", { text: page.url });
+        link.setAttr("href", page.url);
+        link.setAttr("target", "_blank");
+      }
+      row.createEl("td", { text: String(page.selections) });
+      row.createEl("td", { text: page.capturedAt?.slice(0, 10) ?? "" });
+    }
   }
 
   private actionRow(

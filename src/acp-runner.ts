@@ -23,6 +23,7 @@ import { tmpdir } from "node:os";
 import { existsSync, readFileSync } from "node:fs";
 import { join, win32 } from "node:path";
 import { spawnEnv } from "./agent-runner.js";
+import { killProcessTree } from "./process-tree.js";
 
 const isWindows = process.platform === "win32";
 
@@ -320,11 +321,8 @@ export async function runAcpReview(opts: {
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
-      try {
-        child.kill();
-      } catch {
-        // already gone
-      }
+      // opencode may have spawned MCP children; take the whole tree down.
+      killProcessTree(child);
       resolve(result);
     };
 

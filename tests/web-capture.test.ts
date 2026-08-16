@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildCaptureNote,
   captureNoteStem,
-  isBrowserLikeView,
   parseCaptureFrontmatter,
   type WebCaptureInput
 } from "../src/web-capture.js";
@@ -13,24 +12,6 @@ const baseInput: WebCaptureInput = {
   title: "Spaced Repetition 101",
   capturedAt: "2026-08-13T09:00:00.000Z"
 };
-
-describe("isBrowserLikeView", () => {
-  it("matches built-in browser hints case-insensitively", () => {
-    expect(isBrowserLikeView("surfing-book-view")).toBe(true);
-    expect(isBrowserLikeView("Surfing-View")).toBe(true);
-    expect(isBrowserLikeView("webview-panel")).toBe(true);
-  });
-
-  it("rejects plain editors", () => {
-    expect(isBrowserLikeView("markdown")).toBe(false);
-    expect(isBrowserLikeView("")).toBe(false);
-  });
-
-  it("honors learner-configured view types", () => {
-    expect(isBrowserLikeView("my-reader", ["my-reader"])).toBe(true);
-    expect(isBrowserLikeView("other", ["my-reader"])).toBe(false);
-  });
-});
 
 describe("captureNoteStem", () => {
   it("prefers the page title, slugified and day-stamped", () => {
@@ -100,5 +81,19 @@ describe("parseCaptureFrontmatter", () => {
 
   it("returns an empty object for notes without frontmatter", () => {
     expect(parseCaptureFrontmatter("# just a note")).toEqual({});
+  });
+
+  it("round-trips a LaTeX/backslash title without corrupting the YAML", () => {
+    // `$\alpha$` would emit `\a` — an illegal YAML escape — unless the backslash
+    // is escaped first; the parser must then undo it to recover the original.
+    const input: WebCaptureInput = {
+      selection: "x",
+      title: 'On $\\alpha$ and "quoted" terms',
+      capturedAt: "2026-08-13T00:00:00.000Z"
+    };
+    const note = buildCaptureNote(input, "cap-005");
+    expect(note).toContain('title: "On $\\\\alpha$ and \\"quoted\\" terms"');
+    const parsed = parseCaptureFrontmatter(note);
+    expect(parsed.title).toBe('On $\\alpha$ and "quoted" terms');
   });
 });

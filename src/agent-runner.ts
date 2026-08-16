@@ -18,6 +18,7 @@ import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import type { IndexRecord } from "./model.js";
 import { parseModelList } from "./agent-models.js";
+import { killProcessTree } from "./process-tree.js";
 import { reviewLanguageInstruction } from "./markdown/overview.js";
 import { detectLanguageName } from "./lang.js";
 
@@ -115,11 +116,13 @@ function extraBinDirs(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string
 export function buildReviewPrompt(
   record: IndexRecord,
   reviewLanguage = "",
-  profileSummary = ""
+  profileSummary = "",
+  sceneSummary = ""
 ): string {
   const note = record.userNote ?? record.userNoteSummary ?? "";
   const target = reviewLanguage.trim() || detectLanguageName(note);
   const profile = profileSummary.trim();
+  const scenes = sceneSummary.trim();
   return [
     "You are a warm, knowledgeable learning assistant leaving a short note in the margin of a learner's book.",
     "Read the selected source text and the learner's note, then reply as a helpful tutor would.",
@@ -131,6 +134,15 @@ export function buildReviewPrompt(
           "What you know about this learner (tailor depth, examples, and tone to them):",
           '"""',
           profile,
+          '"""'
+        ]
+      : []),
+    ...(scenes
+      ? [
+          "",
+          "The learner's active study scenes (themes they are focusing on):",
+          '"""',
+          scenes,
           '"""'
         ]
       : []),
@@ -245,7 +257,8 @@ export async function runAgentCapture(
 
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill();
+      // The CLI spawns helpers of its own; kill the tree, not just the head.
+      killProcessTree(child);
     }, opts.timeoutMs);
 
     child.on("error", (error) => {
@@ -340,7 +353,7 @@ export async function listModels(
 
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill();
+      killProcessTree(child);
     }, timeoutMs);
 
     child.on("error", (error) => {

@@ -159,6 +159,28 @@ describe("AcpSession", () => {
     expect(turn.ok).toBe(false);
     expect(session.error).toContain("sessionId");
   });
+
+  it("settles an in-flight prompt with ok:false when disposed mid-turn", async () => {
+    const sent: Msg[] = [];
+    const session = new AcpSession((m) => sent.push(m as Msg), {
+      cwd: "/vault",
+      model: "",
+      onUpdate: () => {}
+    });
+    void session.start();
+    await handshake(sent, session, false);
+    // Start a turn but never feed its response; disposing must settle the await
+    // instead of leaving prompt() pending forever (which would wedge the UI's
+    // busy flag). Sending a mode first, then the prompt, mirrors a real turn.
+    const turn = session.prompt("hi", { mode: "build" });
+    await flush();
+    session.receive(result(sent[2]!.id, {})); // mode ack
+    await flush();
+    session.dispose();
+    const result_ = await turn;
+    expect(result_.ok).toBe(false);
+    expect(result_.error).toContain("disposed");
+  });
 });
 
 describe("permissionOutcome", () => {
@@ -198,11 +220,21 @@ describe("permissionOutcome", () => {
 });
 
 describe("isReadOnlyTool", () => {
-  it("recognizes read-ish tools by kind or title", () => {
+  it("recognizes read-only tools by the protocol kind", () => {
     expect(isReadOnlyTool({ kind: "read" })).toBe(true);
     expect(isReadOnlyTool({ kind: "search" })).toBe(true);
-    expect(isReadOnlyTool({ title: "Grep the vault" })).toBe(true);
+    expect(isReadOnlyTool({ kind: "fetch" })).toBe(true);
+    expect(isReadOnlyTool({ kind: "list" })).toBe(true);
     expect(isReadOnlyTool({ kind: "edit", title: "Edit file" })).toBe(false);
     expect(isReadOnlyTool(undefined)).toBe(false);
+  });
+
+  it("never trusts the agent-controlled title over the kind", () => {
+    // `title` is free text the agent writes; a read-ish title must not open the
+    // gate for a destructive kind, and a missing kind is unknown, not safe.
+    expect(isReadOnlyTool({ title: "Grep the vault" })).toBe(false);
+    expect(isReadOnlyTool({ kind: "execute", title: "find . -delete" })).toBe(false);
+    expect(isReadOnlyTool({ kind: "edit", title: "read then rewrite" })).toBe(false);
+    expect(isReadOnlyTool({ kind: "delete", title: "list stale files" })).toBe(false);
   });
 });

@@ -6,11 +6,15 @@
 import { type App, TFile, TFolder, normalizePath } from "obsidian";
 import type {
   Annotation,
+  ChatLog,
+  ChatLogHead,
   DialogueTurn,
   IndexRecord,
   LearnerProfile,
   MemoryCell,
   MemoryProposal,
+  ProfileKind,
+  Scene,
   Task
 } from "./model.js";
 import type { ReviewState } from "./srs.js";
@@ -23,7 +27,7 @@ import {
 } from "./markdown/annotation-file.js";
 import { parseAgentReview } from "./markdown/review.js";
 import { nowIso } from "./ids.js";
-import { serializeProfile } from "./markdown/profile-file.js";
+import { serializeProfile, parseProfileFile } from "./markdown/profile-file.js";
 import {
   evaluateProposal,
   parseProposalFile,
@@ -59,6 +63,11 @@ import {
   serializeMemoryCell
 } from "./markdown/memory-cell-file.js";
 import { parseSceneFile, serializeScene } from "./markdown/scene-file.js";
+import {
+  parseChatLogFile,
+  parseChatLogHead,
+  serializeChatLog
+} from "./markdown/chat-log-file.js";
 import { deriveScenes } from "./memory-derive.js";
 import { getLocale } from "./i18n.js";
 
@@ -109,6 +118,11 @@ export class VaultStore {
 
   public archivedProposalsDir(): string {
     return `${this.proposalsDir()}/archive`;
+  }
+
+  /** Saved sidebar chat sessions (raw transcripts; outside the library index). */
+  public chatsDir(): string {
+    return `${this.memoryRoot()}/chats`;
   }
 
   public learnerProfilePath(): string {
@@ -389,6 +403,118 @@ export class VaultStore {
     }
   }
 
+  /** Write a new hand-authored scene file (user-initiated; the plugin owns the write). */
+  public async createScene(scene: Scene): Promise<void> {
+    await this.writeVaultFile(
+      `${this.scenesDir()}/${scene.id}.md`,
+      serializeScene(scene, this.memoryRoot())
+    );
+  }
+
+  /**
+   * Mark a scene archived (user-initiated), preserving everything else. Returns
+   * the re-parsed scene, or null when the scene file is missing or unparsable.
+   */
+  public async archiveScene(sceneId: string): Promise<Scene | null> {
+    const path = `${this.scenesDir()}/${sceneId}.md`;
+    const file = this.fileAt(path);
+    if (!file) return null;
+    let result: Scene | null = null;
+    await this.app.vault.process(file, (data) => {
+      const existing = parseSceneFile(data);
+      if (!existing) return data;
+      const next: Scene = { ...existing, status: "archived", updatedAt: nowIso() };
+      const out = serializeScene(next, this.memoryRoot());
+      result = parseSceneFile(out);
+      return out;
+    });
+    this.markWritten(path);
+    return result;
+  }
+
+  /**
+   * Remove a single profile claim by index (user-initiated), preserving the rest.
+   * The remaining claims keep their own evidence, so the profile stays valid.
+   * Returns the re-parsed profile, or null when it is missing / the index is out
+   * of range.
+   */
+  public async deleteProfileClaim(
+    kind: ProfileKind,
+    claimIndex: number
+  ): Promise<LearnerProfile | null> {
+    const path =
+      kind === "learner-profile"
+        ? this.learnerProfilePath()
+        : this.preferencesPath();
+    const file = this.fileAt(path);
+    if (!file) return null;
+    let result: LearnerProfile | null = null;
+    await this.app.vault.process(file, (data) => {
+      const existing = parseProfileFile(data);
+      if (!existing) return data;
+      if (claimIndex < 0 || claimIndex >= existing.claims.length) return data;
+      const claims = existing.claims.filter((_, index) => index !== claimIndex);
+      const next: LearnerProfile = { ...existing, claims, updatedAt: nowIso() };
+      const out = serializeProfile(next, this.memoryRoot());
+      result = parseProfileFile(out);
+      return out;
+    });
+    this.markWritten(path);
+    return result;
+  }
+
+  // --- chat logs --------------------------------------------------------------
+
+  /** Saved chat sessions as frontmatter heads, newest-first. */
+  public async listChatLogs(): Promise<ChatLogHead[]> {
+    const heads = (await this.listMarkdownFiles(this.chatsDir()))
+      .map((file) => parseChatLogHead(file.content))
+      .filter((head): head is ChatLogHead => head !== null);
+    return heads.sort(
+      (a, b) =>
+        b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id)
+    );
+  }
+
+  /**
+   * Persist a chat session file (creating or overwriting it), then prune the
+   * oldest sessions beyond `chatLogKeepSessions` so the folder stays bounded.
+   */
+  public async saveChatLog(log: ChatLog): Promise<void> {
+    await this.writeVaultFile(
+      `${this.chatsDir()}/${log.id}.md`,
+      serializeChatLog(log)
+    );
+    const keep = Math.max(
+      1,
+      Math.floor(this.getSettings().chatLogKeepSessions ?? 30)
+    );
+    for (const head of (await this.listChatLogs()).slice(keep)) {
+      const file = this.fileAt(`${this.chatsDir()}/${head.id}.md`);
+      if (file) await this.app.vault.delete(file);
+    }
+  }
+
+  /** Load one session in full (frontmatter + every turn); null when missing. */
+  public async loadChatLog(id: string): Promise<ChatLog | null> {
+    const content = await this.readVaultFile(`${this.chatsDir()}/${id}.md`);
+    return content === null ? null : parseChatLogFile(content);
+  }
+
+  /** Delete one saved session (user-initiated). */
+  public async deleteChatLog(id: string): Promise<void> {
+    const file = this.fileAt(`${this.chatsDir()}/${id}.md`);
+    if (file) await this.app.vault.delete(file);
+  }
+
+  /** Delete every saved session (user-initiated). */
+  public async clearChatLogs(): Promise<void> {
+    for (const file of await this.listMarkdownFiles(this.chatsDir())) {
+      const handle = this.fileAt(file.path);
+      if (handle) await this.app.vault.delete(handle);
+    }
+  }
+
   public async listAnnotationFiles(): Promise<
     { path: string; content: string }[]
   > {
@@ -473,6 +599,11 @@ export class VaultStore {
       status: "approved",
       resolvedAt: new Date().toISOString()
     });
+    // A newly approved memory cell can change which concepts now have two or more
+    // cells, so re-derive the auto scenes (hand-authored scenes stay untouched).
+    if (proposal.targetKind === "memory-cell") {
+      await this.syncScenesFromCells();
+    }
     return { ok: true };
   }
 

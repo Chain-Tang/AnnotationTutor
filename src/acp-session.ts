@@ -21,6 +21,7 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { spawnEnv } from "./agent-runner.js";
 import { resolveAcpSpawn } from "./acp-runner.js";
+import { killProcessTree } from "./process-tree.js";
 
 /** One slash command the agent runtime advertises (available_commands_update). */
 export type AcpCommand = { name: string; description?: string };
@@ -95,12 +96,16 @@ export type PermissionParams = {
   toolCall?: { kind?: string; title?: string };
 };
 
-/** True when a permission prompt is for a read-only tool (safe to auto-allow). */
+/**
+ * True when a permission prompt is for a read-only tool (safe to auto-allow).
+ * Only the protocol's `kind` counts: `title` is free text the agent controls, so
+ * matching read verbs in it let a destructive call (`kind:"execute"`,
+ * `title:"find . -delete"`) walk straight through the gate. A prompt that omits
+ * `kind` is treated as unknown, i.e. never auto-allowed.
+ */
 export function isReadOnlyTool(tool?: { kind?: string; title?: string }): boolean {
-  if (!tool) return false;
-  if (tool.kind && /^(read|search|fetch|list)$/i.test(tool.kind)) return true;
-  const title = tool.title ?? "";
-  return /\b(read|view|open|search|grep|list|find|fetch|glob)\b/i.test(title);
+  if (!tool?.kind) return false;
+  return /^(read|search|fetch|list)$/i.test(tool.kind);
 }
 
 /**
@@ -234,9 +239,19 @@ export class AcpSession {
     this.pending.clear();
   }
 
+  /**
+   * Tear the session down, settling every in-flight request first. Dropping
+   * them instead would leave the caller's `await prompt()` pending forever —
+   * and with it the chat view's busy flag, which silently swallows every later
+   * message (the learner hitting "new chat" mid-turn is enough to trigger it).
+   */
   public dispose(): void {
-    this.closed = true;
+    if (this.closed) return;
+    for (const handler of this.pending.values()) {
+      handler({ error: { message: "session disposed" } });
+    }
     this.pending.clear();
+    this.closed = true;
   }
 
   private async handshake(): Promise<void> {
@@ -347,9 +362,9 @@ export class AcpSession {
     this.send({ jsonrpc: "2.0", id, error: { code: -32601, message: "unsupported" } });
   }
   /**
-   * Answer a permission prompt: reads auto-allow, writes/executes go through
-   * the interactive gate when one is wired, and decline otherwise. A prompt
-   * racing with dispose() is dropped rather than answered.
+   * Answer a permission prompt: kind-verified reads auto-allow, everything else
+   * goes through the interactive gate when one is wired, and is declined
+   * otherwise. A prompt racing with dispose() is dropped rather than answered.
    */
   private async answerPermission(message: Incoming): Promise<void> {
     const params = message.params ?? {};
@@ -383,6 +398,9 @@ export type AcpSessionHandle = {
   session: AcpSession;
   dispose: () => void;
 };
+
+/** Cap on retained stderr — enough for a stack trace, bounded for a long session. */
+const STDERR_LIMIT = 8192;
 
 /** Spawn `opencode acp` and run the handshake, returning a live session. */
 export async function startAcpSession(opts: {
@@ -441,7 +459,9 @@ export async function startAcpSession(opts: {
     }
   });
   child.stderr?.on("data", (chunk: Buffer) => {
-    stderr += chunk.toString();
+    // A chatty agent would otherwise grow this string for the whole session;
+    // only the tail matters because lastLine() reports the final line.
+    stderr = `${stderr}${chunk.toString()}`.slice(-STDERR_LIMIT);
   });
   const onGone = (reason: string): void => {
     if (disposed) return;
@@ -459,11 +479,8 @@ export async function startAcpSession(opts: {
     } catch {
       // already closed
     }
-    try {
-      child.kill();
-    } catch {
-      // already gone
-    }
+    // The agent spawns MCP servers of its own; kill the tree, not just the head.
+    killProcessTree(child);
   };
 
   let timer: ReturnType<typeof setTimeout> | undefined;

@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
@@ -19,6 +20,19 @@ for (const file of ["dist/main.js", "manifest.json", "styles.css"]) {
   await cp(path.join(root, file), path.join(target, path.basename(file)));
 }
 console.log(`Installed ${PLUGIN_ID} to ${target}`);
+
+// 1b. Bundle the Web Clipper extension so it can be loaded unpacked (there is no
+//     store listing yet). Skip quietly when the extension hasn't been built.
+const extDist = path.join(root, "extension", "dist");
+if (existsSync(extDist)) {
+  const webClipper = path.join(target, "web-clipper");
+  await cp(extDist, webClipper, { recursive: true });
+  console.log(`Bundled Web Clipper extension -> ${webClipper}`);
+} else {
+  console.warn(
+    "No extension/dist found — build the extension to bundle the Web Clipper."
+  );
+}
 
 // 2. Enable it by adding the id to the Vault's community-plugins list. Obsidian
 //    reads this on startup, so a running Obsidian needs a reload to pick it up.

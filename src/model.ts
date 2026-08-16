@@ -170,6 +170,51 @@ export type LearnerProfile = {
   updatedAt: string;
 };
 
+/** One turn of a saved sidebar chat session (see ChatLog). */
+export type ChatLogTurn = {
+  role: "user" | "assistant";
+  text: string;
+  /** ISO timestamp the turn was recorded. */
+  at: string;
+};
+
+/** Which engine a saved chat session ran on (mirrors `chatEngine`). */
+export type ChatLogEngine = "opencode" | "api";
+
+/** The chat view's conversation mode at the time the session was saved. */
+export type ChatLogMode = "ask" | "plan" | "build";
+
+/**
+ * A persisted sidebar chat session — one Markdown file per session under
+ * `<memoryRoot>/chats/`. This is the raw transcript only, deliberately distinct
+ * from MemoryCell (the distilled, SRS-tracked knowledge model): chat logs never
+ * feed the schedule, the profile, or mastery. `text` is the message as sent or
+ * received; `at` orders the turns.
+ */
+export type ChatLog = {
+  id: string;
+  title: string;
+  engine: ChatLogEngine;
+  mode: ChatLogMode;
+  status: "active" | "archived";
+  turns: ChatLogTurn[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** Frontmatter-only projection of a ChatLog for listing sessions cheaply. */
+export type ChatLogHead = {
+  id: string;
+  title: string;
+  engine: ChatLogEngine;
+  mode: ChatLogMode;
+  status: "active" | "archived";
+  /** Turn count from the frontmatter (the body is not parsed for heads). */
+  turns: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ProposalOperation = "create" | "update";
 export type ProposalTargetKind =
   | "memory-cell"

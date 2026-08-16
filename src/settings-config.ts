@@ -90,6 +90,8 @@ export type AnnotationTutorLiteSettings = {
   createAgentInstructions: boolean;
   memoryWriteMode: MemoryWriteMode;
   allowPreferenceWrites: boolean;
+  /** Inject a summary of the learner's active study scenes into review/chat/dialogue prompts. */
+  injectSceneContext: boolean;
   autoRunAgent: boolean;
   /** Which engine generates reviews: a direct HTTPS API call or the OpenCode CLI. */
   reviewEngine: ReviewEngine;
@@ -109,6 +111,10 @@ export type AnnotationTutorLiteSettings = {
   agentModel: string;
   /** Which engine the tutor chat prefers. OpenCode can read the Vault directly. */
   chatEngine: ReviewEngine;
+  /** Persist the tutor chat as one Markdown file per session under `<memoryRoot>/chats/`. */
+  persistChatLog: boolean;
+  /** How many saved chat sessions to keep (the oldest is pruned on each save). */
+  chatLogKeepSessions: number;
   /** Optional second model tried once if the primary returns an empty review. */
   agentFallbackModel: string;
   agentTimeoutSeconds: number;
@@ -141,6 +147,8 @@ export type AnnotationTutorLiteSettings = {
   enableWeaknessTraining: boolean;
   enableLearningSummary: boolean;
   enableStrengthReinforcement: boolean;
+  /** Write a deterministic self-regulated study plan (goals + due reviews) to a doc. */
+  enableStudyPlan: boolean;
   /**
    * Stdio MCP servers for the OpenCode chat session, as canonical JSON
    * (`{mcpServers: {...}}`). Empty = none. Parsed/normalized by mcp-config.ts.
@@ -150,8 +158,22 @@ export type AnnotationTutorLiteSettings = {
   agentPermissionPolicy: AgentPermissionPolicy;
   /** Tool titles the learner chose "always allow" for; auto-allowed in ask mode. */
   alwaysAllowTools: string[];
-  /** Extra embedded-browser viewTypes web-capture should recognize. */
-  webCaptureViewTypes: string;
+  /** Master switch for the external Web Clipper bridge (localhost server + URI intake). */
+  webEnabled: boolean;
+  /** Loopback port the page-archive bridge listens on (127.0.0.1). */
+  webBridgePort: number;
+  /** Shared secret the browser extension sends as a Bearer token; empty until generated. */
+  webBridgeToken: string;
+  /** Capture-folder override; empty follows `${memoryRoot}/captures`. */
+  webCaptureDir: string;
+  /** Convert captured pages to Markdown (off = archive HTML only, empty note body). */
+  webAutoConvertMarkdown: boolean;
+  /** Store the rendered-DOM HTML sibling for archived pages. */
+  webSaveRenderedHtml: boolean;
+  /** Store the server-source HTML sibling for archived pages. */
+  webSaveSourceHtml: boolean;
+  /** The learner dismissed the "install the Web Clipper" prompt. */
+  webInstallPromptDismissed: boolean;
   /** Offer to repair + open agent-generated Excalidraw notes as drawings. */
   excalidrawAssist: boolean;
   /** Per-annotation margin-card geometry, so each card keeps its own size/place. */
@@ -163,6 +185,9 @@ export const MIN_AGENT_TIMEOUT_SECONDS = 30;
 
 /** Lower bound for the pre-translation chunk size, in characters. */
 export const MIN_PRETRANSLATE_CHUNK_CHARS = 800;
+
+/** Lower bound for how many saved chat sessions are kept before pruning. */
+export const MIN_CHAT_LOG_KEEP_SESSIONS = 1;
 
 export const DEFAULT_SETTINGS: AnnotationTutorLiteSettings = {
   language: "auto",
@@ -180,6 +205,7 @@ export const DEFAULT_SETTINGS: AnnotationTutorLiteSettings = {
   createAgentInstructions: true,
   memoryWriteMode: "direct",
   allowPreferenceWrites: false,
+  injectSceneContext: false,
   autoRunAgent: false,
   reviewEngine: "api",
   apiBaseUrl: "https://api.deepseek.com/v1",
@@ -189,6 +215,8 @@ export const DEFAULT_SETTINGS: AnnotationTutorLiteSettings = {
   agentShellPath: "",
   agentModel: "opencode/mimo-v2.5-free",
   chatEngine: "opencode",
+  persistChatLog: true,
+  chatLogKeepSessions: 30,
   agentFallbackModel: "",
   agentTimeoutSeconds: 240,
   reviewLanguage: "",
@@ -199,10 +227,18 @@ export const DEFAULT_SETTINGS: AnnotationTutorLiteSettings = {
   enableWeaknessTraining: false,
   enableLearningSummary: false,
   enableStrengthReinforcement: false,
+  enableStudyPlan: false,
   mcpServersJson: "",
   agentPermissionPolicy: "ask",
   alwaysAllowTools: [],
-  webCaptureViewTypes: "",
+  webEnabled: false,
+  webBridgePort: 51256,
+  webBridgeToken: "",
+  webCaptureDir: "",
+  webAutoConvertMarkdown: true,
+  webSaveRenderedHtml: true,
+  webSaveSourceHtml: true,
+  webInstallPromptDismissed: false,
   excalidrawAssist: true,
   cardGeom: {}
 };
@@ -269,11 +305,24 @@ export function migrateSettings(loaded: unknown): AnnotationTutorLiteSettings {
   if (typeof settings.autoRunAgent !== "boolean") {
     settings.autoRunAgent = DEFAULT_SETTINGS.autoRunAgent;
   }
+  if (typeof settings.injectSceneContext !== "boolean") {
+    settings.injectSceneContext = DEFAULT_SETTINGS.injectSceneContext;
+  }
   if (!reviewEngines.includes(settings.reviewEngine)) {
     settings.reviewEngine = DEFAULT_SETTINGS.reviewEngine;
   }
   if (!reviewEngines.includes(settings.chatEngine)) {
     settings.chatEngine = DEFAULT_SETTINGS.chatEngine;
+  }
+  if (typeof settings.persistChatLog !== "boolean") {
+    settings.persistChatLog = DEFAULT_SETTINGS.persistChatLog;
+  }
+  if (
+    typeof settings.chatLogKeepSessions !== "number" ||
+    !Number.isInteger(settings.chatLogKeepSessions) ||
+    settings.chatLogKeepSessions < MIN_CHAT_LOG_KEEP_SESSIONS
+  ) {
+    settings.chatLogKeepSessions = DEFAULT_SETTINGS.chatLogKeepSessions;
   }
   if (typeof settings.apiBaseUrl !== "string" || !settings.apiBaseUrl.trim()) {
     settings.apiBaseUrl = DEFAULT_SETTINGS.apiBaseUrl;
@@ -309,7 +358,8 @@ export function migrateSettings(loaded: unknown): AnnotationTutorLiteSettings {
     "enableSpacedReview",
     "enableWeaknessTraining",
     "enableLearningSummary",
-    "enableStrengthReinforcement"
+    "enableStrengthReinforcement",
+    "enableStudyPlan"
   ] as const) {
     if (typeof settings[flag] !== "boolean") settings[flag] = DEFAULT_SETTINGS[flag];
   }
@@ -331,8 +381,28 @@ export function migrateSettings(loaded: unknown): AnnotationTutorLiteSettings {
   settings.alwaysAllowTools = Array.isArray(settings.alwaysAllowTools)
     ? settings.alwaysAllowTools.filter((item): item is string => typeof item === "string")
     : [];
-  if (typeof settings.webCaptureViewTypes !== "string") {
-    settings.webCaptureViewTypes = DEFAULT_SETTINGS.webCaptureViewTypes;
+  if (typeof settings.webBridgeToken !== "string") {
+    settings.webBridgeToken = DEFAULT_SETTINGS.webBridgeToken;
+  }
+  if (typeof settings.webCaptureDir !== "string") {
+    settings.webCaptureDir = DEFAULT_SETTINGS.webCaptureDir;
+  }
+  for (const flag of [
+    "webEnabled",
+    "webAutoConvertMarkdown",
+    "webSaveRenderedHtml",
+    "webSaveSourceHtml",
+    "webInstallPromptDismissed"
+  ] as const) {
+    if (typeof settings[flag] !== "boolean") settings[flag] = DEFAULT_SETTINGS[flag];
+  }
+  if (
+    typeof settings.webBridgePort !== "number" ||
+    !Number.isInteger(settings.webBridgePort) ||
+    settings.webBridgePort < 1024 ||
+    settings.webBridgePort > 65535
+  ) {
+    settings.webBridgePort = DEFAULT_SETTINGS.webBridgePort;
   }
   if (typeof settings.excalidrawAssist !== "boolean") {
     settings.excalidrawAssist = DEFAULT_SETTINGS.excalidrawAssist;

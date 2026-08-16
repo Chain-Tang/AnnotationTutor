@@ -84,6 +84,18 @@ describe("buildReviewPrompt", () => {
     expect(withProfile).toContain("Visual learner; new to ML.");
     expect(buildReviewPrompt(record)).not.toContain("What you know about this learner");
   });
+
+  it("inlines the learner's active study scenes when provided, and omits them otherwise", () => {
+    const withScenes = buildReviewPrompt(
+      record,
+      "",
+      "",
+      "Transformers (topic, 3 cells)"
+    );
+    expect(withScenes).toContain("active study scenes");
+    expect(withScenes).toContain("Transformers (topic, 3 cells)");
+    expect(buildReviewPrompt(record)).not.toContain("active study scenes");
+  });
 });
 
 describe("buildCaptureArgs", () => {

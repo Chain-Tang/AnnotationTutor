@@ -5,7 +5,8 @@
 // The loose three files are what Obsidian (and BRAT) expect as release assets;
 // the zip is a convenience for manual installers.
 
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync, statSync } from "node:fs";
+import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { crc32, deflateRawSync } from "node:zlib";
 
@@ -32,6 +33,25 @@ for (const [from, to] of [
 }
 console.log(`Staged ${PLUGIN_ID} v${version} -> ${pluginDir}`);
 
+// 2b. Bundle the Web Clipper extension (loaded unpacked until it's in a store).
+//     Collect its files so they also land inside the release zip.
+const extDist = path.join(root, "extension", "dist");
+const webClipperEntries = [];
+if (existsSync(extDist)) {
+  await cp(extDist, path.join(pluginDir, "web-clipper"), { recursive: true });
+  for (const rel of await readdir(extDist, { recursive: true })) {
+    const abs = path.join(extDist, rel);
+    if (!statSync(abs).isFile()) continue;
+    webClipperEntries.push({
+      name: `web-clipper/${rel.split(path.sep).join("/")}`,
+      data: await readFile(abs)
+    });
+  }
+  console.log(`Bundled Web Clipper extension (${webClipperEntries.length} files)`);
+} else {
+  console.warn("No extension/dist found — skipping Web Clipper bundle.");
+}
+
 // 3. Zip the folder into a single ready-to-unzip plugin directory. Written in
 //    pure Node so the archive is identical on every OS — crucially using ZIP's
 //    mandatory forward-slash separators. (Windows `Compress-Archive` writes
@@ -43,6 +63,9 @@ for (const file of files) {
     name: `${PLUGIN_ID}/${file}`,
     data: await readFile(path.join(pluginDir, file))
   });
+}
+for (const { name, data } of webClipperEntries) {
+  entries.push({ name: `${PLUGIN_ID}/${name}`, data });
 }
 const zipPath = path.join(root, "dist", `${PLUGIN_ID}-${version}.zip`);
 await writeFile(zipPath, buildZip(entries));

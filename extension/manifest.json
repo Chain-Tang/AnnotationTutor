@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Annotation Tutor Web Clipper",
+  "version": "0.2.0",
+  "description": "Clip web selections and full pages into your Annotation Tutor Lite vault in Obsidian.",
+  "permissions": ["activeTab", "scripting", "storage", "offscreen"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "icons": {
+    "16": "icon-16.png",
+    "32": "icon-32.png",
+    "48": "icon-48.png",
+    "128": "icon-128.png"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Annotation Tutor Web Clipper",
+    "default_icon": {
+      "16": "icon-16.png",
+      "32": "icon-32.png",
+      "48": "icon-48.png",
+      "128": "icon-128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

@@ -37,8 +37,15 @@ export type MarginCardHandlers = {
   discuss: (id: string) => void;
   /** Send one in-card dialogue turn; resolves with the tutor's reply (+ any edit). */
   reply: (id: string, message: string) => Promise<DialogueReplyResult>;
-  /** Render Markdown into an element (so tutor replies aren't shown as raw text). */
-  render: (el: HTMLElement, markdown: string) => void | Promise<void>;
+  /**
+   * Render Markdown into an element (so tutor replies aren't shown as raw text).
+   * `annotationId` lets the host resolve relative links against the annotated note.
+   */
+  render: (
+    el: HTMLElement,
+    markdown: string,
+    annotationId?: string
+  ) => void | Promise<void>;
   /** Distill a memory cell from this annotation's note + review + dialogue. */
   saveCell: (id: string) => void | Promise<void>;
   remove: (id: string) => void;
@@ -283,7 +290,9 @@ function renderDialogue(card: HTMLElement, mark: AnchorMark): { toggle: () => vo
 
   const thread = document.createElement("div");
   thread.className = "atl-rail-thread";
-  for (const turn of mark.dialogue ?? []) appendTurn(thread, turn.role, turn.text);
+  for (const turn of mark.dialogue ?? []) {
+    appendTurn(thread, turn.role, turn.text, mark.id);
+  }
   wrap.appendChild(thread);
 
   const row = document.createElement("div");
@@ -306,7 +315,7 @@ function renderDialogue(card: HTMLElement, mark: AnchorMark): { toggle: () => vo
     const cardHandlers = getMarginCardHandlers();
     if (!message || !cardHandlers) return;
     input.value = "";
-    appendTurn(thread, "user", message);
+    appendTurn(thread, "user", message, mark.id);
     const thinking = appendNotice(thread, t("card.reply.thinking"));
     send.disabled = true;
     input.disabled = true;
@@ -316,7 +325,7 @@ function renderDialogue(card: HTMLElement, mark: AnchorMark): { toggle: () => vo
       if (!result.ok) {
         appendNotice(thread, result.error ?? t("card.reply.error"));
       } else {
-        appendTurn(thread, "agent", result.agentText || t("card.reply.empty"));
+        appendTurn(thread, "agent", result.agentText || t("card.reply.empty"), mark.id);
         if (result.edit) appendEditCard(thread, result.edit);
       }
     } catch (error) {
@@ -354,7 +363,8 @@ function renderDialogue(card: HTMLElement, mark: AnchorMark): { toggle: () => vo
 function appendTurn(
   thread: HTMLElement,
   role: DialogueTurn["role"],
-  text: string
+  text: string,
+  annotationId: string
 ): void {
   const el = document.createElement("div");
   el.className = `atl-rail-turn atl-rail-turn--${role}`;
@@ -364,7 +374,9 @@ function appendTurn(
     el.classList.add("atl-rail-md");
     // Attach the copy button after the async render so it isn't clobbered, and
     // so the learner can lift a generated table/diagram out of the narrow card.
-    void Promise.resolve(render(el, text)).then(() => attachCopyButton(el, text));
+    void Promise.resolve(render(el, text, annotationId)).then(() =>
+      attachCopyButton(el, text)
+    );
   } else {
     el.textContent = text;
   }

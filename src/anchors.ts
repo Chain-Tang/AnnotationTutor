@@ -34,19 +34,16 @@ export function resolveAnchor(markdown: string, anchor: Anchor): AnchorResolutio
     );
     const blockLine = lines.findIndex((line) => blockPattern.test(line));
     if (blockLine >= 0) {
+      const nearby = anchor.selectedText
+        ? selectedTextNearBlock(lines, blockLine, anchor.selectedText)
+        : null;
       const lineStart = offsetOfLine(lines, blockLine);
-      const selectedStart = anchor.selectedText
-        ? (lines[blockLine]?.indexOf(anchor.selectedText) ?? -1)
-        : -1;
       return {
         strategy: "block-id",
-        line: blockLine,
-        startOffset:
-          selectedStart >= 0 ? lineStart + selectedStart : lineStart,
+        line: nearby?.line ?? blockLine,
+        startOffset: nearby?.startOffset ?? lineStart,
         endOffset:
-          selectedStart >= 0
-            ? lineStart + selectedStart + anchor.selectedText.length
-            : lineStart + (lines[blockLine]?.length ?? 0),
+          nearby?.endOffset ?? lineStart + (lines[blockLine]?.length ?? 0),
         confidence: 1,
         requiresConfirmation: false
       };
@@ -93,6 +90,27 @@ export function resolveAnchor(markdown: string, anchor: Anchor): AnchorResolutio
   }
 
   return { strategy: "not-found", confidence: 0, requiresConfirmation: false };
+}
+
+/** Locate selected text in the contiguous source block ending at its id line. */
+function selectedTextNearBlock(
+  lines: string[],
+  blockLine: number,
+  selectedText: string
+): { line: number; startOffset: number; endOffset: number } | null {
+  let startLine = blockLine;
+  while (startLine > 0 && (lines[startLine - 1] ?? "").trim() !== "") {
+    startLine -= 1;
+  }
+  const blockText = lines.slice(startLine, blockLine + 1).join("\n");
+  const local = blockText.indexOf(selectedText);
+  if (local < 0) return null;
+  const startOffset = offsetOfLine(lines, startLine) + local;
+  return {
+    line: startLine + lineOfOffset(blockText, local),
+    startOffset,
+    endOffset: startOffset + selectedText.length
+  };
 }
 
 function offsetOfLine(lines: string[], lineIndex: number): number {

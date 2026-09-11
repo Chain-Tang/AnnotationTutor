@@ -49,6 +49,10 @@ export type Correctness =
 export type Anchor = {
   blockId: string;
   selectedText: string;
+  /** Source kind; omitted on legacy Markdown annotations. */
+  sourceType?: "markdown" | "pdf";
+  /** One-based PDF page number when sourceType is `pdf`. */
+  page?: number;
 };
 
 export type AnchorOrigin = "generated" | "existing" | "legacy";
@@ -248,6 +252,8 @@ export type IndexRecord = {
   anchorOrigin: AnchorOrigin;
   /** The anchored source text, so editor decorations can hug the exact span. */
   selectedText: string;
+  sourceType?: "markdown" | "pdf";
+  sourcePage?: number;
   status: AnnotationStatus;
   concepts: string[];
   relatedMemoryCells: string[];

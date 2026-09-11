@@ -5,7 +5,10 @@
 
 import type { Editor, EditorPosition } from "obsidian";
 
-const BLOCK_ID_SUFFIX = /\s+\^([A-Za-z0-9_-]+)\s*$/;
+// A block id may trail ordinary Markdown (`paragraph ^id`) or occupy its own
+// line. Obsidian requires the latter form for tables, otherwise appending the
+// token after the final `|` creates an extra cell and can corrupt the table.
+const BLOCK_ID_SUFFIX = /(?:^|\s+)\^([A-Za-z0-9_-]+)\s*$/;
 
 // An ATX heading ("## Title") is its own Markdown block even with no blank line
 // around it, so it must bound a block — otherwise an annotation's block id gets
@@ -15,6 +18,60 @@ const HEADING = /^ {0,3}#{1,6}(?:\s|$)/;
 /** True if a line starts a new block by itself (currently: ATX headings). */
 function isBlockBoundary(line: string): boolean {
   return HEADING.test(line);
+}
+
+/** A contiguous Markdown table containing `line`, or null. */
+export function findTableInLines(
+  lines: readonly string[],
+  line: number
+): { startLine: number; endLine: number } | null {
+  if (line < 0 || line >= lines.length || !looksLikeTableRow(lines[line] ?? "")) {
+    return null;
+  }
+  let startLine = line;
+  let endLine = line;
+  while (startLine > 0 && looksLikeTableRow(lines[startLine - 1] ?? "")) {
+    startLine -= 1;
+  }
+  while (
+    endLine < lines.length - 1 &&
+    looksLikeTableRow(lines[endLine + 1] ?? "")
+  ) {
+    endLine += 1;
+  }
+  // GFM/Obsidian tables are identified by the delimiter row immediately after
+  // the header. Requiring it avoids treating an ordinary sentence containing a
+  // pipe as a table.
+  return startLine + 1 <= endLine && isTableDelimiter(lines[startLine + 1] ?? "")
+    ? { startLine, endLine }
+    : null;
+}
+
+/** Editor-backed form of findTableInLines. */
+export function findTable(
+  editor: Editor,
+  line: number
+): { startLine: number; endLine: number } | null {
+  const lines = Array.from({ length: editor.lineCount() }, (_, index) =>
+    editor.getLine(index)
+  );
+  return findTableInLines(lines, line);
+}
+
+function looksLikeTableRow(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed || /^```|^~~~/.test(trimmed)) return false;
+  // An escaped pipe is cell content, not a separator. One real separator is
+  // enough because leading/trailing pipes are optional in Markdown tables.
+  return /(^|[^\\])\|/.test(trimmed);
+}
+
+function isTableDelimiter(line: string): boolean {
+  let value = line.trim();
+  if (value.startsWith("|")) value = value.slice(1);
+  if (value.endsWith("|")) value = value.slice(0, -1);
+  const cells = value.split("|").map((cell) => cell.trim());
+  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
 }
 
 /** True if the selection spans a blank line (i.e. crosses Markdown blocks). */

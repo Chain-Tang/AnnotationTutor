@@ -7,8 +7,8 @@
 
 import type { MarkdownView } from "obsidian";
 import type { AnchorMark } from "./decorations-plan.js";
+import { CardPool } from "./card-pool.js";
 import {
-  buildMarginCard,
   clearChildren,
   drawConnector,
   lastLineRect,
@@ -28,7 +28,7 @@ export class ReadingRail {
   private svg: SVGSVGElement | null = null;
   private readonly expanded = new Set<string>();
   private readonly geom = new Map<string, Geom>();
-  private observers: ResizeObserver[] = [];
+  private readonly cards = new CardPool();
   private hostObserver: ResizeObserver | null = null;
   private marks: AnchorMark[] = [];
   private skin: RailSkin = { id: "flat", quiet: false, tilt: null };
@@ -70,7 +70,7 @@ export class ReadingRail {
     this.host?.classList.remove("atl-reading-host");
     this.hostObserver?.disconnect();
     this.hostObserver = null;
-    this.disconnectObservers();
+    this.cards.clear();
     if (this.frame) {
       cancelAnimationFrame(this.frame);
       this.frame = 0;
@@ -121,8 +121,7 @@ export class ReadingRail {
     if (!host || !scroller || !overlay || !svg) return;
     if (!overlay.isConnected) host.appendChild(overlay);
     if (!svg.isConnected) host.appendChild(svg);
-    this.disconnectObservers();
-    clearChildren(overlay);
+    this.cards.retain(this.expanded);
     clearChildren(svg);
     if (this.expanded.size === 0) return;
 
@@ -159,7 +158,7 @@ export class ReadingRail {
 
       const geom = this.geom.get(id) ?? loadCardGeom(id) ?? { dx: 0, dy: 0 };
       this.geom.set(id, geom);
-      const { card, observer } = buildMarginCard(mark, {
+      const card = this.cards.get(mark, {
         skin: this.skin,
         geom,
         showReview: this.showReview,
@@ -167,8 +166,7 @@ export class ReadingRail {
         onDragMove: (el) =>
           updateConnector(svg, el, host.getBoundingClientRect())
       });
-      this.observers.push(observer);
-      overlay.appendChild(card);
+      if (card.parentElement !== overlay) overlay.appendChild(card);
       placed.push({
         card,
         anchorX: anchorRight - hostRect.left,
@@ -184,8 +182,4 @@ export class ReadingRail {
     });
   }
 
-  private disconnectObservers(): void {
-    for (const observer of this.observers) observer.disconnect();
-    this.observers = [];
-  }
 }

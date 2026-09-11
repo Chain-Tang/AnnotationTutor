@@ -1,6 +1,6 @@
 {
   "name": "annotation-tutor-lite",
-  "version": "0.2.0",
+  "version": "0.2.4",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -22,6 +22,7 @@
     "@codemirror/view": "6.38.6",
     "@types/node": "^22.15.0",
     "esbuild": "^0.28.0",
+    "happy-dom": "^20.14.0",
     "obsidian": "^1.13.0",
     "typescript": "^5.9.0",
     "vitest": "^4.1.8"

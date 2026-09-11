@@ -88,6 +88,74 @@
   background-color: var(--background-modifier-hover);
 }
 
+/* A sibling of .textLayer, NOT its child: Obsidian sets that layer's opacity
+   to 0.2. Use the exact Markdown highlight palette without double attenuation.
+   Pointer events pass through so text stays selectable; JS hits these boxes. */
+.atl-pdf-highlights {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  overflow: hidden;
+}
+.atl-pdf-highlights > .atl-pdf-highlight {
+  position: absolute;
+  display: block;
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+  pointer-events: none;
+}
+.atl-pdf-highlight.atl-hl-dotted {
+  border-bottom: 2px dotted var(--atl-hl-color, var(--text-accent));
+}
+.atl-pdf-highlight.atl-hl-wavy {
+  background: radial-gradient(ellipse at 50% 0, transparent 45%, var(--atl-hl-color, var(--text-accent)) 50%, transparent 65%) bottom / 8px 4px repeat-x;
+}
+/* PDF glyphs live in the canvas: bold emphasis uses a heavier accent line,
+   without drawing a second, misaligned copy of the document's glyphs. */
+.atl-pdf-highlight.atl-hl-bold {
+  border-bottom: 3px solid var(--atl-hl-color, var(--text-accent));
+}
+.atl-pdf-marker { color: var(--atl-hl-color, var(--text-accent)); cursor: pointer; }
+
+/* Appears immediately after a PDF text selection. It is fixed to the viewport
+   because PDF.js pages live inside their own scrolling container. */
+.atl-pdf-selection-action {
+  position: fixed;
+  z-index: var(--layer-popover, 1000);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--size-2-2);
+  width: auto;
+  min-width: 136px;
+  height: 36px;
+  padding: 0 var(--size-4-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  color: var(--text-on-accent);
+  background: var(--interactive-accent);
+  box-shadow: var(--shadow-s);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.atl-pdf-selection-action:hover {
+  background: var(--interactive-accent-hover);
+}
+
+.atl-pdf-selection-action-icon {
+  display: inline-flex;
+}
+
+.atl-pdf-selection-action-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
 /* --- icon buttons (shared by panel, popover, detail modal) ---------------- */
 
 .atl-iconbar {
@@ -262,10 +330,29 @@
   position: relative;
 }
 
+.atl-pdf-rail-host {
+  position: relative;
+}
+
+/* Separate geometry layer: never insert spans into CodeMirror table widgets. */
+.atl-table-hl { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.atl-table-hl-strip { position: absolute; pointer-events: none; box-sizing: border-box; }
+.atl-table-hl-strip.atl-hl-dotted { border-bottom: 2px dotted var(--atl-hl-color, var(--text-accent)); }
+.atl-table-hl-strip.atl-hl-wavy {
+  background: radial-gradient(ellipse at 50% 0, transparent 45%, var(--atl-hl-color, var(--text-accent)) 50%, transparent 65%) bottom / 8px 4px repeat-x;
+}
+.atl-table-hl-strip.atl-hl-bold { border-bottom: 3px solid var(--atl-hl-color, var(--text-accent)); }
+.atl-rail-card[hidden] { display: none; }
+
 .atl-rail--reading {
   left: 0;
   right: 0;
   width: auto;
+}
+
+.atl-rail--pdf,
+.atl-rail-svg--pdf {
+  z-index: 20;
 }
 
 .atl-rail-svg {
@@ -361,40 +448,61 @@
 
 .atl-rail-card-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--size-2-1);
   margin-bottom: var(--size-2-1);
   cursor: move;
+  touch-action: none;
+  user-select: none;
+  /* Resting annotations read as writing, not a toolbar. Keep the geometry
+     stable so revealing controls never moves the note or breaks a drag. */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
 }
+
+.atl-rail-card:hover .atl-rail-card-head,
+.atl-rail-card:has(.atl-iconbtn:focus-visible) .atl-rail-card-head,
+.atl-rail-card[data-dragging] .atl-rail-card-head {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Real touch taps are handled by card-chrome.ts, not (hover:none). Electron
+   can report that media query even for a desktop using a mouse/trackpad. */
 
 .atl-rail-grip {
-  width: 22px;
-  height: 3px;
-  border-radius: var(--radius-s);
-  background: var(--background-modifier-border);
+  flex: 0 0 100%;
+  height: 14px;
+  cursor: grab;
+  display: grid;
+  place-items: center;
 }
 
-.atl-rail-card--quiet .atl-rail-grip {
-  display: none;
+.atl-rail-grip::before {
+  content: "";
+  width: 26px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--text-faint);
+  opacity: 0.55;
+}
+
+.atl-rail-card[data-dragging] .atl-rail-grip {
+  cursor: grabbing;
 }
 
 .atl-skin-paper:hover {
   box-shadow: none;
 }
 
-/* Header actions stay hidden until the card is hovered or focused (clicked),
-   so a resting card shows only its note text. Chrome-less: no box on hover,
-   just a colour shift, to suit the quiet "paper" feel. */
+/* The header controls their visibility; revealed actions remain solid black. */
 .atl-rail-card-head .atl-iconbtn {
   padding: var(--size-2-1);
-  color: var(--text-faint);
-  opacity: 0;
-  transition: opacity 0.12s ease, color 0.12s ease;
-}
-
-.atl-rail-card:hover .atl-rail-card-head .atl-iconbtn,
-.atl-rail-card:focus-within .atl-rail-card-head .atl-iconbtn {
+  color: #111;
   opacity: 1;
+  transition: opacity 0.12s ease, color 0.12s ease;
 }
 
 .atl-rail-card-head .atl-iconbtn:hover {
@@ -633,6 +741,25 @@
   border-color: rgba(243, 249, 234, 0.85);
   background: rgba(12, 30, 6, 0.5);
 }
+
+/* Keep enabled annotation controls black, including SVGs whose host theme
+   independently sets --icon-color/--icon-opacity. Light buttons stay legible
+   on both white paper and dark/textured skins. Disabled controls remain dim. */
+.atl-rail-card .atl-rail-card-head .atl-iconbtn:not(:disabled) {
+  color: #111 !important;
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.88);
+  border-color: rgba(0, 0, 0, 0.2);
+}
+.atl-rail-card .atl-rail-card-head .atl-iconbtn:not(:disabled):hover {
+  background: #fff;
+  border-color: #111;
+}
+.atl-rail-card-head .atl-iconbtn:not(:disabled) .svg-icon {
+  color: #111 !important;
+  opacity: 1 !important;
+}
+.atl-rail-card-head .atl-iconbtn:disabled { opacity: 0.4; cursor: default; }
 
 /* Keep the textured skins' layered shadow on hover (the base card's hover rule
    would otherwise replace it with the plain theme shadow). */

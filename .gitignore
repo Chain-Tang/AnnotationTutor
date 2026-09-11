@@ -2,6 +2,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# Finder metadata generated on macOS.
+.DS_Store
+
 # Local dev vault (e.g. created by `pnpm install:vault`); not part of the plugin.
 Tutor/
 

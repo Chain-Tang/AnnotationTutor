@@ -56,6 +56,29 @@ describe("annotation file", () => {
     expect(parseAnnotationFile(serialized)?.anchor.selectedText).toBe("Multi-head attention");
   });
 
+  it("round-trips a PDF page anchor and links back to that page", () => {
+    const pdf = sample({
+      sourceFile: "Papers/Attention.pdf",
+      anchor: {
+        blockId: "pdf-page-7-ann-20260606-001",
+        selectedText: "Scaled dot-product attention",
+        sourceType: "pdf",
+        page: 7
+      }
+    });
+    const serialized = serializeAnnotation(pdf);
+    expect(serialized).toContain("source_type: pdf");
+    expect(serialized).toContain("source_page: 7");
+    expect(serialized).toContain(
+      "[[Papers/Attention.pdf#page=7|Open in source]]"
+    );
+    expect(parseAnnotationFile(serialized)?.anchor).toMatchObject({
+      sourceType: "pdf",
+      page: 7,
+      selectedText: "Scaled dot-product attention"
+    });
+  });
+
   it("serialization is idempotent", () => {
     const once = serializeAnnotation(sample());
     const twice = serializeAnnotation(parseAnnotationFile(once)!);

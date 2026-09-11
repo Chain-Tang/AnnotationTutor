@@ -112,10 +112,7 @@ export function serializeAnnotation(
   // A clickable block-link back to the source, so opening an annotation is one
   // hop from its original text. It lives in the lead (above the first `##`), so
   // it is regenerated on serialize and never parsed back into a field.
-  const sourceLink = wikiLink(
-    `${stripExtension(annotation.sourceFile)}#${caretId(annotation.anchor.blockId)}`,
-    "Open in source"
-  );
+  const sourceLink = wikiLink(sourceLinkTarget(annotation), "Open in source");
 
   const body = [
     `# ${annotation.id}\n\n${sourceLink}`,
@@ -135,6 +132,10 @@ export function serializeAnnotation(
       id: annotation.id,
       source_file: annotation.sourceFile,
       block_id: caretId(annotation.anchor.blockId),
+      ...(annotation.anchor.sourceType === "pdf" ? { source_type: "pdf" } : {}),
+      ...(annotation.anchor.sourceType === "pdf" && annotation.anchor.page
+        ? { source_page: annotation.anchor.page }
+        : {}),
       anchor_origin: annotation.anchorOrigin ?? "generated",
       status: annotation.status,
       concepts: annotation.concepts,
@@ -190,13 +191,24 @@ function parseV2Annotation(
     : undefined;
   const dialogue = parseDialogue(section(document.body, "Dialogue"));
   const origin = document.data.anchor_origin;
+  const sourceType =
+    document.data.source_type === "pdf" || /\.pdf$/i.test(sourceFile)
+      ? "pdf"
+      : undefined;
+  const rawPage = document.data.source_page;
+  const page =
+    typeof rawPage === "number" && Number.isInteger(rawPage) && rawPage > 0
+      ? rawPage
+      : undefined;
 
   return {
     id,
     sourceFile,
     anchor: {
       blockId,
-      selectedText: fromBlockquote(section(document.body, "Selected Text"))
+      selectedText: fromBlockquote(section(document.body, "Selected Text")),
+      ...(sourceType ? { sourceType } : {}),
+      ...(page ? { page } : {})
     },
     anchorOrigin:
       origin === "generated" || origin === "existing" || origin === "legacy"
@@ -298,6 +310,15 @@ export function updateAnnotationMarkdown(
 
 function stripExtension(path: string): string {
   return path.replace(/\.md$/i, "");
+}
+
+function sourceLinkTarget(annotation: Annotation): string {
+  if (annotation.anchor.sourceType === "pdf" || /\.pdf$/i.test(annotation.sourceFile)) {
+    return annotation.anchor.page
+      ? `${annotation.sourceFile}#page=${annotation.anchor.page}`
+      : annotation.sourceFile;
+  }
+  return `${stripExtension(annotation.sourceFile)}#${caretId(annotation.anchor.blockId)}`;
 }
 
 function normalizeStatus(value: string | undefined): AnnotationStatus {

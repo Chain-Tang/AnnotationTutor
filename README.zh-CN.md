@@ -1,259 +1,159 @@
 # Annotation Tutor Lite
 
+**读到重要的地方，留下自己的理解。**
+
 [English](README.md) · **简体中文**
 
-**把你读到的内容，变成 AI 导师真正用得上的学习记忆 —— 全部以纯 Markdown 形式，
-全部在你自己的电脑上。**
+为 Obsidian 桌面端打造：把原文高亮、纸感便签与 AI 辅助学习，连成属于你的 Markdown 记忆。
 
-Annotation Tutor Lite 是一个自包含的 Obsidian 插件。你高亮一段文字，写下你的理解，
-AI 导师便会点评它、提炼出可长期保留的**记忆单元（memory cell）**，并按遗忘曲线在合适
-的时间把它们重新带回你面前，帮你真正记住。**不需要服务器、数据库，也不内置任何模型
-API 密钥** —— 每一份产物都是你 Vault 里的 Markdown 文件，因此任何智能体（Claude Code、
-OpenCode、Codex）都能读取并扩展它。
+![纸面阅读、紫色高亮、与原文相连的便签及表格批注](docs/assets/annotation-tutor-hero.png)
 
-> 这是完整版 Annotation Tutor 的「Lite」姊妹项目。它是一个独立项目（拥有自己的构建，
-> 不属于 monorepo 工作区）。
+*AI 生成的阅读概念插画，不是应用截图。*
 
-## 为什么与众不同
+[开始使用](#开始使用) · [使用指南](docs/guide.md) · [更新记录](CHANGELOG.md)
 
-- 🗂 **数据始终属于你。** 批注、点评、记忆单元、场景以及你的学习者画像，全部是 Vault
-  里人类可读的 Markdown，绝不锁死在二进制文件中。
-- 🧠 **一个真正的学习闭环，而不只是记笔记。** 点评会沉淀为**记忆单元**，记忆单元会
-  自动归并为**场景（scene）**，并由**间隔重复（SM-2）**在你遗忘之前安排复习 —— 其依据
-  正是艾宾浩斯遗忘曲线。
-- 📓 **一本读起来像书的学习笔记本。** 一条命令就能把零散的批注汇成一本可导航的笔记本，
-  用带日期的链接串起 笔记本 → 批注 → 原文。
-- 🌐 **用任意语言阅读。** 行内逐词/逐句释义（`Alt+T`）与整篇文档预翻译（`Ctrl+Alt+T`），
-  带来沉浸式阅读体验。
-- 🔌 **自带引擎，按需选用。** 使用你已登录认证的 **OpenCode** CLI，或任意
-  **兼容 OpenAI 的 API** —— 密钥只存在你 Vault 本地的插件数据里。
-- 🌏 **界面完整本地化**：English、简体中文、繁體中文、日本語。
-- ✂️ **也能剪藏网页** _(0.2.0 新增)_。配套的 **Web Clipper** 浏览器扩展让你在任意网页上
-  高亮、加批注 —— 标注按 URL 持久化并在重新加载时自动重新锚定 —— 还能把选区或整篇可读
-  正文以 Markdown 形式直接送入你的 Vault。
+## 让理解留在原文旁边
 
-## 下载与安装
+读论文时的一点疑问、表格里值得比较的数据、笔记中突然想通的一句话——让理解留在原文旁边，而不是散落在另一个窗口里。
 
-任选一种方式 —— 它们都会把同一个插件安装到
-`<你的Vault>/.obsidian/plugins/annotation-tutor-lite/`。**方式 1–3 无需 Node 或任何
-构建工具。**
+选中文字，写下批注；点击高亮，重新打开便签。把便签拖到舒服的位置，移开鼠标，让按钮退到幕后。需要进一步思考时，再请你配置的 AI 导师点评，把这次阅读沉淀为可以回顾的学习记忆。
 
-### 1. 发行版 zip（最简单）
+无需独立的批注数据库，也不强制注册 TutorLite 云端账号。你的笔记仍然是 Vault 中可以直接打开、编辑和迁移的 Markdown 文件。保存批注不需要 AI；点评、对话与翻译需要配置引擎。
 
-1. 从 [**Releases** 页面](https://github.com/Chain-Tang/AnnotationTutor/releases/latest)
-   下载 `annotation-tutor-lite-<版本号>.zip`。
-2. 将其解压到 Vault 的 `.obsidian/plugins/` 文件夹下 —— 它会自动为你创建
-   `annotation-tutor-lite/` 文件夹。
-3. 在 Obsidian 中打开 **设置 → 第三方插件**，如有需要先关闭「安全模式」，启用
-   **Annotation Tutor Lite**，然后重新加载（`Ctrl/Cmd+R`）。
+## 0.2.4 这一轮更新
 
-### 2. 散装文件（手动）
+| 阅读材料 | 你可以怎样批注 |
+| --- | --- |
+| Markdown 笔记 | 高亮原文，点击打开可拖动的页边便签，在阅读上下文中保留理解。 |
+| Markdown 表格 | 对单元格文字添加批注，不再向源表格插入新的块 ID；支持 Live Preview 与阅读模式下的高亮恢复。 |
+| 可选中文字的 PDF | 从选区添加批注，恢复页面高亮，点击原文重新打开便签，通过页码回链返回来源。 |
+| 所有现有便签皮肤 | 默认隐藏工具按钮，鼠标移入才显示，同时保留键盘操作焦点与触摸事件的访问入口。 |
 
-从同一个 [发行版](https://github.com/Chain-Tang/AnnotationTutor/releases/latest)
-下载 `main.js`、`manifest.json`、`styles.css` 三个文件，并把它们一起放进你手动创建的
-`<你的Vault>/.obsidian/plugins/annotation-tutor-lite/` 文件夹中。然后按上面的步骤启用
-并重新加载。
+### 像便签一样自然，而不是又一个工具面板
 
-### 3. BRAT（自动更新）
+简洁、纸张、便利贴、叶片或自定义皮肤，都遵循同一套交互：静止时以文字为主，需要操作时才显示清楚的黑色图标。卡片在布局刷新时保留身份，减少拖动和编辑被重新创建打断的问题。在设置中启用页边批注，即可使用可拖动卡片。
 
-安装社区插件 **BRAT**，然后选择 *Add beta plugin*（添加测试版插件）→ 填入
-`Chain-Tang/AnnotationTutor`。BRAT 会从最新发行版的资源安装，并保持插件自动更新。
-（若 BRAT 无法解析，请改用方式 1 或 2。）
+我们希望保留的是“在原文旁写下想法”的轻盈感。纸感是视觉与交互设计，不代表已经实现手写笔输入。
 
-### 4. 从源码构建（开发者）
+### PDF 与 Markdown，共用一套高亮语言
 
-需要 **Node 22.13+** 与 **pnpm 10**。可用以下任意方式获取源码：
+PDF 批注使用与 Markdown 一致的高亮颜色变量和样式设置。独立高亮层不再受 PDF 透明文字层的二次淡化；点击按高亮区域判断，不要求先进入更深色状态才能响应。
 
-```bash
-git clone https://github.com/Chain-Tang/AnnotationTutor.git      # 完整仓库
-# 或：gh repo clone Chain-Tang/AnnotationTutor
-# 或：在仓库绿色「Code」按钮处下载源码 ZIP（无需 git）
-```
+**批注保存在 PDF 之外，不改写原始 PDF 文件。** 你可以回到原文阅读，也可以独立整理自己的学习记录。
 
-然后构建并安装到某个 Vault：
+## 从一次阅读，到可以反复调用的理解
+
+![学习流程：阅读材料 → 写下批注 → 导师反馈 → 提炼记忆单元 → 按计划复习](docs/assets/learning-loop.svg)
+
+1. **阅读与批注**：记录原文，用自己的话解释它。
+2. **请求反馈**：由已配置的引擎点评你的理解，写入批注的 Agent Review 区段。
+3. **沉淀记忆**：提炼带有依据的记忆单元，将相关概念组织成场景，维护学习者画像。
+4. **再次遇见**：使用 SM-2 间隔重复安排复习，把学习材料汇成带回链的笔记本。
+
+插件不附赠模型服务，也不保证 AI 点评总是正确。
+
+## 阅读之外，也能连接你的学习材料
+
+- **网页剪藏**：配套 Chromium 扩展保存网页高亮和批注，把选区或可读正文送进 Vault。[查看扩展说明 →](extension/README.md)
+- **阅读辅助**：为支持的 Markdown 工作流提供行内释义和整篇笔记预翻译；不包含整份 PDF 正文抽取。
+- **学习笔记本**：把批注、原文和概念连起来，回顾时不必重新寻找上下文。
+- **四种界面语言**：English、简体中文、繁體中文、日本語。
+- **文件式数据所有权**：批注、点评、记忆单元、场景与画像都是 Markdown；索引只是可重建的缓存。
+
+## 开始使用
+
+**当前为桌面插件**：Obsidian 1.12.4+，面向 macOS、Windows 和 Linux。Pad 手写属于设计规划，不是当前已交付的移动端能力。
+
+### 安装当前源码版本
+
+本页介绍的是源码版本 **0.2.4**。GitHub 最新发行版可能早于源码，请先核对版本号。要获得当前源码，需要 **Node 22.13+** 和 **pnpm 10**：
 
 ```bash
+git clone https://github.com/Chain-Tang/AnnotationTutor.git
 cd AnnotationTutor
-pnpm install
-pnpm install:vault -- --vault "/path/to/YourVault"   # 构建 + 拷贝 + 启用
-# 或，生成发行版产物（dist/ 下的 zip + 散装文件）：
-pnpm package
+pnpm install --frozen-lockfile
+pnpm install:vault -- --vault "/path/to/YourVault"
 ```
 
-随后 [连接一个引擎](#连接一个引擎)，即可开始使用。
+安装命令会构建、复制插件文件并更新 Vault 的启用列表。请先保存正在编辑的批注，再重载 Obsidian，或关闭后重新启用插件。**复制新文件不等于运行中的旧插件已经重载。**
 
-## 网页剪藏（Web Clipper）
+### 安装打包发行版
 
-_(0.2.0 新增)_ 配套的**浏览器扩展**（Chromium 内核 —— Chrome / Edge / Brave）让开放网页
-也成为你 Vault 的素材来源。它独立于插件构建与版本化（见 [`extension/`](extension/)）。
+打开 [Releases](https://github.com/Chain-Tang/AnnotationTutor/releases)，确认版本及附件。如果有插件 ZIP，将其解压到 Vault 的 `.obsidian/plugins/` 下；也可将同一版本的 `main.js`、`manifest.json`、`styles.css` 放到：
 
-**你能做什么**
+```text
+<你的Vault>/.obsidian/plugins/annotation-tutor-lite/
+```
 
-- **高亮**任意段落（四种颜色），并为高亮**附加批注**。
-- **持久化并自动重新锚定。** 每条高亮都会按该网页的 URL 保存在浏览器本地存储中，并在你
-  下次访问时通过 W3C 文本引用锚点（前缀 / 精确文本 / 后缀）重新绘制，因此能在页面重新
-  加载、甚至轻微改动后依然保留。
-- **在弹窗中管理。** 工具栏弹窗会列出当前页面的所有高亮 —— 点击任意一条即可跳转，或
-  **全部清除**。
-- **剪藏进 Obsidian。** 把**选区**（走 `obsidian://` 链接）或整篇**可读正文**（转换为
-  Markdown + 归档 HTML，经本地回环桥接）送入 Vault 的剪藏文件夹。
+在 Obsidian 的第三方插件设置中启用 **Annotation Tutor Lite**。存在兼容发行版时，也可通过 BRAT 添加 `Chain-Tang/AnnotationTutor`；BRAT 不会安装尚未发布为发行版的源码改动。
 
-**安装与配对**
+### 写下第一条批注
 
-1. 在 Obsidian 中打开 **设置 → Annotation Tutor Lite → TutorWeb**：开启 **Enable the Web
-   Clipper bridge**（启用网页剪藏桥接），再用 **Install extension** / **Open extension
-   folder** 打开随插件附带的扩展文件（或自行构建：`cd extension && pnpm install && pnpm
-   build` → `extension/dist/`）。
-2. 打开 `chrome://extensions`（Edge：`edge://extensions`），开启**开发者模式**，点击
-   **加载已解压的扩展程序**，选择该文件夹。
-3. 回到 **TutorWeb** 标签页，**复制配对令牌**。打开扩展弹窗，把它粘贴到 **Bridge
-   token**，并对齐 **Bridge port**（默认 `51256`），然后 **Save（保存）→ Test
-   pairing（测试配对）**。
+1. 打开 Markdown 笔记或文字可选的 PDF。
+2. 选中文字，按 `Ctrl/Cmd + Shift + L` 执行“添加学习批注”。PDF 也提供选区入口与右键菜单入口。
+3. 写下理解并保存，点击原文高亮重新查看。需要可拖动便签时，在设置中启用页边批注。
+4. 鼠标移到便签上显示按钮，移开后继续专注阅读和文字。
 
-高亮功能在任意网页上无需配对即可使用；只有把剪藏送入 Vault 时才需要配对。完整说明见
-**[extension/README.md](extension/README.md)**。
+首次运行会建立记忆目录，默认名为 `Agent Memory/`；启用相应设置时，还会生成描述文件协议的 `AGENTS.md`。
 
-## 首次运行
+## 连接你的导师
 
-启用插件后，**重新加载一次 Obsidian**（`Ctrl/Cmd+R`）。它所需的一切都会自动创建 ——
-你无需手动建立任何文件夹：
+在 **设置 → Annotation Tutor Lite → General** 中选择引擎：
 
-1. **重新加载。** Vault 根目录下会出现一个 `Agent Memory/` 文件夹，并自动搭建好
-   `annotations/`、`memory-cells/`、`scenes/`、`profiles/`（含一个空的
-   `learner-profile.md`），以及一份描述文件协议、供外部智能体阅读的 **`AGENTS.md`**。
-   （文件夹名称由 **记忆文件夹（Memory folder）** 设置决定；`AGENTS.md` 由 **创建代理
-   说明文件（Create agent instruction file）** 开关控制 —— 两者默认开启。）
-2. **选择一个引擎**：在 **设置 → Annotation Tutor Lite** 中选择，详见
-   [连接一个引擎](#连接一个引擎)。使用 OpenCode 时，只需安装并执行一次
-   `opencode auth login` 登录 CLI 即可；不会向你的 Vault 写入任何额外内容（没有
-   `.opencode` 配置，也没有 API 密钥）。
-3. **开始批注。** 选中文字 → `Ctrl/Cmd+Shift+L` → 写下你的理解 → 请导师点评。
+- **Direct API**：填写自己的 OpenAI 兼容端点、模型与 API 密钥。密钥保存在 Vault 本地插件配置中，不属于本仓库内容。
+- **OpenCode**：自行安装并登录 CLI，再选择该引擎；插件通过 ACP 使用你已认证的 CLI。
 
-> 下载包中的三个文件（`main.js`、`manifest.json`、`styles.css`）就是插件的全部 ——
-> 所有源码都已打包进 `main.js`。`Agent Memory/` 笔记是在首次运行时于你的 Vault 中
-> 生成的，并不包含在下载包里。
+**本地优先，不等于 AI 完全离线。** 请求点评、对话或翻译时，配置的远端引擎可能接收相关文本与上下文。服务商的隐私政策、数据保留、额度与费用独立于本插件；请勿把插件配置和密钥上传到公共仓库。
 
-## 平台支持
-
-桌面端 **Windows、macOS 与 Linux** 均受支持（需 Obsidian 1.12.4+）；本插件仅限桌面端
-（不支持移动端）。纯逻辑部分有单元测试覆盖，涉及操作系统的代码路径（定位 agent CLI、
-参数转义、路径处理）也都针对三大平台编写。
-
-使用 **OpenCode 引擎** 时有一点需要了解：从 Dock、开始菜单或桌面快捷方式启动的
-Obsidian 可能继承到一个精简的 `PATH`，从而漏掉 CLI 的安装目录。插件会额外搜索这些
-常见位置作为补偿 —— Windows 上是 `%APPDATA%\npm`，macOS/Linux 上是 `/opt/homebrew/bin`、
-`/usr/local/bin`、`~/.opencode/bin`、`~/.local/bin`、`~/.bun/bin`。如果你的 `opencode`
-位于不常见的位置，可在引擎命令中填写它的完整路径，或改用 **Direct API** 引擎
-（不启动子进程，处处可用）。
-
-## 连接一个引擎
-
-点评、导师对话与翻译都运行在某一个引擎上 —— 在 **设置 → General** 中选择：
-
-- **OpenCode**（推荐；它可以直接读取你的 Vault）。请自行安装并登录
-  [`opencode`](https://opencode.ai) CLI，然后把引擎设为 **OpenCode**。插件通过 ACP
-  驱动你已认证的 CLI —— **不会存储任何 API 密钥**。默认模型为
-  `opencode/mimo-v2.5-free`；如需更换，请修改 **Agent model**。
-- **Direct API**（默认）：任意兼容 OpenAI 的端点。默认指向 DeepSeek
-  （`https://api.deepseek.com/v1`，模型 `deepseek-chat`）—— 在 **API key** 处粘贴你的
-  密钥。密钥只保存在你 Vault 本地的插件数据中，绝不会进入本仓库。
-
-本插件不附带任何云服务或凭据。
-
-## 工作原理
-
-1. 在笔记中选中文字 → **添加学习批注**（`Ctrl/Cmd+Shift+L`）→ 写下你的理解。插件会
-   插入一个 Obsidian 块 ID（`^ann-…`），并在 `Agent Memory/annotations/` 下为每条批注
-   生成一个 Markdown 文件。
-2. **请代理点评**。你的引擎会读取这些文件（由 `Agent Memory/AGENTS.md` 指引），把点评
-   写入该批注的 **Agent Review** 区段，并可提炼出一个**记忆单元**。
-3. 共享同一概念的记忆单元会自动组成一个**场景**；你的**学习者画像**会随时间记录关于你
-   的长期事实。
-4. **间隔重复**会让到期的记忆单元重新浮现；**生成笔记本**则把一切汇成一本可阅读的学习
-   笔记本。
-
-插件负责元数据、Selected Text 与 User Note；代理负责 Agent Review / Review History 区段，
-插件每次编辑都会原样保留它们。`index.json`（位于插件文件夹下）是一个可重建的缓存 ——
-**重建批注索引** 会从 Markdown 文件重新生成它。
-
-## 核心概念
-
-- **记忆单元（Memory cell）** —— 从一条或多条批注提炼出的、有据可依的原子记忆（一个
-  概念、你对它的掌握程度、一个置信度，以及一份间隔重复日程）。它是导师记忆与复习的基本
-  单位。
-- **场景（Scene）** —— 把相关记忆单元归并在一起的上下文。当两个及以上记忆单元共享同一
-  概念时，场景会**自动**形成；你（或代理）也可以手动创建自己的场景。
-- **学习者画像（Learner profile）** —— 一份可审计的、纯 Markdown 的「你」的模型：关于
-  你的优势、薄弱点与目标的若干论断，每条都附有证据。导师据此进行个性化。
-- **笔记本（Notebook）** —— 自动生成的、人类可读的学习笔记本（按文档分页、按概念分章、
-  以及一份优势/薄弱点小结），并带有指回每条批注与原文的带日期链接。
-
-→ 完整解释、数据模型，以及每个部分如何被触发，详见
-**[docs/guide.md](docs/guide.md)**。
+如果从 Dock 或桌面快捷方式启动的 Obsidian 找不到 CLI，可在引擎配置中填写可执行文件完整路径；插件也会搜索常见安装目录。
 
 ## 键盘快捷键
 
-默认值（Mod = Windows/Linux 上的 `Ctrl`，macOS 上的 `Cmd`）：
+| 操作 | Windows / Linux | macOS |
+| --- | --- | --- |
+| 添加学习批注 | `Ctrl + Shift + L` | `⌘ + Shift + L` |
+| 翻译选中内容 | `Alt + T` | `⌘ + Shift + T` |
+| 预翻译整篇笔记 | `Ctrl + Alt + T` | `⌘ + Shift + Y` |
 
-| 操作 | 快捷键 |
-| --- | --- |
-| 添加学习批注 | `Ctrl/Cmd + Shift + L` |
-| 翻译选中内容（行内释义） | `Alt + T` |
-| 预翻译整篇文档（全文） | `Ctrl/Cmd + Alt + T` |
+可在 Obsidian 的快捷键设置中重新绑定。macOS 默认避免会输入特殊字符的 Option 字母组合，其他命令也可以自行分配快捷键。
 
-其余所有命令（打开学习笔记本、生成笔记本、复习到期单元、打开导师对话……）**没有默认
-快捷键** —— 可在 **设置 → 快捷键** 中搜索「Annotation Tutor Lite」自行分配。
+## 你的学习记忆，就是普通文件
 
-## Vault 目录结构
-
-```
+```text
 Agent Memory/
-├── annotations/ANN-YYYYMMDD-NNN.md   # 事实源，每条批注一个文件
-├── memory-cells/MEM-*.md             # 有据可依的原子记忆（含间隔重复日程）
-├── scenes/SCENE-*.md                 # 自动归并或手动创建的上下文
-├── profiles/
-│   ├── learner-profile.md            # 可审计的长期学习者模型
-│   └── preferences.md                # 可选；默认禁止代理写入
-├── indexes/{annotations,cells,scenes}.md
-├── proposals/{pending,archive}/      # 确认模式下的审阅队列
-├── Notebook/                         # 自动生成的学习笔记本
-│   ├── Notebook.md                   #   入口 / 内容地图
-│   ├── pages/<doc>.md                #   每篇学习过的文档一则文献笔记
-│   ├── chapters/<topic>.md           #   按概念分章，归并相关页面
-│   └── Learning summary.md           #   优势 / 薄弱点 / 方法
-├── annotation-memory.md              # 自动生成的总览 / 代理入口
-├── recent-learning.md                # 自动生成的简短小结
-├── agent-inbox.md                    # 任务队列
-└── AGENTS.md                         # 自动生成的代理说明
+├── annotations/       # 每条批注一个 Markdown 文件
+├── memory-cells/      # 有据可依的记忆与复习计划
+├── scenes/            # 将相关概念组织到上下文中
+├── profiles/          # 学习者画像与偏好
+├── Notebook/          # 生成的学习笔记本
+├── proposals/         # 确认模式下的审阅队列
+└── AGENTS.md           # 给外部智能体的文件协议
 ```
 
-新文件采用 YAML Properties 加上可读的 Markdown 正文与 Obsidian Wikilink。记忆写入默认为
-`direct`（直接写入）；可在设置中切换为 `confirmation`（确认模式），让提议的
-单元/场景/画像变更先经过 **Proposals** 标签页。
+原文引用、你的理解和代理点评分区保存。希望先审阅记忆变更时，可以启用确认模式。[了解数据模型与完整用法 →](docs/guide.md)
 
-## 开发
+## 当前边界
 
-在获取源码（[上文方式 4](#4-从源码构建开发者)）并于仓库根目录运行 `pnpm install`
-之后：
+- PDF 依赖阅读器文字层；无法选字的扫描件需先在其他工具中 OCR。批注不会导出为 PDF 内嵌评论。
+- PDF 的“粗体”以更重的下划线强调，不修改画布上的原文字形。
+- 表格重复文字按出现顺序匹配，尚无完整行列语义身份；无法确认归属的旧锚点不自动清除。
+- PDF 前台物理鼠标操作及真实触屏设备仍需更广泛的端到端验证。DOM 回归不能替代所有 Obsidian 版本与主题的实际验收。
+- 当前桌面版本没有实现笔迹、压感或移动端支持。
 
-- `pnpm typecheck` / `pnpm test` / `pnpm build` —— 质量门禁。
-- `pnpm dev` —— esbuild 监听构建。
-- `pnpm package` —— 构建并暂存 `dist/release/annotation-tutor-lite/` 与一个发行版 zip。
-- `pnpm install:dev-plugin -- --vault "/path/to/YourVault"` —— 把构建产物拷贝进某个
-  Vault 以便测试。`pnpm install:vault -- --vault "…"` 会一步完成构建与安装。
+## 开发与反馈
 
-## 架构
+```bash
+pnpm typecheck
+pnpm test
+pnpm build
+```
 
-纯逻辑、有单元测试（不引入 Obsidian）：`src/model.ts`、`src/ids.ts`、`src/anchors.ts`、
-`src/srs.ts`、`src/memory-derive.ts`、`src/learning.ts`、`src/index-table.ts`、
-`src/markdown/*`。与 Obsidian 绑定的一层：`src/store.ts`（文件读写 + 自写循环防护）、
-`src/watcher.ts`、`src/decorations.ts`、`src/editor.ts`、`src/settings.ts`、
-`src/views/*`、各 `*-controller.ts` 模块，以及 `src/main.ts`（接线）。测试位于 `tests/`。
+`pnpm dev` 监听构建；`pnpm package` 生成发行附件。0.2.4 本地验证通过 **62 个测试文件、531 项测试**，覆盖悬停按钮、拖动中刷新、PDF 事件路由、高亮样式和表格锚定。GitHub CI 独立运行 Linux、Windows 与 macOS 的构建和测试。
 
-学习模型详见 **[docs/guide.md](docs/guide.md)**；原始产品基线见
-`PrivTutor Lite MVP Design Spec.md`。
+反馈交互问题时，请附上 Obsidian／插件版本、皮肤、视图模式、复现步骤，以及安装后是否确实重载了插件。尽量使用不含隐私信息的示例文档。
+
+[使用指南](docs/guide.md) · [更新记录](CHANGELOG.md) · [表格与 PDF 实现笔记](docs/table-and-pdf-anchoring.md) · [Pad 设计提案](docs/pad-handwriting-spec.md)
 
 ## 许可证
 
-本项目以 [**MIT 许可证**](LICENSE) 发布——可自由使用、修改与分发（含商业用途），
-保留版权与许可声明即可。© 2026 Chain。
+[MIT](LICENSE) · © 2026 Chain。遵守许可证条款即可使用、修改与分发。

@@ -37,6 +37,8 @@ export function recordFromAnnotation(
     anchor: caretId(annotation.anchor.blockId),
     anchorOrigin: annotation.anchorOrigin ?? "legacy",
     selectedText: annotation.anchor.selectedText,
+    ...(annotation.anchor.sourceType ? { sourceType: annotation.anchor.sourceType } : {}),
+    ...(annotation.anchor.page ? { sourcePage: annotation.anchor.page } : {}),
     status: annotation.status,
     concepts: annotation.concepts,
     relatedMemoryCells: annotation.relatedMemoryCells,

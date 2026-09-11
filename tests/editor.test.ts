@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { findBlockInLines } from "../src/editor.js";
+import {
+  detectBlockId,
+  findBlockInLines,
+  findTableInLines
+} from "../src/editor.js";
 
 describe("findBlockInLines", () => {
   const lines = [
@@ -29,5 +33,31 @@ describe("findBlockInLines", () => {
 
   it("does not let a paragraph absorb a preceding heading", () => {
     expect(findBlockInLines(lines, 6)).toEqual({ startLine: 6, endLine: 6 });
+  });
+});
+
+describe("Markdown table anchors", () => {
+  const table = [
+    "Before",
+    "",
+    "| Concept | Meaning |",
+    "| --- | --- |",
+    "| Attention | Weighted context |",
+    "| Memory | Durable knowledge |",
+    "^ann-table",
+    "",
+    "After"
+  ];
+
+  it("finds the complete table from a selected cell row", () => {
+    expect(findTableInLines(table, 4)).toEqual({ startLine: 2, endLine: 5 });
+  });
+
+  it("does not mistake an ordinary pipe for a table", () => {
+    expect(findTableInLines(["alpha | beta", "ordinary text"], 0)).toBeNull();
+  });
+
+  it("recognizes a standalone table block id", () => {
+    expect(detectBlockId("^ann-table")).toBe("ann-table");
   });
 });

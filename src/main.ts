@@ -30,12 +30,15 @@ import {
 } from "./model.js";
 import { blockIdForAnnotation, makeId, nowIso } from "./ids.js";
 import { resolveAnchor } from "./anchors.js";
+import { cleanTableAnchors } from "./table-anchors.js";
 import {
   crossesMarkdownBlocks,
   detectBlockId,
   escapeRegExp,
   findBlock,
   findBlockInLines,
+  findTable,
+  findTableInLines,
   lineTextWithoutBlockId
 } from "./editor.js";
 import { IndexTable, recordFromAnnotation } from "./index-table.js";
@@ -106,7 +109,7 @@ import {
 } from "./skins.js";
 import { SkinLoader } from "./skin-loader.js";
 import { PAPER_TEXTURE, LEAF_TEXTURE } from "./textures.js";
-import { highlightFirst } from "./reading-highlight.js";
+import { highlightFirst, locateInRaw } from "./reading-highlight.js";
 import { setLanguage, t } from "./i18n.js";
 import {
   DASHBOARD_VIEW_TYPE,
@@ -173,9 +176,17 @@ import { tmpdir } from "node:os";
 import { ConfirmModal, DetailModal } from "./views/annotation-modal.js";
 import { FloatingNotePanel } from "./views/note-panel.js";
 import { NotePopover } from "./views/note-popover.js";
+import {
+  pdfAnchorId,
+  selectionFromPdfView,
+  type PdfTextSelection
+} from "./pdf-annotation.js";
+import { PdfHighlighter, type PdfHighlightMark } from "./pdf-highlighter.js";
+import { PdfSelectionController } from "./pdf-selection.js";
+import { PdfRail } from "./pdf-rail.js";
 
 type EditorWithCm = Editor & { cm?: EditorView };
-type Block = { startLine: number; endLine: number };
+type Block = { startLine: number; endLine: number; table?: boolean };
 
 /** Where a chat-proposed edit should land, captured when the turn is sent. */
 export type EditTarget = {
@@ -197,6 +208,9 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   private watcher!: MemoryWatcher;
   private settingTab!: AnnotationTutorLiteSettingTab;
   private readonly readingRail = new ReadingRail();
+  private readonly pdfHighlighter = new PdfHighlighter();
+  private readonly pdfSelection = new PdfSelectionController();
+  private readonly pdfRail = new PdfRail();
   // User-authored card skins discovered in the plugin's skins/ folder, plus the
   // loader that injects the active one's CSS. Built-ins live in skins.ts/styles.css.
   private skinLoader!: SkinLoader;
@@ -401,12 +415,20 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     this.registerEvent(
       this.app.workspace.on("file-open", (file) => {
         if (file instanceof TFile && file.extension === "md") {
+          void this.migrateTableAnchors(file);
           void this.translation.maybePretranslate(file);
         }
+        // A new file can replace the contents of the same leaf without an
+        // active-leaf-change. Refresh PDF callbacks/marks so they never retain
+        // the preceding file's path or annotations.
+        void this.refreshDecorations();
       })
     );
     this.registerEvent(
-      this.app.vault.on("modify", (file) => this.watcher.notify(file.path))
+      this.app.vault.on("modify", (file) => {
+        this.watcher.notify(file.path);
+        if (file instanceof TFile && file.extension === "md") void this.migrateTableAnchors(file);
+      })
     );
     this.registerEvent(
       this.app.vault.on("create", (file) => this.watcher.notify(file.path))
@@ -440,6 +462,9 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     void this.webBridge?.stop();
     this.webBridge = null;
     this.readingRail.detach();
+    this.pdfHighlighter.detach();
+    this.pdfSelection.detach();
+    this.pdfRail.detach();
     this.skinLoader?.unload();
     document.body.style.removeProperty("--atl-hl-color");
     document.body.style.removeProperty("--atl-hl-bg-color");
@@ -617,6 +642,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     // The file open before our file-open handler registered won't have fired it;
     // pre-translate it now so its glossary is ready for Alt+T.
     const active = this.app.workspace.getActiveFile();
+    if (active?.extension === "md") await this.migrateTableAnchors(active);
     if (active && active.extension === "md") void this.translation.maybePretranslate(active);
   }
 
@@ -794,8 +820,30 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       id: "add-learning-annotation",
       name: t("cmd.addAnnotation"),
       hotkeys: defaultHotkeys("add-learning-annotation"),
-      editorCallback: (editor, info) =>
-        void this.createAnnotationFromEditor(editor, info)
+      // Use a check callback instead of editorCallback so the same command and
+      // macOS shortcut also work in Reading view and the built-in PDF viewer.
+      checkCallback: (checking) => {
+        const markdown = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (markdown?.file) {
+          if (!checking) {
+            if (markdown.getMode() === "preview") {
+              const selection = markdown.contentEl.ownerDocument
+                .getSelection()
+                ?.toString()
+                .trim();
+              if (selection) void this.createAnnotationFromReading(markdown, selection);
+              else new Notice(t("notice.selectOrCursor"));
+            } else {
+              void this.createAnnotationFromEditor(markdown.editor, markdown);
+            }
+          }
+          return true;
+        }
+        const pdf = this.activePdfSelection();
+        if (!pdf) return false;
+        if (!checking) void this.createAnnotationFromPdf(pdf.file, pdf.selection);
+        return true;
+      }
     });
     this.addCommand({
       id: "open-tutor-chat",
@@ -967,7 +1015,10 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       new Notice(t("notice.cannotCrossBlocks"));
       return;
     }
-    const block = findBlock(editor, start.line);
+    const table = findTable(editor, start.line);
+    const block: Block = table
+      ? { ...table, table: true }
+      : findBlock(editor, start.line);
     const sourceText =
       selectedText || lineTextWithoutBlockId(editor.getLine(start.line));
     if (!sourceText) {
@@ -994,6 +1045,35 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     return coords ? { x: coords.left, y: coords.bottom } : undefined;
   }
 
+  private readonly migratingTables = new Set<string>();
+
+  /** Remove old generated table ids, never touch user ids or PDF bytes. */
+  private async migrateTableAnchors(file: TFile): Promise<void> {
+    if (file.extension !== "md" || this.migratingTables.has(file.path)) return;
+    const ids = new Set(this.indexTable.all().filter(record =>
+      record.sourceFile === file.path && record.anchorOrigin === "generated"
+    ).map(record => bareBlockId(record.anchor)));
+    if (!ids.size) return;
+    this.migratingTables.add(file.path);
+    try {
+      const before = await this.app.vault.read(file);
+      if (cleanTableAnchors(before, ids) === before) return;
+      await this.app.vault.process(file, data => cleanTableAnchors(data, ids));
+      await this.refreshDecorations();
+    } catch (error) {
+      console.warn("[TutorLite] Table anchor cleanup failed", file.path, error);
+    } finally {
+      this.migratingTables.delete(file.path);
+    }
+  }
+
+  /** Legacy or user-owned table anchor; new table annotations write no token. */
+  private tableBlockId(editor: Editor, tableEndLine: number): string | null {
+    if (tableEndLine + 1 >= editor.lineCount()) return null;
+    const next = editor.getLine(tableEndLine + 1);
+    return /^\s*\^[\w-]+\s*$/.test(next) ? detectBlockId(next) : null;
+  }
+
   public openSettings(): void {
     const setting = (
       this.app as unknown as {
@@ -1014,7 +1094,9 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   ): Promise<void> {
     const createdAt = nowIso();
     const id = makeId("ANN", this.indexTable.ids());
-    const existingBlockId = detectBlockId(editor.getLine(block.endLine));
+    const existingBlockId = block.table
+      ? this.tableBlockId(editor, block.endLine)
+      : detectBlockId(editor.getLine(block.endLine));
     const blockId = existingBlockId ?? blockIdForAnnotation(id);
     const sharedGeneratedAnchor = this.indexTable
       .all()
@@ -1025,8 +1107,8 @@ export default class AnnotationTutorLitePlugin extends Plugin {
           record.anchorOrigin === "generated"
       );
 
-    if (!existingBlockId && this.settings.useBlockAnchors) {
-      editor.setLine(block.endLine, `${editor.getLine(block.endLine)} ^${blockId}`);
+    if (!block.table && !existingBlockId && this.settings.useBlockAnchors) {
+        editor.setLine(block.endLine, `${editor.getLine(block.endLine)} ^${blockId}`);
     }
 
     const annotation: Annotation = {
@@ -1085,9 +1167,15 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       new Notice(t("notice.couldNotLocate"));
       return;
     }
-    const block = findBlockInLines(lines, lineIndex);
+    const table = findTableInLines(lines, lineIndex);
+    const block: Block = table
+      ? { ...table, table: true }
+      : findBlockInLines(lines, lineIndex);
     const id = makeId("ANN", this.indexTable.ids());
-    const existingBlockId = detectBlockId(lines[block.endLine] ?? "");
+    const existingBlockId = block.table
+      ? (/^\s*\^[\w-]+\s*$/.test(lines[block.endLine + 1] ?? "")
+          ? detectBlockId(lines[block.endLine + 1] ?? "") : null)
+      : detectBlockId(lines[block.endLine] ?? "");
     const blockId = existingBlockId ?? blockIdForAnnotation(id);
     const sharedGeneratedAnchor = this.indexTable
       .all()
@@ -1098,13 +1186,13 @@ export default class AnnotationTutorLitePlugin extends Plugin {
           record.anchorOrigin === "generated"
       );
 
-    if (!existingBlockId && this.settings.useBlockAnchors) {
+    if (!block.table && !existingBlockId && this.settings.useBlockAnchors) {
       await this.app.vault.process(file, (data) => {
         const current = data.split(/\r?\n/);
-        const target = current[block.endLine];
-        if (target !== undefined && !detectBlockId(target)) {
-          current[block.endLine] = `${target} ^${blockId}`;
-        }
+          const target = current[block.endLine];
+          if (target !== undefined && !detectBlockId(target)) {
+            current[block.endLine] = `${target} ^${blockId}`;
+          }
         return current.join("\n");
       });
     }
@@ -1124,6 +1212,65 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       updatedAt: createdAt
     };
     await this.finishCreate(annotation, askAgent);
+  }
+
+  /** Current text selection when the focused leaf is Obsidian's PDF viewer. */
+  private activePdfSelection(
+    fallbackNode?: Node | null
+  ): { file: TFile; selection: PdfTextSelection } | null {
+    const active = this.app.workspace.activeLeaf?.view;
+    const candidates = [
+      ...(active?.getViewType() === "pdf" ? [active] : []),
+      ...this.app.workspace
+        .getLeavesOfType("pdf")
+        .map((leaf) => leaf.view)
+        .filter((view) => view !== active)
+    ];
+    for (const view of candidates) {
+      const file = (view as View & { file?: TFile | null }).file;
+      if (!(file instanceof TFile) || file.extension.toLowerCase() !== "pdf") continue;
+      const selection = selectionFromPdfView(
+        view.containerEl,
+        view.containerEl.ownerDocument.getSelection(),
+        fallbackNode
+      );
+      if (selection) return { file, selection };
+    }
+    return null;
+  }
+
+  /** Store a PDF selection without modifying the binary source file. */
+  private async createAnnotationFromPdf(
+    file: TFile,
+    selection: PdfTextSelection
+  ): Promise<void> {
+    FloatingNotePanel.open({
+      allowAsk: true,
+      anchor: this.lastContextPos ?? undefined,
+      onOpenSettings: () => this.openSettings(),
+      onSubmit: async (note, askAgent) => {
+        const createdAt = nowIso();
+        const id = makeId("ANN", this.indexTable.ids());
+        const annotation: Annotation = {
+          id,
+          sourceFile: file.path,
+          anchor: {
+            blockId: pdfAnchorId(id, selection.page),
+            selectedText: selection.text,
+            sourceType: "pdf",
+            ...(selection.page ? { page: selection.page } : {})
+          },
+          anchorOrigin: "generated",
+          userNote: note,
+          status: askAgent ? "agent_requested" : "saved",
+          concepts: [],
+          relatedMemoryCells: [],
+          createdAt,
+          updatedAt: createdAt
+        };
+        await this.finishCreate(annotation, askAgent);
+      }
+    });
   }
 
   /** Persist a freshly built annotation, index it, and optionally ask an agent. */
@@ -1166,6 +1313,25 @@ export default class AnnotationTutorLitePlugin extends Plugin {
         .setIcon("languages")
         .onClick(() =>
           void this.translation.translateReadingSelection(file, selection)
+        )
+    );
+    menu.showAtMouseEvent(event);
+  }
+
+  /** Show TutorLite's menu after the PDF capture listener wins the native menu. */
+  private showPdfContextMenu(
+    event: MouseEvent,
+    file: TFile,
+    selection: PdfTextSelection
+  ): void {
+    this.lastContextPos = { x: event.clientX, y: event.clientY };
+    const menu = new Menu();
+    menu.addItem((item) =>
+      item
+        .setTitle(t("menu.addAnnotation"))
+        .setIcon("highlighter")
+        .onClick(() =>
+          void this.createAnnotationFromPdf(file, selection)
         )
     );
     menu.showAtMouseEvent(event);
@@ -1716,6 +1882,21 @@ export default class AnnotationTutorLitePlugin extends Plugin {
         }
       }
     }
+    // Tables have no in-source block id. Reading view owns this DOM, so it is
+    // safe to wrap text here (unlike the Live Preview table widget).
+    const tables = el.matches("table") ? [el] : [...el.querySelectorAll<HTMLElement>("table")];
+    for (const record of records) {
+      if (!record.selectedText || el.querySelector(`[data-atl-id="${CSS.escape(record.annotationId)}"]`)) continue;
+      for (const table of tables) {
+        const cell = [...table.querySelectorAll<HTMLElement>("td, th")].find(cell =>
+          locateInRaw(cell.textContent ?? "", record.selectedText) !== null);
+        if (!cell) continue;
+        if (cls) highlightFirst(cell, record.selectedText, cls, record.annotationId,
+          (id, anchor) => void this.openInlineNote(id, anchor));
+        else if (this.settings.showMarker) this.appendReadingMarker(cell, record.annotationId);
+        break;
+      }
+    }
   }
 
   private appendReadingMarker(el: HTMLElement, id: string): void {
@@ -1744,10 +1925,17 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     const file = this.fileAt(record.sourceFile);
     if (
       file &&
+      file.extension === "md" &&
       shouldRemoveAnnotationBlockId(record, this.indexTable.all())
     ) {
       await this.app.vault.process(file, (data) =>
-        data.replace(new RegExp(`\\s+\\^${escapeRegExp(blockId)}\\s*$`, "m"), "")
+        data.replace(
+          new RegExp(
+            `(?:^[ \\t]*\\^${escapeRegExp(blockId)}[ \\t]*\\r?\\n?|[ \\t]+\\^${escapeRegExp(blockId)}[ \\t]*$)`,
+            "m"
+          ),
+          ""
+        )
       );
     }
     await this.store.deleteAnnotation(record.annotationId);
@@ -1769,7 +1957,16 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       return;
     }
     const file = this.fileAt(annotation.sourceFile);
-    if (!file || file.extension !== "md") {
+    if (!file) {
+      await this.markSourceMissing(annotation);
+      new Notice(t("notice.sourceMissing"));
+      return;
+    }
+    if (file.extension.toLowerCase() === "pdf") {
+      await this.revealPdf(file, annotation.anchor.page);
+      return;
+    }
+    if (file.extension !== "md") {
       await this.markSourceMissing(annotation);
       new Notice(t("notice.sourceMissing"));
       return;
@@ -1817,8 +2014,11 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     await this.app.vault.process(file, (data) => {
       const lines = data.split(/\r?\n/);
       lineText = lines[line] ?? "";
-      if (this.settings.useBlockAnchors && !detectBlockId(lineText)) {
-        lines[line] = `${lineText} ^${annotation.anchor.blockId}`;
+      if (this.settings.useBlockAnchors) {
+        const table = findTableInLines(lines, line);
+        if (!table && !detectBlockId(lineText)) {
+          lines[line] = `${lineText} ^${annotation.anchor.blockId}`;
+        }
       }
       return lines.join("\n");
     });
@@ -1857,6 +2057,12 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       { from: { line, ch: 0 }, to: { line, ch: selectedText.length } },
       true
     );
+  }
+
+  /** Open a PDF annotation at its recorded one-based page. */
+  private async revealPdf(file: TFile, page?: number): Promise<void> {
+    const link = page ? `${file.path}#page=${page}` : file.path;
+    await this.app.workspace.openLinkText(link, "", false);
   }
 
   // --- index / overview ------------------------------------------------------
@@ -2135,6 +2341,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   public async noteContent(path: string): Promise<string> {
     const file = this.fileAt(path);
     if (!(file instanceof TFile)) return "";
+    if (file.extension.toLowerCase() === "pdf") return "[PDF source: body text not extracted]";
     try {
       return await this.app.vault.read(file);
     } catch {
@@ -2861,6 +3068,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     // through; refuse the config dir explicitly so a prompt-injected read can't
     // exfiltrate secrets.
     if (rel.split(/[\\/]/)[0] === ".obsidian") return null;
+    if (/\.pdf$/i.test(rel)) return null;
     try {
       const text = await fsReadFile(abs, "utf8");
       // Strip a UTF-8 BOM so the agent doesn't echo a stray ﻿ (which shows
@@ -2878,13 +3086,67 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     }
   }
 
+  private readingSignature = "";
+
   private async refreshDecorations(): Promise<void> {
+    const focusedView = this.app.workspace.activeLeaf?.view;
+    // A right-sidebar click makes the chat leaf active even though the PDF is
+    // still the visible document. Keep its interaction controllers mounted.
+    const activeView =
+      focusedView?.getViewType() === "pdf" || focusedView instanceof MarkdownView
+        ? focusedView
+        : this.app.workspace.getLeavesOfType("pdf")[0]?.view;
+    const activeFile = (activeView as (View & { file?: TFile | null }) | undefined)?.file;
+    if (
+      activeView &&
+      activeView.getViewType() === "pdf" &&
+      activeFile instanceof TFile
+    ) {
+      this.readingRail.detach();
+      this.pdfRail.attach(activeView.containerEl);
+      this.pdfHighlighter.attach(activeView.containerEl, (id, anchor) => {
+        this.pdfSelection.dismiss();
+        if (this.settings.marginComments) this.pdfRail.toggle(id, anchor);
+        else void this.openInlineNote(id, anchor);
+      });
+      this.pdfHighlighter.setMarks(
+        this.pdfMarksFor(activeFile.path),
+        this.settings.highlightStyle,
+        this.settings.showMarker
+      );
+      this.pdfRail.setMarks(
+        this.marksFor(activeFile.path),
+        this.activeRailSkin(),
+        this.settings.marginHideLink,
+        this.settings.inlineReview
+      );
+      this.pdfSelection.attach(activeView.containerEl, {
+        label: t("menu.addAnnotation"),
+        onAdd: (selection, point) => {
+          this.lastContextPos = point;
+          void this.createAnnotationFromPdf(activeFile, selection);
+        },
+        onContextMenu: (event, selection) =>
+          this.showPdfContextMenu(event, activeFile, selection)
+      });
+      return;
+    }
+    this.pdfHighlighter.detach();
+    this.pdfSelection.detach();
+    this.pdfRail.detach();
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!view?.file) {
       this.readingRail.detach();
       return;
     }
     const marks = this.marksFor(view.file.path);
+    if (view.getMode() === "preview") {
+      const signature = JSON.stringify([view.file.path, marks, this.settings.highlightStyle, this.settings.showMarker]);
+      if (this.readingSignature !== signature) {
+        this.readingSignature = signature;
+        view.previewMode.rerender(true);
+      }
+    } else this.readingSignature = "";
     const cm = (view.editor as EditorWithCm).cm;
     if (cm) {
       cm.dispatch({
@@ -2910,6 +3172,21 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     } else {
       this.readingRail.detach();
     }
+  }
+
+  private pdfMarksFor(sourcePath: string): PdfHighlightMark[] {
+    return this.indexTable
+      .all()
+      .filter(
+        (record) =>
+          record.sourceFile === sourcePath &&
+          (record.sourceType === "pdf" || /\.pdf$/i.test(record.sourceFile))
+      )
+      .map((record) => ({
+        id: record.annotationId,
+        selectedText: record.selectedText,
+        ...(record.sourcePage ? { page: record.sourcePage } : {})
+      }));
   }
 
   /** The annotation marks for a source file, shared by both rails. */
@@ -2974,8 +3251,12 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!view?.file) return null;
     const editor = view.editor;
-    const block = findBlock(editor, editor.getCursor().line);
-    const blockId = detectBlockId(editor.getLine(block.endLine));
+    const cursorLine = editor.getCursor().line;
+    const table = findTable(editor, cursorLine);
+    const block = table ?? findBlock(editor, cursorLine);
+    const blockId = table
+      ? this.tableBlockId(editor, table.endLine)
+      : detectBlockId(editor.getLine(block.endLine));
     if (!blockId) return null;
     const sourcePath = view.file.path;
     return (
@@ -2994,4 +3275,3 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     return file instanceof TFile ? file : null;
   }
 }
-

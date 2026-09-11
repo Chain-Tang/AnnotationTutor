@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
+  <title id="title">From a passage to a learning habit</title>
+  <desc id="desc">Read, annotate, request tutor feedback, derive memory cells, and revisit. A conceptual workflow, not an application screenshot.</desc>
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 10 5 0 10" fill="none" stroke="#8468af" stroke-width="1.5"/></marker></defs>
+  <rect width="1200" height="360" rx="24" fill="#f7f4ef"/>
+  <g font-family="Arial, sans-serif" fill="#252328">
+    <text x="52" y="57" font-size="13" letter-spacing="3" fill="#786c83">ANNOTATION TUTOR LITE</text>
+    <text x="52" y="98" font-size="29" font-weight="600">Keep the thought. Build the memory.</text>
+    <g stroke="#b09bcb" stroke-width="2" fill="none" marker-end="url(#arrow)"><path d="M193 183H251"/><path d="M423 183H481"/><path d="M653 183H711"/><path d="M883 183H941"/></g>
+    <g fill="#e8def5"><circle cx="106" cy="183" r="35"/><circle cx="336" cy="183" r="35"/><circle cx="566" cy="183" r="35"/><circle cx="796" cy="183" r="35"/><circle cx="1026" cy="183" r="35"/></g>
+    <g font-size="21" text-anchor="middle" font-weight="600"><text x="106" y="190">01</text><text x="336" y="190">02</text><text x="566" y="190">03</text><text x="796" y="190">04</text><text x="1026" y="190">05</text></g>
+    <g font-size="22" font-weight="600"><text x="52" y="257">Read</text><text x="282" y="257">Annotate</text><text x="512" y="257">Reflect</text><text x="742" y="257">Remember</text><text x="972" y="257">Revisit</text></g>
+    <g font-size="14" fill="#68616c"><text x="52" y="283">Markdown · PDF</text><text x="282" y="283">Your own words</text><text x="512" y="283">Tutor feedback*</text><text x="742" y="283">Memory cells</text><text x="972" y="283">Spaced repetition</text></g>
+    <text x="52" y="329" font-size="12" fill="#786c83">* Requires your configured AI engine. Conceptual workflow; not an application screenshot.</text>
+  </g>
+</svg>

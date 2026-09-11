@@ -13,6 +13,17 @@ import { diffLineClass } from "./line-diff.js";
 import { nextCardScale } from "./card-zoom.js";
 import { skinClass, type RailSkin } from "./skins.js";
 import VanillaTilt from "vanilla-tilt";
+import { enableCardDrag } from "./card-drag.js";
+import { installCardChrome } from "./card-chrome.js";
+
+const disposers = new WeakMap<HTMLElement, () => void>();
+
+export function disposeMarginCard(card: HTMLElement): void {
+  disposers.get(card)?.();
+  disposers.delete(card);
+  (card as TiltElement).vanillaTilt?.destroy();
+  card.remove();
+}
 
 /** An element that vanilla-tilt has been initialized on stashes its handle here. */
 type TiltElement = HTMLElement & { vanillaTilt?: { destroy(): void } };
@@ -151,7 +162,10 @@ export function buildMarginCard(
   );
   headButton(head, "x", t("card.collapse"), options.onCollapse);
   card.appendChild(head);
-  enableDrag(card, head, options.geom, () => options.onDragMove(card));
+  const stopChrome = installCardChrome(card, head);
+  const stopDrag = enableCardDrag(card, head, options.geom,
+    () => options.onDragMove(card),
+    () => persistCardGeom(mark.id, options.geom));
 
   const editor = document.createElement("textarea");
   editor.className = "atl-rail-edit";
@@ -230,7 +244,8 @@ export function buildMarginCard(
     document.removeEventListener("pointerup", endResize, true);
     document.removeEventListener("pointercancel", endResize, true);
   };
-  card.addEventListener("pointerdown", () => {
+  card.addEventListener("pointerdown", (event) => {
+    if ((event.target as Element).closest(".atl-rail-card-head")) return;
     resizing = true;
     document.addEventListener("pointerup", endResize, true);
     document.addEventListener("pointercancel", endResize, true);
@@ -266,16 +281,22 @@ export function buildMarginCard(
     // Suspend the tilt while the card is dragged by its head, so it doesn't lean
     // away under the pointer (which made repositioning feel slippery), then
     // restore it when the drag ends.
-    head.addEventListener("mousedown", () => {
+    head.addEventListener("pointerdown", () => {
       (card as TiltElement).vanillaTilt?.destroy();
       const restore = (): void => {
-        document.removeEventListener("mouseup", restore, true);
+        document.removeEventListener("pointerup", restore, true);
         requestAnimationFrame(initTilt);
       };
-      document.addEventListener("mouseup", restore, true);
+      document.addEventListener("pointerup", restore, { capture: true, once: true });
     });
   }
 
+  disposers.set(card, () => {
+    stopChrome();
+    stopDrag();
+    endResize();
+    observer.disconnect();
+  });
   return { card, observer };
 }
 
@@ -498,41 +519,6 @@ function headButton(
   button.onclick = () => handler();
 }
 
-/** Drag a card by its head; persists the offset from its computed base into geom. */
-function enableDrag(
-  card: HTMLElement,
-  head: HTMLElement,
-  geom: Geom,
-  onMove: () => void
-): void {
-  head.addEventListener("mousedown", (event) => {
-    if ((event.target as HTMLElement).closest("button, textarea")) return;
-    event.preventDefault();
-    const baseLeft = Number(card.dataset["baseLeft"] ?? "0");
-    const baseTop = Number(card.dataset["baseTop"] ?? "0");
-    const startX = event.clientX;
-    const startY = event.clientY;
-    const startLeft = card.offsetLeft;
-    const startTop = card.offsetTop;
-
-    const move = (e: MouseEvent): void => {
-      card.style.left = `${startLeft + (e.clientX - startX)}px`;
-      card.style.top = `${startTop + (e.clientY - startY)}px`;
-      onMove();
-    };
-    const up = (): void => {
-      document.removeEventListener("mousemove", move, true);
-      document.removeEventListener("mouseup", up, true);
-      geom.dx = card.offsetLeft - baseLeft;
-      geom.dy = card.offsetTop - baseTop;
-      const id = card.dataset["atlId"];
-      if (id) persistCardGeom(id, geom);
-    };
-    document.addEventListener("mousemove", move, true);
-    document.addEventListener("mouseup", up, true);
-  });
-}
-
 export type PlacedCard = {
   card: HTMLElement;
   anchorX: number;
@@ -556,6 +542,11 @@ export function placeCards(
   for (const item of cards) {
     const id = item.card.dataset["atlId"] ?? "";
     const geom = geomByID.get(id) ?? { dx: 0, dy: 0 };
+    if (item.card.dataset["dragging"]) {
+      cursorY = item.card.offsetTop + item.card.offsetHeight + CARD_GAP;
+      draw(id, item.anchorX, item.anchorMidY);
+      continue;
+    }
     const baseTop = Math.max(item.desiredY, cursorY);
     const baseLeft = Math.max(0, railWidth - item.card.offsetWidth - CARD_GAP);
     item.card.dataset["baseLeft"] = `${baseLeft}`;
@@ -636,7 +627,7 @@ export function clearChildren(node: Element): void {
   // window resize listener glare adds doesn't pile up across rail rebuilds.
   node
     .querySelectorAll<HTMLElement>(".atl-rail-card")
-    .forEach((el) => (el as TiltElement).vanillaTilt?.destroy());
+    .forEach(disposeMarginCard);
   while (node.firstChild) node.removeChild(node.firstChild);
 }
 

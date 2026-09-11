@@ -26,6 +26,23 @@ describe("resolveAnchor", () => {
     expect(result.startOffset).toBeGreaterThanOrEqual(0);
   });
 
+  it("resolves selected text inside a table anchored by a standalone id", () => {
+    const markdown = [
+      "| Concept | Meaning |",
+      "| --- | --- |",
+      "| Attention | Weighted context |",
+      "^ann-20260606-001",
+      ""
+    ].join("\n");
+    const result = resolveAnchor(
+      markdown,
+      anchor({ selectedText: "Weighted context" })
+    );
+    expect(result.strategy).toBe("block-id");
+    expect(result.line).toBe(2);
+    expect(result.startOffset).toBe(markdown.indexOf("Weighted context"));
+  });
+
 
   it("requires confirmation for a fuzzy match", () => {
     const markdown = "Multi head attention allows the model to attend.\n";

@@ -30,7 +30,10 @@ export type DecoPlan =
   // Hide the raw ` ^block-id` token (the markers take over its clickable role).
   | { kind: "hide"; from: number; to: number };
 
-export const BLOCK_ID_SUFFIX = /\s+\^([A-Za-z0-9_-]+)\s*$/;
+// Tables use a standalone block-id line (`^id`) because putting the token after
+// the final pipe changes the table's column structure. Ordinary blocks keep the
+// trailing form (`text ^id`). Support both throughout decoration planning.
+export const BLOCK_ID_SUFFIX = /(?:^|\s+)\^([A-Za-z0-9_-]+)\s*$/;
 
 // A heading bounds a block (mirrors editor.ts), so the block search never walks
 // up into a preceding heading's text.
@@ -81,6 +84,7 @@ export function planDecorations(
   // click; with a style on, the highlighted span itself toggles the comment.
   const showGlyph = showMarker && style === "none";
   const plans: DecoPlan[] = [];
+  const anchored = new Set<string>();
 
   for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber += 1) {
     const line = doc.line(lineNumber);
@@ -89,6 +93,7 @@ export function planDecorations(
     const blockMarks = byBlockId.get(match[1] ?? "");
     const first = blockMarks?.[0];
     if (!blockMarks || !first) continue;
+    for (const mark of blockMarks) anchored.add(mark.id);
     const suffixStart = line.from + match.index;
 
     // The block id sits on the last line of a (possibly multi-line) block, but a
@@ -151,6 +156,18 @@ export function planDecorations(
     }
   }
 
+  // Table annotations deliberately keep their logical id out of the source.
+  // Also recovers highlights if an external formatter removed a block id.
+  const cursors = new Map<string, { line: number; ch: number }>();
+  for (const mark of marks) {
+    if (anchored.has(mark.id) || !mark.selectedText) continue;
+    const start = cursors.get(mark.selectedText) ?? { line: 1, ch: 0 };
+    const span = locateSpan(doc, start.line, start.ch, doc.lines, mark.selectedText);
+    if (!span) continue;
+    cursors.set(mark.selectedText, { line: span.endLine, ch: span.endCh });
+    if (className) plans.push({ kind: "style", from: span.from, to: span.to, className, id: mark.id });
+    if (showGlyph) plans.push({ kind: "marker", pos: span.to, id: mark.id, side: 1 });
+  }
   plans.sort((a, b) => planStart(a) - planStart(b));
   return plans;
 }

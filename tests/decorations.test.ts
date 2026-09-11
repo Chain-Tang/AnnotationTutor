@@ -34,6 +34,32 @@ describe("planDecorations", () => {
     }
   });
 
+  it("supports a table whose block id occupies a standalone line", () => {
+    const lines = [
+      "| Concept | Meaning |",
+      "| --- | --- |",
+      "| Attention | Weighted context |",
+      "^ann-20260606-001"
+    ];
+    const plans = planDecorations(
+      Text.of(lines),
+      [{ ...mark, selectedText: "Weighted context" }],
+      "dotted-underline",
+      true
+    );
+    const style = plans.find((plan) => plan.kind === "style");
+    expect(style?.kind).toBe("style");
+    if (style?.kind === "style") {
+      expect(style.from).toBe(lines.slice(0, 2).join("\n").length + 1 + lines[2]!.indexOf("Weighted context"));
+      expect(style.to - style.from).toBe("Weighted context".length);
+    }
+    expect(plans).toContainEqual({
+      kind: "hide",
+      from: lines.slice(0, 3).join("\n").length + 1,
+      to: lines.join("\n").length
+    });
+  });
+
   it("plans an inline style hugging the selected span", () => {
     const plans = planDecorations(doc(), [mark], "dotted-underline", false);
     expect(plans).toHaveLength(1);

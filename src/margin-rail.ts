@@ -12,9 +12,11 @@ import {
   markerConfigField,
   toggleMarginCard
 } from "./decorations.js";
-import { BLOCK_ID_SUFFIX } from "./decorations-plan.js";
+import { BLOCK_ID_SUFFIX, planDecorations } from "./decorations-plan.js";
+import { findTableInLines } from "./editor.js";
+import { TableHighlighter } from "./table-highlighter.js";
+import { CardPool } from "./card-pool.js";
 import {
-  buildMarginCard,
   clearChildren,
   drawConnector,
   lastLineRect,
@@ -38,8 +40,10 @@ class MarginRail {
   private readonly svg: SVGSVGElement;
   private readonly onScroll: () => void;
   private readonly geom = new Map<string, Geom>();
-  private observers: ResizeObserver[] = [];
+  private readonly cards = new CardPool();
+  private readonly tables: TableHighlighter;
   private frame = 0;
+  private fallback = 0;
 
   public constructor(private readonly view: EditorView) {
     this.svg = document.createElementNS(SVG_NS, "svg");
@@ -48,9 +52,13 @@ class MarginRail {
     this.cardsEl.className = "atl-rail";
     view.dom.appendChild(this.svg);
     view.dom.appendChild(this.cardsEl);
+    this.tables = new TableHighlighter(view.dom, view.contentDOM,
+      id => view.dispatch({ effects: toggleMarginCard.of(id) }),
+      () => this.schedule());
 
-    this.onScroll = () => this.schedule();
+    this.onScroll = () => { this.tables.schedule(); this.schedule(); };
     view.scrollDOM.addEventListener("scroll", this.onScroll, { passive: true });
+    this.refreshTables();
     this.schedule();
   }
 
@@ -62,12 +70,13 @@ class MarginRail {
       update.startState.field(marginExpandedField) !==
       update.state.field(marginExpandedField);
     if (
-      update.docChanged ||
+      update.docChanged || update.selectionSet ||
       update.viewportChanged ||
       update.geometryChanged ||
       configChanged ||
       expandedChanged
     ) {
+      this.refreshTables();
       this.schedule();
     }
   }
@@ -75,26 +84,31 @@ class MarginRail {
   public destroy(): void {
     this.view.scrollDOM.removeEventListener("scroll", this.onScroll);
     if (this.frame) cancelAnimationFrame(this.frame);
-    this.disconnectObservers();
+    clearTimeout(this.fallback);
+    this.cards.clear();
+    this.tables.destroy();
     this.svg.remove();
     this.cardsEl.remove();
   }
 
   private schedule(): void {
     if (this.frame) return;
-    this.frame = requestAnimationFrame(() => {
+    const flush = (): void => {
+      cancelAnimationFrame(this.frame);
+      clearTimeout(this.fallback);
       this.frame = 0;
       this.render();
-    });
+    };
+    this.frame = requestAnimationFrame(flush);
+    this.fallback = window.setTimeout(flush, 100);
   }
 
   private render(): void {
-    this.disconnectObservers();
-    clearChildren(this.cardsEl);
     clearChildren(this.svg);
 
     const config = this.view.state.field(markerConfigField);
     const expanded = this.view.state.field(marginExpandedField);
+    this.cards.retain(config.marginComments ? expanded : new Set());
     if (!config.marginComments || expanded.size === 0) return;
 
     const doc = this.view.state.doc;
@@ -110,16 +124,18 @@ class MarginRail {
     const railWidth = this.cardsEl.clientWidth;
 
     const placed: PlacedCard[] = [];
+    const plans = planDecorations(doc, config.marks, "background", true);
     for (const mark of config.marks) {
       if (!expanded.has(mark.id)) continue;
       const lineNumber = lineByBlock.get(mark.blockId);
-      if (!lineNumber) continue;
-      const anchor = this.anchorFor(mark.id, doc.line(lineNumber).to, editorRect);
+      const span = plans.find(p => p.kind === "style" && p.id === mark.id);
+      const end = span?.kind === "style" ? span.to : lineNumber ? doc.line(lineNumber).to : null;
+      const anchor = this.anchorFor(mark.id, end, editorRect);
       if (!anchor) continue; // off-screen — no card
 
       const geom = this.geom.get(mark.id) ?? loadCardGeom(mark.id) ?? { dx: 0, dy: 0 };
       this.geom.set(mark.id, geom);
-      const { card, observer } = buildMarginCard(mark, {
+      const card = this.cards.get(mark, {
         skin: config.skin,
         geom,
         showReview: config.inlineReview,
@@ -127,8 +143,7 @@ class MarginRail {
           this.view.dispatch({ effects: toggleMarginCard.of(mark.id) }),
         onDragMove: (el) => updateConnector(this.svg, el, this.editorRect())
       });
-      this.observers.push(observer);
-      this.cardsEl.appendChild(card);
+      if (card.parentElement !== this.cardsEl) this.cardsEl.appendChild(card);
       placed.push({
         card,
         anchorX: anchor.x,
@@ -157,16 +172,16 @@ class MarginRail {
    */
   private anchorFor(
     id: string,
-    lineEndPos: number,
+    lineEndPos: number | null,
     editorRect: DOMRect
   ): { x: number; midY: number; top: number } | null {
-    const content = this.view.contentDOM;
+    const content = this.view.dom;
     const spans = content.querySelectorAll<HTMLElement>(
-      `[data-atl-id="${id}"]:not(.atl-marker)`
+      `[data-atl-id="${CSS.escape(id)}"]:not(.atl-marker):not(.atl-rail-card):not(.atl-rail-link)`
     );
     const span = spans.item(spans.length - 1);
     const marker = content.querySelector<HTMLElement>(
-      `.atl-marker[data-atl-id="${id}"]`
+      `.atl-marker[data-atl-id="${CSS.escape(id)}"]`
     );
     const el = span ?? marker;
     if (el) {
@@ -180,6 +195,7 @@ class MarginRail {
         };
       }
     }
+    if (lineEndPos === null) return null;
     const coords = this.view.coordsAtPos(lineEndPos);
     if (!coords) return null;
     return {
@@ -189,9 +205,14 @@ class MarginRail {
     };
   }
 
-  private disconnectObservers(): void {
-    for (const observer of this.observers) observer.disconnect();
-    this.observers = [];
+  private refreshTables(): void {
+    const config = this.view.state.field(markerConfigField);
+    const doc = this.view.state.doc;
+    const lines = doc.toString().split("\n");
+    const plans = planDecorations(doc, config.marks, "background", true);
+    const ids = new Set(plans.flatMap(p => p.kind === "style" && p.id &&
+      findTableInLines(lines, doc.lineAt(p.from).number - 1) ? [p.id] : []));
+    this.tables.setMarks(config.marks.filter(m => ids.has(m.id)), config.style, config.showMarker);
   }
 }
 

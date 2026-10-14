@@ -99,7 +99,7 @@ export function deriveProfileSummary(cells: MemoryCell[]): string {
   const strong = names(strengths);
   const weak = names(weaknesses);
   const method = names(methods);
-  if (strong) parts.push(`Strengths: ${strong}.`);
+  if (strong) parts.push(`Reported strengths (require independent verification): ${strong}.`);
   if (weak) parts.push(`Working on: ${weak}.`);
   if (method) parts.push(`Methods: ${method}.`);
   return parts.join(" ");
@@ -210,7 +210,7 @@ export function summarizeMastery(snapshot: MasterySnapshot): string {
   const mastered = names("mastered");
   const developing = names("developing");
   const struggling = names("struggling");
-  if (mastered) parts.push(`Mastered: ${mastered}.`);
+  if (mastered) parts.push(`Stable self-reported recall (not independently verified mastery): ${mastered}.`);
   if (developing) parts.push(`Developing: ${developing}.`);
   if (struggling) parts.push(`Struggling: ${struggling}.`);
   const misconceptions = snapshot.misconceptions

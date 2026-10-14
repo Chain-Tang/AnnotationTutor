@@ -96,7 +96,7 @@ describe("deriveProfileSummary", () => {
       cell({ id: "W", type: "misconception", concept: "Splitting", confidence: 0.3 }),
       cell({ id: "M", type: "strategy", concept: "Active recall", confidence: 0.7 })
     ]);
-    expect(summary).toContain("Strengths: Projection");
+    expect(summary).toContain("Reported strengths (require independent verification): Projection");
     expect(summary).toContain("Working on: Splitting");
     expect(summary).toContain("Methods: Active recall");
   });
@@ -191,7 +191,7 @@ describe("summarizeMastery", () => {
         cell({ id: "C", concept: "Chain rule", type: "misconception", review: review({ reps: 0 }) })
       ])
     );
-    expect(summary).toContain("Mastered: Backprop.");
+    expect(summary).toContain("Stable self-reported recall (not independently verified mastery): Backprop.");
     expect(summary).toContain("Developing: Gradients.");
     expect(summary).toContain("Struggling: Chain rule.");
     expect(summary).toContain("Misconceptions to address: Chain rule.");

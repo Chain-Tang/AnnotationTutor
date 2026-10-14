@@ -1,0 +1,214 @@
+{
+  "format": "tutor-mechanics-benchmark-core-v1",
+  "cases": [
+    {
+      "taskId": "mech-01",
+      "diagram": {
+        "format": "tutor-mechanics-v1",
+        "nodes": [{ "id": "A", "x": 0.1, "y": 0.5, "label": "A" }, { "id": "B", "x": 0.9, "y": 0.5, "label": "B" }],
+        "members": [{ "id": "AB", "from": "A", "to": "B", "kind": "beam" }],
+        "supports": [{ "id": "SA", "nodeId": "A", "kind": "pin" }, { "id": "SB", "nodeId": "B", "kind": "roller" }],
+        "loads": [{ "id": "P", "kind": "member-force", "memberId": "AB", "position": 0.5, "direction": [0, 1], "symbol": "P" }],
+        "dimensions": [], "annotations": []
+      }
+    },
+    {
+      "taskId": "mech-02",
+      "diagram": {
+        "format": "tutor-mechanics-v1",
+        "nodes": [{ "id": "A", "x": 0.1, "y": 0.5, "label": "A" }, { "id": "B", "x": 0.9, "y": 0.5, "label": "B" }],
+        "members": [{ "id": "AB", "from": "A", "to": "B", "kind": "beam" }],
+        "supports": [{ "id": "SA", "nodeId": "A", "kind": "pin" }, { "id": "SB", "nodeId": "B", "kind": "roller" }],
+        "loads": [{ "id": "q", "kind": "distributed", "memberId": "AB", "from": 0, "to": 1, "direction": [0, 1], "symbol": "q" }],
+        "dimensions": [{ "id": "L", "fromNodeId": "A", "toNodeId": "B", "symbol": "L" }], "annotations": []
+      }
+    },
+    {
+      "taskId": "mech-03",
+      "diagram": {
+        "format": "tutor-mechanics-v1",
+        "nodes": [{ "id": "A", "x": 0.1, "y": 0.5, "label": "A" }, { "id": "B", "x": 0.9, "y": 0.5, "label": "B" }],
+        "members": [{ "id": "AB", "from": "A", "to": "B", "kind": "beam" }],
+        "supports": [{ "id": "SA", "nodeId": "A", "kind": "fixed" }],
+        "loads": [{ "id": "P", "kind": "nodal-force", "nodeId": "B", "direction": [0, 1], "symbol": "P" }],
+        "dimensions": [], "annotations": []
+      }
+    },
+    {
+      "taskId": "mech-04",
+      "diagram": {
+        "format": "tutor-mechanics-v1",
+        "nodes": [{ "id": "A", "x": 0.1, "y": 0.5, "label": "A" }, { "id": "B", "x": 0.9, "y": 0.5, "label": "B" }],
+        "members": [{ "id": "AB", "from": "A", "to": "B", "kind": "beam" }],
+        "supports": [{ "id": "SA", "nodeId": "A", "kind": "fixed" }],
+        "loads": [{ "id": "M", "kind": "moment", "nodeId": "B", "clockwise": true, "symbol": "M" }],
+        "dimensions": [], "annotations": []
+      }
+    },
+    {
+      "taskId": "mech-05",
+      "diagram": {
+        "format": "tutor-mechanics-v1",
+        "nodes": [{ "id": "A", "x": 0.05, "y": 0.5, "label": "A" }, { "id": "B", "x": 0.35, "y": 0.5, "label": "B" }, { "id": "C", "x": 0.65, "y": 0.5, "label": "C" }, { "id": "D", "x": 0.95, "y": 0.5, "label": "D" }],
+        "members": [{ "id": "AB", "from": "A", "to": "B", "kind": "beam" }, { "id": "BC", "from": "B", "to": "C", "kind": "beam" }, { "id": "CD", "from": "C", "to": "D", "kind": "beam" }],
+        "supports": [{ "id": "SA", "nodeId": "A", "kind": "pin" }, { "id": "SB", "nodeId": "B", "kind": "roller" }, { "id": "SC", "nodeId": "C", "kind": "roller" }, { "id": "SD", "nodeId": "D", "kind": "roller" }],
+        "loads": [],
+        "dimensions": [{ "id": "L1", "fromNodeId": "A", "toNodeId": "B", "symbol": "L1" }, { "id": "L2", "fromNodeId": "B", "toNodeId": "C", "symbol": "L2" }, { "id": "L3", "fromNodeId": "C", "toNodeId": "D", "symbol": "L3" }], "annotations": []
+      }
+    },
+    {
+      "taskId": "mech-06",
+      "diagram": {
+        "format": "tutor-mechanics-v1",
+        "nodes": [{ "id": "A", "x": 0.1, "y": 0.5, "label": "A" }, { "id": "B", "x": 0.6, "y": 0.5, "label": "B" }, { "id": "C", "x": 0.9, "y": 0.5, "label": "C" }],
+        "members": [{ "id": "AB", "from": "A", "to": "B", "kind": "beam" }, { "id": "BC", "from": "B", "to": "C", "kind": "beam" }],
+        "supports": [{ "id": "SA", "nodeId": "A", "kind": "pin" }, { "id": "SB", "nodeId": "B", "kind": "roller" }],
+        "loads": [{ "id": "P", "kind": "nodal-force", "nodeId": "C", "direction": [0, 1], "symbol": "P" }],
+        "dimensions": [], "annotations": []
+      }
+    },
+    {
+      "taskId": "mech-07",
+      "diagram": {
+        "format": "tutor-mechanics-v1",
+        "nodes": [{ "id": "A", "x": 0.12, "y": 0.64, "label": "A" }, { "id": "B", "x": 0.5, "y": 0.22, "label": "B" }, { "id": "C", "x": 0.88, "y": 0.64, "label": "C" }],
+        "members": [{ "id": "AB", "from": "A", "to": "B", "kind": "bar" }, { "id": "BC", "from": "B", "to": "C", "kind": "bar" }, { "id": "AC", "from": "A", "to": "C", "kind": "bar" }],
+        "supports": [{ "id": "SA", "nodeId": "A", "kind": "pin" }, { "id": "SC", "nodeId": "C", "kind": "roller" }],
+        "loads": [{ "id": "P", "kind": "nodal-force", "nodeId": "B", "direction": [0, 1], "symbol": "P" }],
+        "dimensions": [], "annotations": []
+      }
+    },
+    {
+      "taskId": "mech-08",
+      "diagram": {
+        "format": "tutor-mechanics-v1",
+        "nodes": [{ "id": "A", "x": 0.1, "y": 0.7, "label": "A" }, { "id": "B", "x": 0.5, "y": 0.7, "label": "B" }, { "id": "C", "x": 0.9, "y": 0.7, "label": "C" }, { "id": "D", "x": 0.1, "y": 0.3, "label": "D" }, { "id": "E", "x": 0.5, "y": 0.3, "label": "E" }, { "id": "F", "x": 0.9, "y": 0.3, "label": "F" }],
+        "members": [{ "id": "AB", "from": "A", "to": "B", "kind": "bar" }, { "id": "BC", "from": "B", "to": "C", "kind": "bar" }, { "id": "DE", "from": "D", "to": "E", "kind": "bar" }, { "id": "EF", "from": "E", "to": "F", "kind": "bar" }, { "id": "AD", "from": "A", "to": "D", "kind": "bar" }, { "id": "BE", "from": "B", "to": "E", "kind": "bar" }, { "id": "CF", "from": "C", "to": "F", "kind": "bar" }, { "id": "AE", "from": "A", "to": "E", "kind": "bar" }, { "id": "EC", "from": "E", "to": "C", "kind": "bar" }],
+        "supports": [{ "id": "SA", "nodeId": "A", "kind": "pin" }, { "id": "SC", "nodeId": "C", "kind": "roller" }],
+        "loads": [], "dimensions": [], "annotations": []
+      }
+    },
+    {
+      "taskId": "mech-09",
+      "diagram": {
+        "format": "tutor-mechanics-v1",
+        "nodes": [{ "id": "A", "x": 0.2, "y": 0.72, "label": "A" }, { "id": "B", "x": 0.2, "y": 0.28, "label": "B" }, { "id": "C", "x": 0.8, "y": 0.28, "label": "C" }, { "id": "D", "x": 0.8, "y": 0.72, "label": "D" }],
+        "members": [{ "id": "AB", "from": "A", "to": "B", "kind": "column" }, { "id": "BC", "from": "B", "to": "C", "kind": "rigid" }, { "id": "CD", "from": "C", "to": "D", "kind": "column" }],
+        "supports": [{ "id": "SA", "nodeId": "A", "kind": "fixed" }, { "id": "SD", "nodeId": "D", "kind": "fixed" }],
+        "loads": [{ "id": "P", "kind": "member-force", "memberId": "BC", "position": 0.5, "direction": [0, 1], "symbol": "P" }],
+        "dimensions": [], "annotations": []
+      }
+    },
+    {
+      "taskId": "mech-10",
+      "diagram": {
+        "format": "tutor-mechanics-v1",
+        "nodes": [{ "id": "A", "x": 0.1, "y": 0.7, "label": "A" }, { "id": "C", "x": 0.5, "y": 0.25, "label": "C" }, { "id": "B", "x": 0.9, "y": 0.7, "label": "B" }],
+        "members": [{ "id": "AC", "from": "A", "to": "C", "kind": "rigid" }, { "id": "CB", "from": "C", "to": "B", "kind": "rigid" }],
+        "supports": [{ "id": "SA", "nodeId": "A", "kind": "pin" }, { "id": "SC", "nodeId": "C", "kind": "pin", "label": "内铰" }, { "id": "SB", "nodeId": "B", "kind": "pin" }],
+        "loads": [], "dimensions": [], "annotations": []
+      }
+    },
+    {
+      "taskId": "mech-11",
+      "diagram": {
+        "format": "tutor-mechanics-v1",
+        "nodes": [{ "id": "A", "x": 0.1, "y": 0.55, "label": "A" }, { "id": "C", "x": 0.5, "y": 0.55, "label": "C" }, { "id": "B", "x": 0.9, "y": 0.55, "label": "B" }],
+        "members": [{ "id": "AC", "from": "A", "to": "C", "kind": "beam" }, { "id": "CB", "from": "C", "to": "B", "kind": "beam" }],
+        "supports": [{ "id": "SA", "nodeId": "A", "kind": "pin" }, { "id": "SB", "nodeId": "B", "kind": "roller" }],
+        "loads": [{ "id": "P", "kind": "nodal-force", "nodeId": "C", "direction": [0.8660254, 0.5], "symbol": "P" }],
+        "dimensions": [], "annotations": []
+      }
+    },
+    {
+      "taskId": "mech-12",
+      "diagram": {
+        "format": "tutor-mechanics-v1",
+        "nodes": [{ "id": "A", "x": 0.1, "y": 0.5, "label": "A" }, { "id": "B", "x": 0.9, "y": 0.5, "label": "B" }],
+        "members": [{ "id": "AB", "from": "A", "to": "B", "kind": "beam" }],
+        "supports": [{ "id": "SA", "nodeId": "A", "kind": "pin" }, { "id": "SB", "nodeId": "B", "kind": "roller" }],
+        "loads": [{ "id": "q", "kind": "distributed", "memberId": "AB", "from": 0, "to": 0.5, "direction": [0, 1], "symbol": "q" }],
+        "dimensions": [], "annotations": []
+      }
+    },
+    {
+      "taskId": "mech-13",
+      "diagram": {
+        "format": "tutor-mechanics-v1",
+        "nodes": [{ "id": "A", "x": 0.1, "y": 0.5, "label": "A" }, { "id": "B", "x": 0.9, "y": 0.5, "label": "B" }],
+        "members": [{ "id": "AB", "from": "A", "to": "B", "kind": "beam" }],
+        "supports": [{ "id": "SA", "nodeId": "A", "kind": "pin" }, { "id": "SB", "nodeId": "B", "kind": "roller" }],
+        "loads": [{ "id": "q", "kind": "distributed", "memberId": "AB", "from": 0, "to": 1, "direction": [0, 1], "symbol": "0", "distribution": "linear", "endSymbol": "q0" }],
+        "dimensions": [], "annotations": []
+      }
+    },
+    {
+      "taskId": "mech-14",
+      "diagram": {
+        "format": "tutor-mechanics-v1",
+        "nodes": [{ "id": "A", "x": 0.1, "y": 0.5, "label": "A" }, { "id": "B", "x": 0.9, "y": 0.5, "label": "B" }],
+        "members": [{ "id": "AB", "from": "A", "to": "B", "kind": "beam" }],
+        "supports": [{ "id": "SA", "nodeId": "A", "kind": "pin" }, { "id": "SB", "nodeId": "B", "kind": "spring", "direction": [0, 1], "label": "k" }],
+        "loads": [], "dimensions": [], "annotations": []
+      }
+    },
+    {
+      "taskId": "mech-15",
+      "diagram": {
+        "format": "tutor-mechanics-v1",
+        "nodes": [{ "id": "A", "x": 0.1, "y": 0.5, "label": "A" }, { "id": "B", "x": 0.9, "y": 0.5, "label": "B" }],
+        "members": [{ "id": "AB", "from": "A", "to": "B", "kind": "beam" }],
+        "supports": [{ "id": "SA", "nodeId": "A", "kind": "pin", "label": "铰支座 Pin" }, { "id": "SB", "nodeId": "B", "kind": "roller", "label": "滚动支座 Roller" }],
+        "loads": [], "dimensions": [], "annotations": []
+      }
+    },
+    {
+      "taskId": "mech-16",
+      "diagram": {
+        "format": "tutor-mechanics-v1",
+        "nodes": [{ "id": "A", "x": 0.1, "y": 0.5, "label": "A" }, { "id": "B", "x": 0.9, "y": 0.5, "label": "B" }],
+        "members": [{ "id": "AB", "from": "A", "to": "B", "kind": "beam" }],
+        "supports": [{ "id": "SA", "nodeId": "A", "kind": "pin" }, { "id": "SB", "nodeId": "B", "kind": "roller" }],
+        "loads": [{ "id": "P", "kind": "member-force", "memberId": "AB", "position": 0.5, "direction": [0, 1], "value": 20, "unit": "kN" }],
+        "dimensions": [{ "id": "L", "fromNodeId": "A", "toNodeId": "B", "value": 6, "unit": "m" }], "annotations": []
+      }
+    },
+    {
+      "taskId": "mech-17",
+      "diagram": {
+        "format": "tutor-mechanics-v1",
+        "nodes": [{ "id": "A", "x": 0.1, "y": 0.5, "label": "A" }, { "id": "B", "x": 0.9, "y": 0.5, "label": "B" }],
+        "members": [{ "id": "AB", "from": "A", "to": "B", "kind": "beam" }],
+        "supports": [{ "id": "SA", "nodeId": "A", "kind": "pin" }, { "id": "SB", "nodeId": "B", "kind": "roller" }],
+        "loads": [{ "id": "P", "kind": "nodal-force", "nodeId": "B", "direction": [0, 1], "symbol": "P" }],
+        "dimensions": [{ "id": "L", "fromNodeId": "A", "toNodeId": "B", "symbol": "L" }], "annotations": []
+      }
+    },
+    { "taskId": "mech-18", "expectedOutcome": "clarification" },
+    { "taskId": "mech-19", "expectedOutcome": "needs-reference" },
+    {
+      "taskId": "mech-20",
+      "diagram": {
+        "format": "tutor-mechanics-v1",
+        "nodes": [{ "id": "A", "x": 0.1, "y": 0.5, "label": "A" }, { "id": "B", "x": 0.9, "y": 0.5, "label": "B" }],
+        "members": [{ "id": "AB", "from": "A", "to": "B", "kind": "beam" }],
+        "supports": [{ "id": "SA", "nodeId": "A", "kind": "pin" }, { "id": "SB", "nodeId": "B", "kind": "roller" }],
+        "loads": [{ "id": "P1", "kind": "member-force", "memberId": "AB", "position": 0.45, "direction": [0, 1], "symbol": "P1" }, { "id": "P2", "kind": "member-force", "memberId": "AB", "position": 0.55, "direction": [0, 1], "symbol": "P2" }],
+        "dimensions": [], "annotations": []
+      }
+    },
+    { "taskId": "mech-21", "expectedOutcome": "needs-context" },
+    { "taskId": "mech-22", "expectedOutcome": "needs-context" },
+    { "taskId": "mech-23", "expectedOutcome": "rejected" },
+    {
+      "taskId": "mech-24",
+      "diagram": {
+        "format": "tutor-mechanics-v1",
+        "nodes": [{ "id": "A", "x": 0.1, "y": 0.5, "label": "A" }, { "id": "B", "x": 0.9, "y": 0.5, "label": "B" }],
+        "members": [{ "id": "AB", "from": "A", "to": "B", "kind": "beam" }],
+        "supports": [{ "id": "SA", "nodeId": "A", "kind": "pin" }, { "id": "SB", "nodeId": "B", "kind": "roller" }],
+        "loads": [], "dimensions": [], "annotations": []
+      }
+    }
+  ]
+}

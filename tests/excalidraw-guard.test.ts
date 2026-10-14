@@ -40,7 +40,7 @@ describe("isExcalidrawDoc", () => {
 });
 
 describe("repairExcalidrawElement", () => {
-  it("strips only rawText, preserving Excalidraw's own fields", () => {
+  it("preserves native and extension fields", () => {
     // frameId/index/versionNonce are fields Excalidraw itself writes; stripping
     // them corrupted real drawings, so only the hallucinated rawText goes.
     const element: Record<string, unknown> = {
@@ -51,8 +51,8 @@ describe("repairExcalidrawElement", () => {
       rawText: "x"
     };
     const { changed } = repairExcalidrawElement(element);
-    expect(changed).toBe(true);
-    expect(element).toEqual({ id: "a", frameId: "f1", index: "a0", versionNonce: 9 });
+    expect(changed).toBe(false);
+    expect(element).toEqual({ id: "a", frameId: "f1", index: "a0", versionNonce: 9, rawText: "x" });
   });
 
   it("reports no change for a non-empty boundElements array", () => {
@@ -66,15 +66,15 @@ describe("repairExcalidrawElement", () => {
     expect(repairExcalidrawElement(element).changed).toBe(false);
   });
 
-  it("normalizes boundElements [] and timestamp updated", () => {
+  it("preserves empty bindings and real timestamps", () => {
     const element: Record<string, unknown> = {
       id: "a",
       boundElements: [],
       updated: 1723500000000
     };
     repairExcalidrawElement(element);
-    expect(element.boundElements).toBeNull();
-    expect(element.updated).toBe(1);
+    expect(element.boundElements).toEqual([]);
+    expect(element.updated).toBe(1723500000000);
   });
 
   it("fills text element typography defaults", () => {
@@ -101,7 +101,7 @@ describe("sanitizeExcalidrawDoc", () => {
       type: "excalidraw",
       version: 2,
       elements: [
-        { id: "r", type: "rectangle", boundElements: [], updated: 1723500000000 }
+        { id: "r", type: "rectangle", boundElements: "invalid", updated: 1723500000000 }
       ]
     });
     const result = sanitizeExcalidrawDoc(docWith(json));
@@ -112,7 +112,7 @@ describe("sanitizeExcalidrawDoc", () => {
       elements: Array<Record<string, unknown>>;
     };
     expect(parsed.elements[0]!.boundElements).toBeNull();
-    expect(parsed.elements[0]!.updated).toBe(1);
+    expect(parsed.elements[0]!.updated).toBe(1723500000000000/1000);
     // The surrounding markers survive the splice.
     expect(result!.content).toContain("%%");
     expect(result!.content).toContain("excalidraw-plugin: parsed");
@@ -130,7 +130,7 @@ describe("sanitizeExcalidrawDoc", () => {
   it("is idempotent — a second pass reports no change and identical bytes", () => {
     const json = JSON.stringify({
       elements: [
-        { id: "r", type: "rectangle", boundElements: [], updated: 1723500000000 }
+        { id: "r", type: "rectangle", boundElements: "invalid", updated: 1723500000000 }
       ]
     });
     const first = sanitizeExcalidrawDoc(docWith(json));
@@ -161,7 +161,7 @@ describe("sanitizeExcalidrawDoc", () => {
     expect(parsed.elements[0]!.frameId).toBe("f1");
     expect(parsed.elements[0]!.index).toBe("a0");
     expect(parsed.elements[0]!.versionNonce).toBe(9);
-    expect(parsed.elements[0]!.rawText).toBeUndefined();
+    expect(parsed.elements[0]!.rawText).toBe("x");
   });
 
   it("returns null when there is no drawing block or no elements array", () => {

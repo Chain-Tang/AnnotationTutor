@@ -27,6 +27,45 @@ export type ShellProbe = {
   opencode: string;
 };
 
+export type OpenCodeRuntimeConfig = {
+  command: string;
+  model: string;
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+};
+
+export type OpenCodeDiagnosticResult = {
+  ok: boolean;
+  stage: "binary" | "catalog" | "acp" | "model" | "inference";
+  kind?: "command-not-found" | "not-authenticated" | "model-unavailable" | "protocol-incompatible" | "provider-failed" | "timeout";
+  detail?: string;
+  elapsedMs?: number;
+};
+
+export function classifyOpenCodeFailure(
+  error: string,
+  timedOut = false
+): NonNullable<OpenCodeDiagnosticResult["kind"]> {
+  if (timedOut) return "timeout";
+  if (/enoent|not found|cannot find|no such file/i.test(error)) return "command-not-found";
+  if (/unauthori|authentication|not logged|login|credential|api key/i.test(error)) return "not-authenticated";
+  if (/model.{0,40}(?:not found|invalid|unavailable|unknown)|model-selection/i.test(error)) return "model-unavailable";
+  if (/json-rpc|protocol|initialize|sessionId|acp/i.test(error)) return "protocol-incompatible";
+  return "provider-failed";
+}
+
+/** Build a per-child environment without mutating Electron/Obsidian globally. */
+export function openCodeSpawnEnv(
+  shellPath: string,
+  base: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform
+): NodeJS.ProcessEnv {
+  const key = Object.keys(base).find((name) => name.toLowerCase() === "path") ??
+    (platform === "win32" ? "Path" : "PATH");
+  const separator = platform === "win32" ? ";" : ":";
+  return { ...base, [key]: mergeShellPath(base[key] ?? "", shellPath, separator) };
+}
+
 /**
  * The user's login shell, falling back to a per-platform default when $SHELL is
  * unset (e.g. some GUI launches don't export it). zsh is macOS's default; bash

@@ -18,6 +18,7 @@ export interface CaptureSelection {
 /** Everything the extension sends for one capture, selection or full page. */
 export interface CapturePayload {
   v: 1;
+  requestId?: string;
   kind: "selection" | "page";
   url: string;
   title: string;
@@ -27,6 +28,13 @@ export interface CapturePayload {
   renderedHtml?: string;
   sourceHtml?: string;
 }
+
+/** The events the bridge's /ask endpoint streams back over SSE. */
+export type AskStreamEvent =
+  | { type: "accepted"; requestId: string; state: "queued" | "running" }
+  | { type: "delta"; text: string }
+  | { type: "done"; text: string }
+  | { type: "error"; error: string };
 
 /**
  * Max bytes we let ride the obsidian:// URI channel. Mirrors the plugin's

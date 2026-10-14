@@ -26,7 +26,8 @@ export function captureNoteStem(input: WebCaptureInput): string {
     .replace(/\s+/g, "-")
     .slice(0, 60)
     .replace(/-+$/, "");
-  const day = input.capturedAt.slice(0, 10);
+  // The bridge validates ISO timestamps; keep every other caller safe too.
+  const day = /^\d{4}-\d{2}-\d{2}(?:T|$)/.test(input.capturedAt) ? input.capturedAt.slice(0, 10) : "undated";
   return slug ? `${slug} ${day}` : `web-capture ${day}`;
 }
 
@@ -111,20 +112,105 @@ export function buildSelectionCaptureNote(
 }
 
 /**
+ * The "## Highlights" section for page captures that carried the learner's
+ * on-page highlights: each becomes an `==highlight==` list item with its note
+ * nested beneath. Empty when the payload carried none — the section simply
+ * stays absent rather than heading an empty list.
+ */
+function highlightSection(payload: CapturePayload): string[] {
+  const selections = payload.selections ?? [];
+  const lines: string[] = [];
+  for (const selection of selections) {
+    const text = selection.exact.replace(/\r?\n/g, " ").trim();
+    if (!text) continue;
+    if (lines.length === 0) lines.push("## Highlights on this page", "");
+    lines.push(`- ==${text}==`);
+    const note = selection.note?.trim();
+    if (note) lines.push(`  - ${note.replace(/\r?\n/g, " ")}`);
+  }
+  return lines.length === 0 ? [] : [...lines, ""];
+}
+
+/**
+ * Variables available to a page-capture note body template. `content` is the
+ * extension's Markdown conversion of the page, `highlights` the "## Highlights
+ * on this page" block built from the payload's selections.
+ */
+export interface PageTemplateVars {
+  title: string;
+  url: string;
+  date: string;
+  time: string;
+  content: string;
+  highlights: string;
+}
+
+/** Template variables a custom `webPageTemplate` may reference. */
+export const PAGE_TEMPLATE_VARIABLES = [
+  "{{title}}",
+  "{{url}}",
+  "{{date}}",
+  "{{time}}",
+  "{{content}}",
+  "{{highlights}}"
+] as const;
+
+/**
+ * Render a page-capture note body from a custom template. One single-pass
+ * replace — with a sequential chain, page content that itself contains a
+ * literal `{{title}}` (docs about templating, code samples) would get
+ * re-substituted after `{{content}}` was spliced in. Unknown `{{vars}}` are
+ * left untouched so typos stay visible; runs of blank lines created by empty
+ * variables (e.g. no highlights) collapse to a single blank line.
+ */
+export function renderPageBody(template: string, vars: PageTemplateVars): string {
+  const rendered = template.replace(
+    /\{\{(title|url|date|time|content|highlights)\}\}/g,
+    (_match, key: string) => vars[key as keyof PageTemplateVars]
+  );
+  return rendered.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
+ * The vars for one page payload. Exposed for tests and for the settings UI's
+ * default-template hint; `highlights` carries its section heading.
+ */
+export function pageTemplateVars(payload: CapturePayload): PageTemplateVars {
+  return {
+    title: payload.title.trim(),
+    url: payload.url.trim(),
+    date: payload.capturedAt.slice(0, 10),
+    time: payload.capturedAt.slice(11, 16),
+    content: payload.markdown.trim(),
+    highlights: highlightSection(payload).join("\n").trimEnd()
+  };
+}
+
+/**
  * A capture note for a full-page archive: frontmatter plus the extension's
  * Turndown output. Sibling raw-HTML paths (rendered DOM, server source) are
  * recorded in frontmatter when stored, so the note links back to the originals.
+ * On-page highlights ride along as a highlight list section. A custom
+ * `template` (from `webPageTemplate`) re-arranges the body; empty keeps the
+ * default `content, then highlights` layout byte-identical to history.
  */
 export function buildPageCaptureNote(
   payload: CapturePayload,
-  raw: { rendered?: string; source?: string } = {}
+  raw: { rendered?: string; source?: string } = {},
+  template = ""
 ): string {
   const lines = captureHead(payload);
   if (raw.rendered) lines.push(`raw-rendered: ${yamlQuote(raw.rendered)}`);
   if (raw.source) lines.push(`raw-source: ${yamlQuote(raw.source)}`);
   lines.push("tags:", "  - web-capture", "  - web-page", "---", "");
-  const body = payload.markdown.trim();
-  if (body) lines.push(body, "");
+  const custom = template.trim();
+  if (custom) {
+    lines.push(renderPageBody(custom, pageTemplateVars(payload)), "");
+  } else {
+    const body = payload.markdown.trim();
+    if (body) lines.push(body, "");
+    lines.push(...highlightSection(payload));
+  }
   return lines.join("\n");
 }
 
@@ -144,4 +230,41 @@ export function parseCaptureFrontmatter(
     else out.capturedAt = value;
   }
   return out;
+}
+
+/**
+ * True when `incoming` is a re-capture of a page already archived the same
+ * (UTC) day: same source URL and a same-day `captured-at`. Such a capture
+ * appends to the existing note instead of forking a sibling file.
+ */
+export function isSameDayCapture(
+  existing: { url?: string; capturedAt?: string },
+  incoming: { url: string; capturedAt: string }
+): boolean {
+  if (!existing.url || !existing.capturedAt) return false;
+  return (
+    existing.url === incoming.url &&
+    existing.capturedAt.slice(0, 10) === incoming.capturedAt.slice(0, 10)
+  );
+}
+
+/**
+ * The section appended to an existing same-day capture note on re-capture: a
+ * timestamped heading, the fresh Markdown body, and links to the new raw
+ * snapshots. Mirrors {@link buildPageCaptureNote}'s body conventions, and the
+ * heading language matches the note's existing hard-coded sections.
+ */
+export function buildPageAppendSection(
+  payload: CapturePayload,
+  raw: { rendered?: string; source?: string } = {}
+): string {
+  const lines: string[] = [];
+  const time = payload.capturedAt.slice(11, 16) || "re-captured";
+  lines.push(`## ${time} Re-captured`, "");
+  const body = payload.markdown.trim();
+  if (body) lines.push(body, "");
+  lines.push(...highlightSection(payload));
+  if (raw.rendered) lines.push(`> Raw: ${raw.rendered}`);
+  if (raw.source) lines.push(`> Raw: ${raw.source}`);
+  return lines.join("\n").trimEnd();
 }

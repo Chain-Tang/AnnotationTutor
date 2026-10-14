@@ -1,0 +1,11 @@
+import {evaluateObsidian} from './obsidian-eval.mjs';
+import {writeFile} from 'node:fs/promises';
+// Metadata-only QA snapshot. Do not include source contents, images, or credentials.
+const result=await evaluateObsidian(`(()=>{
+ const p=app.plugins.plugins['annotation-tutor-lite'];
+ const intersects=(a,b)=>a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y;
+ const objectRect=(o,s)=>{const m=s.toClient(),r=o.rotation||0,c=Math.cos(r),sn=Math.sin(r),pad=Math.max(2,o.strokeWidth/2);const pts=[[-pad,-pad],[o.width+pad,-pad],[-pad,o.height+pad],[o.width+pad,o.height+pad]].map(([x,y])=>({x:o.x+x*c-y*sn,y:o.y+x*sn+y*c})).map(p=>({x:m[0]*p.x+m[2]*p.y+m[4],y:m[1]*p.x+m[3]*p.y+m[5]}));const x=Math.min(...pts.map(p=>p.x)),y=Math.min(...pts.map(p=>p.y));return {x,y,width:Math.max(...pts.map(p=>p.x))-x,height:Math.max(...pts.map(p=>p.y))-y};};
+ return {version:p.manifest.version,busy:p.tutorConversation.state.busy,status:p.tutorConversation.state.taskStatus,error:p.tutorConversation.state.error,execution:p.tutorConversation.state.execution,layers:[...p.boards.layers.values()].map(l=>{const objects=l.bundle().document.objects,s=l.currentVisibleSurface();return {source:l.sourceFile,revision:l.history.revision,count:objects.length,free:l.availableDrawingArea(),hidden:[...l.hiddenLayoutObjects],viewport:s?l.drawingSpace(s).viewport:null,groups:[...new Set(objects.map(o=>o.groupId))].map(group=>{const own=objects.filter(o=>o.groupId===group),surface=l.surfaceFor(own[0].anchor);if(!surface)return {group,located:false};const rects=own.map(o=>objectRect(o,surface));const x=Math.min(...rects.map(r=>r.x)),y=Math.min(...rects.map(r=>r.y)),rect={x,y,width:Math.max(...rects.map(r=>r.x+r.width))-x,height:Math.max(...rects.map(r=>r.y+r.height))-y};return {group,count:own.length,rect,protectedOverlaps:l.drawingSpace(surface,new Set(own.map(o=>o.id))).protected.filter(r=>intersects(rect,r)),objects:own.map(o=>({id:o.id,kind:o.kind,x:o.x,y:o.y,width:o.width,height:o.height,text:o.text,fill:o.fill?.color}))};})};})};
+})()`,{vault:process.argv[3]||'Tutor-Acceptance'});
+if(process.argv[2])await writeFile(process.argv[2],JSON.stringify(result,null,2)+'\n');
+console.log(JSON.stringify(result));

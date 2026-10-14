@@ -1,0 +1,13 @@
+import {evaluateObsidian} from './obsidian-eval.mjs';
+import {readFile,writeFile,mkdir} from 'node:fs/promises';
+import {spawnSync} from 'node:child_process';
+const vault=process.argv[2]??'/Users/mac/Tutor-Acceptance',out=process.argv[3]??'docs/qa/natural-learning-20260927/batch1';
+const receipt=JSON.parse(await readFile(process.argv[4]??`${out}/install-test.json`,'utf8'));
+const metadata=await evaluateObsidian(`(async()=>{const p=app.plugins.plugins['annotation-tutor-lite'];const b=await p.boards.createStandalone({width:400,height:400,title:'Natural learning rollback QA'});const id='INK-'+crypto.randomUUID();b.ink[id]={id,createdAt:new Date().toISOString(),points:[{x:0,y:0,pressure:.6},{x:80,y:50,pressure:.8}]};b.document.objects.push({id:'QA-'+crypto.randomUUID(),kind:'ink',anchor:{kind:'canvas',pageId:'main'},x:20,y:20,width:80,height:50,color:'#725bc4',strokeWidth:3,inkId:id,createdBy:'human',editedBy:'human',revision:1,groupId:'qa'});b.document.revision++;await p.boards.saveStandalone(b);await p.learningV2.flush();return {board:b.document.sourceFile,inkId:id,records:(await p.learningV2.list()).map(e=>({id:e.id,revision:e.revision,evidence:e.evidence.length}))};})()`,{vault:'Tutor-Acceptance'});
+function run(args){const r=spawnSync(process.execPath,['scripts/install-dev-plugin.mjs','--vault',vault,...args],{encoding:'utf8'});if(r.status!==0)throw Error(r.stderr||r.stdout);return JSON.parse(r.stdout);}
+const rollback=run(['--rollback',receipt.backup]);
+const preserved=await evaluateObsidian(`(async()=>{const p=app.plugins.plugins['annotation-tutor-lite'];const b=await p.boards.openStandalone(${JSON.stringify(metadata.board)});return {version:p.manifest.version,ink:!!b.ink[${JSON.stringify(metadata.inkId)}],objects:b.document.objects.length};})()`,{vault:'Tutor-Acceptance'});
+const reinstall=run(['--source',process.cwd()+'/dist/release/annotation-tutor-lite']);
+const recovered=await evaluateObsidian(`(async()=>{const p=app.plugins.plugins['annotation-tutor-lite'];const b=await p.boards.openStandalone(${JSON.stringify(metadata.board)});return {ink:!!b.ink[${JSON.stringify(metadata.inkId)}],records:(await p.learningV2.list()).map(e=>({id:e.id,revision:e.revision,evidence:e.evidence.length}))};})()`,{vault:'Tutor-Acceptance'});
+const passed=preserved.ink&&preserved.objects===1&&recovered.ink&&JSON.stringify(metadata.records)===JSON.stringify(recovered.records);
+await mkdir(out,{recursive:true});await writeFile(`${out}/rollback.json`,JSON.stringify({metadata,rollback,preserved,reinstall,recovered,passed},null,2));console.log(JSON.stringify({passed,rollbackVersion:preserved.version,recordCount:recovered.records.length}));if(!passed)process.exitCode=1;

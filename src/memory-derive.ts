@@ -2,6 +2,7 @@
 // unit-testable; the store writes the resulting scene files.
 
 import type { MemoryCell, Scene } from "./model.js";
+import { createHash } from "node:crypto";
 
 /**
  * Group memory cells into scenes by shared concept: a scene per concept that has
@@ -43,6 +44,7 @@ export function deriveScenes(cells: MemoryCell[], generatedAt: string): Scene[] 
  */
 function conceptKey(value: string): string {
   return value
+    .normalize("NFC")
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim()
@@ -52,9 +54,15 @@ function conceptKey(value: string): string {
 /** A scene-id-safe slug (matches the schema's ^SCENE-[A-Za-z0-9_-]+$). */
 function slug(value: string): string {
   const out = value
+    .normalize("NFC")
     .replace(/[^\p{L}\p{N}]+/gu, "-")
     .replace(/^-+|-+$/g, "");
-  return out || "topic";
+  if (!out) return "topic";
+  // Preserve existing valid, short ASCII slugs. Unicode and long concepts need a
+  // stable ASCII id within the schema's 160-character limit, without dropping
+  // distinguishing characters or changing the learner's display title.
+  if (/^[A-Za-z0-9_-]+$/.test(out) && out.length <= 154) return out;
+  return `topic-${createHash("sha256").update(conceptKey(value)).digest("hex").slice(0, 20)}`;
 }
 
 /**

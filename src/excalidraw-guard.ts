@@ -6,14 +6,6 @@
 // plugin chokes on it. Pure, unit-tested; the file-format rules mirror the
 // excalidraw-diagram skill spec (see docs/improvement-proposal.md §1.3).
 
-/**
- * Fields the Excalidraw parsers reject or mis-handle when LLMs invent them.
- * Keep this list minimal and evidence-based: `frameId` (frame membership),
- * `index` (fractional index = z-order) and `versionNonce` are fields Excalidraw
- * itself writes, so stripping them corrupted real drawings.
- */
-const FORBIDDEN_FIELDS = ["rawText"];
-
 /** True when a note's content is an Obsidian Excalidraw document. */
 export function isExcalidrawDoc(content: string): boolean {
   return /^---\r?\n[\s\S]*?excalidraw-plugin:\s*parsed[\s\S]*?\r?\n---/.test(
@@ -26,40 +18,22 @@ export function repairExcalidrawElement(
   element: Record<string, unknown>
 ): { changed: boolean } {
   let changed = false;
-  for (const field of FORBIDDEN_FIELDS) {
-    if (field in element) {
-      delete element[field];
-      changed = true;
-    }
-  }
-  // `boundElements` must be null (not []) and `updated` must be 1 (not a
-  // timestamp) for excalidraw.com compatibility. Only flag `changed` when the
-  // value really moves — a non-empty array is already valid, and claiming a
-  // repair on it made every sanitize pass rewrite the file.
-  if ("boundElements" in element && element.boundElements !== null) {
-    const bound = element.boundElements;
-    const next = Array.isArray(bound) && bound.length > 0 ? bound : null;
-    if (next !== bound) {
-      element.boundElements = next;
-      changed = true;
-    }
-  }
-  if ("updated" in element && element.updated !== 1) {
-    element.updated = 1;
-    changed = true;
+  // Preserve native bindings, timestamps, typography and extension fields.
+  // Only repair values that are demonstrably invalid, never valid user styles.
+  if ("boundElements" in element && element.boundElements !== null && !Array.isArray(element.boundElements)) {
+    element.boundElements = null; changed = true;
   }
   if (typeof element.id !== "string" || !element.id) {
     element.id = `el-${Math.random().toString(36).slice(2, 10)}`;
     changed = true;
   }
-  // Text elements need the handwritten family + a sane line height to render
-  // like the skill's design spec intends.
+  // Missing typography gets defaults; existing typography is user-owned.
   if (element.type === "text") {
-    if (element.fontFamily !== 5) {
+    if (typeof element.fontFamily !== "number" || !Number.isFinite(element.fontFamily) || element.fontFamily <= 0) {
       element.fontFamily = 5;
       changed = true;
     }
-    if (element.lineHeight !== 1.25) {
+    if (typeof element.lineHeight !== "number" || !Number.isFinite(element.lineHeight) || element.lineHeight <= 0) {
       element.lineHeight = 1.25;
       changed = true;
     }

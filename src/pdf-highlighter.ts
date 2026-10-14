@@ -110,10 +110,12 @@ export class PdfHighlighter {
   private readonly overlays = new Set<HTMLElement>();
   private press: { x: number; y: number } | null = null;
   private readonly handlePointerDown = (event: PointerEvent): void => {
+    if ((event.target as Element)?.closest?.('[data-atl-board-input="true"], .atl-board-toolbar')) { this.press = null; return; }
     this.press = { x: event.clientX, y: event.clientY };
   };
 
   private readonly handleClick = (event: MouseEvent): void => {
+    if ((event.target as Element)?.closest?.('[data-atl-board-input="true"], .atl-board-toolbar')) { this.press = null; return; }
     const press = this.press;
     this.press = null;
     if (press && Math.hypot(event.clientX - press.x, event.clientY - press.y) > 4) return;
@@ -164,7 +166,7 @@ export class PdfHighlighter {
     if (MutationObserverCtor) {
       this.observer = new MutationObserverCtor((records) => {
         // Ignore changes made by our own geometry layer (including hover).
-        if (records.some(record => !(record.target as Element).closest?.(".atl-pdf-highlights"))) this.schedule();
+        if (records.some(record => !(record.target as Element).closest?.(".atl-pdf-highlights, .atl-board-layer, .atl-board-toolbar"))) this.schedule();
       });
       this.observe();
     }

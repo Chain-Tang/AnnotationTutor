@@ -29,6 +29,7 @@ import type { AnnotationTutorLiteSettings } from "./settings-config.js";
 import type { VaultStore } from "./store.js";
 
 export type ReviewDeps = {
+  activity?:()=>void;
   app: App;
   store: VaultStore;
   /** Status-bar element for the "N due" badge. */
@@ -45,6 +46,8 @@ export type ReviewDeps = {
 };
 
 export class ReviewController {
+  private readonly grading = new Map<string, Promise<void>>();
+  private readonly submitted = new Set<string>();
   public constructor(private readonly deps: ReviewDeps) {}
 
   // --- memory cells ----------------------------------------------------------
@@ -184,6 +187,7 @@ export class ReviewController {
    * the file + in-memory schedule are updated so the due counter falls live.
    */
   public async reviewDueCells(): Promise<void> {
+    this.deps.activity?.();
     if (!this.deps.settings().enableSpacedReview) {
       new Notice(t("notice.reviewDisabled"));
       return;
@@ -200,14 +204,25 @@ export class ReviewController {
       summary: cell.summary,
       path: cell.path
     }));
+    const events = new Map(due.map(cell => [cell.id, JSON.stringify([cell.id, cell.review])]));
     new ReviewModal(this.deps.app, cards, {
       open: (path) => this.deps.openPath(path),
       grade: async (card, grade) => {
-        const cell = cells.find((c) => c.id === card.cellId);
-        const next = scheduleNext(cell?.review ?? initReviewState(nowIso()), grade, nowIso());
-        await this.deps.store.updateCellSchedule(card.cellId, next);
-        if (cell) cell.review = next; // keep the snapshot in step so the badge falls
-        this.refreshBadge();
+        const event = events.get(card.cellId)!;
+        if (this.submitted.has(event)) return;
+        const pending = this.grading.get(event);
+        if (pending) return pending;
+        const submit = (async () => {
+          const cell = cells.find((c) => c.id === card.cellId);
+          const next = scheduleNext(cell?.review ?? initReviewState(nowIso()), grade, nowIso());
+          await this.deps.store.updateCellSchedule(card.cellId, next);
+          this.submitted.add(event);
+          if (this.submitted.size > 1000) this.submitted.delete(this.submitted.values().next().value!);
+          if (cell) cell.review = next;
+          this.refreshBadge();
+        })();
+        this.grading.set(event, submit);
+        try { await submit; } finally { this.grading.delete(event); }
       }
     }).open();
   }

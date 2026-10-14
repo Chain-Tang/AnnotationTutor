@@ -178,6 +178,8 @@ export type LearnerProfile = {
 export type ChatLogTurn = {
   role: "user" | "assistant";
   text: string;
+  /** An optional local task hint; restore must validate it against the transaction journal. */
+  taskId?: string;
   /** ISO timestamp the turn was recorded. */
   at: string;
 };

@@ -1,0 +1,7 @@
+provider,model,exact_version,route,license_or_terms_evidence,data_retention_evidence,region_evidence,safety_evidence,generation,reference,mask,multiturn,transparent,partial_preview,seed,median_latency_ms,p95_latency_ms,peak_memory_mb,median_cost_usd,anime_score,consistency_score,edit_locality_score,mechanics_f1,status,notes
+Tutor,opencode/mimo-v2.5-free,probe-2026-09-16,editable-brush,provider-catalog,TBD,local,TBD,yes,yes,no,yes,no,yes,host-seed,104999,302738,,,1.80,,,1.0,reject-production-default,"18 live cells: 11 succeeded, 7 failed; 100% editability among successes, zero visual cells >=4/5."
+OpenAI,GPT Image,TBD,cloud-raster,official-docs,TBD,TBD,TBD,yes,yes,yes,yes,yes,provider-dependent,no,,,,,candidate,,,not-run,
+Google,Gemini native image,TBD,cloud-raster,official-docs,TBD,TBD,TBD,yes,yes,yes,yes,TBD,TBD,TBD,,,,,candidate,,,not-run,
+Black Forest Labs,TBD,TBD,cloud-raster,per-model-review,TBD,TBD,TBD,yes,TBD,TBD,TBD,TBD,TBD,TBD,,,,,candidate,,,not-run,
+Qwen,qwen-image-3.0,qwen-image-3.0,cloud-raster,official-api-docs,24h-result-url,cn-beijing-workspace,TBD,yes,yes,no,yes,no,no,yes,26497,67861,,,,,,,research,"11 records: 8 image returns, 3 failures; 7 accepted, 1 mechanics product rejection. Exact custom size and basic hand anatomy passed. Large inline PNG I2I disconnected twice; compact JPEG passed."
+ComfyUI,selected-workflow,TBD,loopback,workflow-and-model-specific,local,local,workflow-specific,yes,yes,yes,yes,TBD,yes,yes,,,,,candidate,,,not-run,

@@ -54,6 +54,7 @@ import {
   parseLibraryCache,
   serializeLibraryCache,
   type LibraryFile,
+  type LibraryFiles,
   type LibrarySnapshot
 } from "./library-index.js";
 import { validateProposalCandidate } from "./memory-policy.js";
@@ -70,11 +71,25 @@ import {
 } from "./markdown/chat-log-file.js";
 import { deriveScenes } from "./memory-derive.js";
 import { getLocale } from "./i18n.js";
+import { sha256 } from "./markdown/proposal-file.js";
 
-const SELF_WRITE_WINDOW_MS = 1500;
+type LibraryGroup = keyof LibraryFiles;
+type LibraryRead = {
+  root: string;
+  files: LibraryFiles;
+  groups: Set<LibraryGroup>;
+  dirty: Map<string, number>;
+};
 
 export class VaultStore {
-  private readonly recentWrites = new Map<string, number>();
+  private readonly ownWrites = new Map<string, { hash: string | null; generation: number }>();
+  private readonly dirtyLibraryPaths = new Map<string, number>();
+  private writeGeneration = 0;
+  private libraryFiles: LibraryFiles | undefined;
+  private readonly cachedLibraryGroups = new Set<LibraryGroup>();
+  private libraryRoot = "";
+  private lastLibrarySnapshot: LibrarySnapshot | undefined;
+  private libraryRefresh: Promise<unknown> = Promise.resolve();
 
   public constructor(
     private readonly app: App,
@@ -178,20 +193,51 @@ export class VaultStore {
     return path.startsWith(root);
   }
 
-  // --- loop guard ------------------------------------------------------------
-
-  public markWritten(path: string): void {
-    this.recentWrites.set(path, Date.now());
+  public isLearningWatchedPath(path: string): boolean {
+    const normalized = path.replace(/\\/g, "/");
+    const root = `${this.memoryRoot()}/`;
+    return normalized.startsWith(root) && !["boards", "ink", "ink-packs", "tiles", "brushes", "characters", "references", "tasks", "learning"].includes(normalized.slice(root.length).split("/")[0] ?? "");
   }
 
-  public wasRecentlyWritten(path: string): boolean {
-    const at = this.recentWrites.get(path);
-    if (at === undefined) return false;
-    if (Date.now() - at > SELF_WRITE_WINDOW_MS) {
-      this.recentWrites.delete(path);
-      return false;
+  // --- loop guard ------------------------------------------------------------
+
+  public markWritten(path: string, content: string | null): void {
+    const generation = ++this.writeGeneration;
+    this.ownWrites.set(path, { hash: content === null ? null : sha256(content), generation });
+    // Eviction can only cause an extra reconciliation, never hide an edit.
+    if (this.ownWrites.size > 4096) this.ownWrites.delete(this.ownWrites.keys().next().value!);
+    if (this.libraryGroup(path)) this.dirtyLibraryPaths.set(path, generation);
+  }
+
+  /** Invalidate immediately on vault events, before any debounced UI refresh. */
+  public invalidateLibrary(paths: readonly string[]): void {
+    const directories = Object.values(this.libraryDirectories(this.memoryRoot()));
+    for (const path of paths) {
+      if (this.libraryGroup(path)) {
+        this.dirtyLibraryPaths.set(path, ++this.writeGeneration);
+      } else {
+        // Expand ancestor changes per group: a cells/scenes-only sync must not
+        // consume the same rename invalidation needed by annotations/profiles.
+        for (const directory of directories) {
+          if (path === directory || directory.startsWith(`${path}/`)) {
+            this.dirtyLibraryPaths.set(directory, ++this.writeGeneration);
+          }
+        }
+      }
     }
-    return true;
+  }
+
+  /** Match the actual persisted content, even when a vault event arrives late. */
+  public async isOwnWrite(path: string): Promise<boolean> {
+    if (!this.ownWrites.has(path)) return false;
+    const expected = this.ownWrites.get(path)!;
+    const content = await this.readVaultFile(path);
+    if (this.ownWrites.get(path) !== expected) return false;
+    const matches = expected.hash === (content === null ? null : sha256(content));
+    // Once an external version is observed, returning to an old self version is
+    // another external change. Never suppress that A -> B -> A transition.
+    if (!matches) this.ownWrites.delete(path);
+    return matches;
   }
 
   // --- scaffold --------------------------------------------------------------
@@ -233,11 +279,10 @@ export class VaultStore {
   public async createAnnotation(annotation: Annotation): Promise<void> {
     const path = this.annotationPath(annotation.id);
     await this.ensureFolder(this.annotationsDir());
-    await this.app.vault.create(
-      path,
-      serializeAnnotation(annotation, this.memoryRoot())
-    );
-    this.markWritten(path);
+    const content = serializeAnnotation(annotation, this.memoryRoot());
+    this.markWritten(path, content);
+    await this.app.vault.create(path, content);
+    this.markWritten(path, content);
   }
 
   public async readAnnotation(id: string): Promise<Annotation | null> {
@@ -253,13 +298,31 @@ export class VaultStore {
     const file = this.fileAt(path);
     if (!file) return null;
     let result: Annotation | null = null;
-    await this.app.vault.process(file, (data) => {
+    await this.processVaultFile(file, (data) => {
       const next = updateAnnotationMarkdown(data, patch, this.memoryRoot());
       if (next === null) return data;
       result = parseAnnotationFile(next);
       return next;
     });
-    this.markWritten(path);
+    return result;
+  }
+
+  /** A failed request may only restore the state it still owns. */
+  public async restoreReviewRequest(
+    id: string,
+    status: Annotation["status"]
+  ): Promise<Annotation | null> {
+    const file = this.fileAt(this.annotationPath(id));
+    if (!file) return null;
+    let result: Annotation | null = null;
+    await this.processVaultFile(file, data => {
+      const current = parseAnnotationFile(data);
+      if (!current || current.status !== "agent_requested") return data;
+      const next = updateAnnotationMarkdown(data, { status }, this.memoryRoot());
+      if (next === null) return data;
+      result = parseAnnotationFile(next);
+      return next;
+    });
     return result;
   }
 
@@ -279,7 +342,7 @@ export class VaultStore {
     const file = this.fileAt(path);
     if (!file) return null;
     let result: Annotation | null = null;
-    await this.app.vault.process(file, (data) => {
+    await this.processVaultFile(file, (data) => {
       const existing = parseAnnotationFile(data);
       if (!existing) return data;
       const parsed = parseAgentReview(trimmed, nowIso()) ?? undefined;
@@ -301,7 +364,6 @@ export class VaultStore {
       result = parseAnnotationFile(out);
       return out;
     });
-    this.markWritten(path);
     return result;
   }
 
@@ -320,7 +382,7 @@ export class VaultStore {
     const file = this.fileAt(path);
     if (!file) return null;
     let result: Annotation | null = null;
-    await this.app.vault.process(file, (data) => {
+    await this.processVaultFile(file, (data) => {
       const existing = parseAnnotationFile(data);
       if (!existing) return data;
       const next: Annotation = {
@@ -332,13 +394,12 @@ export class VaultStore {
       result = parseAnnotationFile(out);
       return out;
     });
-    this.markWritten(path);
     return result;
   }
 
   public async deleteAnnotation(id: string): Promise<void> {
     const file = this.fileAt(this.annotationPath(id));
-    if (file) await this.app.vault.delete(file);
+    if (file) await this.deleteVaultFile(file);
   }
 
   /** Write a new memory cell file (the plugin owns the write). */
@@ -365,7 +426,7 @@ export class VaultStore {
     const file = this.fileAt(path);
     if (!file) return null;
     let result: MemoryCell | null = null;
-    await this.app.vault.process(file, (data) => {
+    await this.processVaultFile(file, (data) => {
       const existing = parseMemoryCellFile(data);
       if (!existing) return data;
       const next: MemoryCell = { ...existing, review, updatedAt: nowIso() };
@@ -373,7 +434,6 @@ export class VaultStore {
       result = parseMemoryCellFile(out);
       return out;
     });
-    this.markWritten(path);
     return result;
   }
 
@@ -382,25 +442,73 @@ export class VaultStore {
    * with two or more cells). Hand-authored scenes (without the `auto` tag) are
    * left untouched; stale auto scenes are removed.
    */
-  public async syncScenesFromCells(): Promise<void> {
-    const cells = (await this.listMarkdownFiles(this.memoryCellsDir()))
-      .map((file) => parseMemoryCellFile(file.content))
-      .filter((cell): cell is MemoryCell => cell !== null);
-    const scenes = deriveScenes(cells, nowIso());
-    const wanted = new Set(scenes.map((scene) => scene.id));
-    for (const scene of scenes) {
-      await this.writeVaultFile(
-        `${this.scenesDir()}/${scene.id}.md`,
-        serializeScene(scene, this.memoryRoot())
-      );
+  public async syncScenesFromCells(full = false): Promise<void> {
+    return this.queueLibraryOperation(() => this.reconcileScenes(full));
+  }
+
+  private async reconcileScenes(full: boolean): Promise<void> {
+    const source = await this.readLibrarySources(["cells", "scenes"], full);
+    if (this.memoryRoot() !== source.root) return this.reconcileScenes(full);
+    const cells = source.files.cells.map(file => parseMemoryCellFile(file.content));
+    // An editor can temporarily leave a cell incomplete. Deriving from that
+    // partial set would overwrite/delete valid scenes and lose their evidence.
+    if (cells.some(cell => cell === null)) {
+      this.publishLibrarySources(source);
+      if (this.hasDirtyCellSources(source.root)) await this.reconcileScenes(false);
+      return;
     }
-    for (const file of await this.listMarkdownFiles(this.scenesDir())) {
+    const scenes = deriveScenes(cells as MemoryCell[], nowIso());
+    const wanted = new Set(scenes.map(scene => scene.id));
+    const existing = new Map(source.files.scenes.map(file => [file.path, file]));
+    const handAuthored = new Set(source.files.scenes.flatMap(file => {
       const scene = parseSceneFile(file.content);
-      if (scene && scene.tags.includes("auto") && !wanted.has(scene.id)) {
-        const handle = this.fileAt(file.path);
-        if (handle) await this.app.vault.delete(handle);
+      return scene && !scene.tags.includes("auto") ? [scene.id] : [];
+    }));
+    for (const scene of scenes) {
+      if (this.memoryRoot() !== source.root) return this.reconcileScenes(full);
+      const path = `${source.root}/scenes/${scene.id}.md`;
+      const current = existing.get(path);
+      const previous = current ? parseSceneFile(current.content) : null;
+      if (handAuthored.has(scene.id) || (current && (!previous || !previous.tags.includes("auto")))) continue;
+      if (previous && sameDerivedScene(previous, scene)) continue;
+      const next = { ...scene, createdAt: previous?.createdAt ?? scene.createdAt };
+      const file = this.fileAt(path);
+      if (file) {
+        // The cache may predate an edit made during this sync. The atomic
+        // transform rechecks ownership before replacing an existing scene.
+        await this.processVaultFile(file, data => {
+          const latest = parseSceneFile(data);
+          if (!latest || !latest.tags.includes("auto")) return data;
+          return serializeScene({ ...next, createdAt: latest.createdAt }, source.root);
+        });
+      } else {
+        await this.writeVaultFile(path, serializeScene(next, source.root));
       }
     }
+    for (const file of source.files.scenes) {
+      if (this.memoryRoot() !== source.root) return this.reconcileScenes(full);
+      const scene = parseSceneFile(file.content);
+      if (!scene || !scene.tags.includes("auto") || wanted.has(scene.id)) continue;
+      // Recheck a deletion target rather than trusting a cached ownership tag.
+      const latest = await this.readVaultFile(file.path);
+      if (latest !== file.content) this.invalidateLibrary([file.path]);
+      const current = latest === null ? null : parseSceneFile(latest);
+      if (current?.tags.includes("auto") && !wanted.has(current.id)) {
+        const handle = this.fileAt(file.path);
+        if (handle) await this.deleteVaultFile(handle);
+      }
+    }
+    if (this.memoryRoot() !== source.root) return this.reconcileScenes(full);
+    this.publishLibrarySources(source);
+    // A cell written/edited while scenes were persisting is a newer source
+    // generation; reconcile it before reporting the sync as complete.
+    if (this.hasDirtyCellSources(source.root)) await this.reconcileScenes(false);
+  }
+
+  private hasDirtyCellSources(root: string): boolean {
+    return [...this.dirtyLibraryPaths.keys()].some(path =>
+      this.libraryGroup(path, root) === "cells" || path === `${root}/memory-cells`
+    );
   }
 
   /** Write a new hand-authored scene file (user-initiated; the plugin owns the write). */
@@ -420,7 +528,7 @@ export class VaultStore {
     const file = this.fileAt(path);
     if (!file) return null;
     let result: Scene | null = null;
-    await this.app.vault.process(file, (data) => {
+    await this.processVaultFile(file, (data) => {
       const existing = parseSceneFile(data);
       if (!existing) return data;
       const next: Scene = { ...existing, status: "archived", updatedAt: nowIso() };
@@ -428,7 +536,6 @@ export class VaultStore {
       result = parseSceneFile(out);
       return out;
     });
-    this.markWritten(path);
     return result;
   }
 
@@ -449,7 +556,7 @@ export class VaultStore {
     const file = this.fileAt(path);
     if (!file) return null;
     let result: LearnerProfile | null = null;
-    await this.app.vault.process(file, (data) => {
+    await this.processVaultFile(file, (data) => {
       const existing = parseProfileFile(data);
       if (!existing) return data;
       if (claimIndex < 0 || claimIndex >= existing.claims.length) return data;
@@ -459,7 +566,6 @@ export class VaultStore {
       result = parseProfileFile(out);
       return out;
     });
-    this.markWritten(path);
     return result;
   }
 
@@ -491,7 +597,7 @@ export class VaultStore {
     );
     for (const head of (await this.listChatLogs()).slice(keep)) {
       const file = this.fileAt(`${this.chatsDir()}/${head.id}.md`);
-      if (file) await this.app.vault.delete(file);
+      if (file) await this.deleteVaultFile(file);
     }
   }
 
@@ -504,14 +610,14 @@ export class VaultStore {
   /** Delete one saved session (user-initiated). */
   public async deleteChatLog(id: string): Promise<void> {
     const file = this.fileAt(`${this.chatsDir()}/${id}.md`);
-    if (file) await this.app.vault.delete(file);
+    if (file) await this.deleteVaultFile(file);
   }
 
   /** Delete every saved session (user-initiated). */
   public async clearChatLogs(): Promise<void> {
     for (const file of await this.listMarkdownFiles(this.chatsDir())) {
       const handle = this.fileAt(file.path);
-      if (handle) await this.app.vault.delete(handle);
+      if (handle) await this.deleteVaultFile(handle);
     }
   }
 
@@ -535,20 +641,107 @@ export class VaultStore {
   public async rebuildLibrary(
     previous?: LibrarySnapshot
   ): Promise<LibrarySnapshot> {
-    const files = {
-      annotations: await this.listMarkdownFiles(this.annotationsDir()),
-      cells: await this.listMarkdownFiles(this.memoryCellsDir()),
-      scenes: await this.listMarkdownFiles(this.scenesDir()),
-      profiles: await this.listMarkdownFiles(this.profilesDir()),
-      proposals: await this.listMarkdownFiles(this.pendingProposalsDir())
+    return this.queueLibraryRefresh(previous);
+  }
+
+  /** Re-read changed files while retaining a full rebuild for explicit repair. */
+  public async refreshLibrary(
+    previous?: LibrarySnapshot,
+    paths: string[] = []
+  ): Promise<LibrarySnapshot> {
+    this.invalidateLibrary(paths);
+    return this.queueLibraryRefresh(previous, paths);
+  }
+
+  private queueLibraryRefresh(previous?: LibrarySnapshot, paths?: string[]): Promise<LibrarySnapshot> {
+    return this.queueLibraryOperation(() => this.reconcileLibrary(previous, paths === undefined));
+  }
+
+  private queueLibraryOperation<T>(operation: () => Promise<T>): Promise<T> {
+    const pending = this.libraryRefresh.then(operation);
+    this.libraryRefresh = pending.catch(() => {});
+    return pending;
+  }
+
+  private async readLibrarySources(groups: LibraryGroup[], full: boolean): Promise<LibraryRead> {
+    const root = this.memoryRoot();
+    const dirty = new Map(this.dirtyLibraryPaths);
+    const directories = this.libraryDirectories(root);
+    const cached = this.libraryRoot === root ? this.libraryFiles : undefined;
+    const loaded = new Set(cached ? this.cachedLibraryGroups : []);
+    const files: LibraryFiles = {
+      annotations: [...(cached?.annotations ?? [])], cells: [...(cached?.cells ?? [])],
+      scenes: [...(cached?.scenes ?? [])], profiles: [...(cached?.profiles ?? [])],
+      proposals: [...(cached?.proposals ?? [])]
     };
-    const snapshot = buildLibrarySnapshot(files, previous);
-    await this.app.vault.adapter.write(
-      this.indexPath(),
-      serializeLibraryCache(snapshot)
-    );
-    await this.writeLibraryOutputs(snapshot);
+    await Promise.all(groups.map(async group => {
+      const directory = directories[group];
+      const changed = [...dirty.keys()].filter(path => this.libraryGroup(path, root) === group);
+      const scan = full || !loaded.has(group) || [...dirty.keys()].some(path => path === directory || directory.startsWith(`${path}/`));
+      if (scan) files[group] = await this.listMarkdownFiles(directory);
+      else {
+        const updates = await Promise.all(changed.map(async path => ({ path, content: await this.readVaultFile(path) })));
+        const replaced = new Set(changed);
+        files[group] = files[group].filter(file => !replaced.has(file.path));
+        for (const { path, content } of updates) if (content !== null) files[group].push({ path, content });
+      }
+      loaded.add(group);
+    }));
+    for (const group of Object.values(files)) group.sort((a, b) => a.path.localeCompare(b.path));
+    // A cells/scenes-only refresh must leave other groups' dirty generations
+    // pending for the next complete library refresh.
+    const consumed = new Map([...dirty].filter(([path]) => groups.some(group =>
+      this.libraryGroup(path, root) === group || path === directories[group] || directories[group].startsWith(`${path}/`)
+    )));
+    return { root, files, groups: loaded, dirty: consumed };
+  }
+
+  private publishLibrarySources(source: LibraryRead): void {
+    if (this.libraryRoot !== source.root) {
+      this.lastLibrarySnapshot = undefined;
+      // Returning to an old root always starts from a full source read, so its
+      // previous dirty entries need not accumulate across root changes.
+      const directories = Object.values(this.libraryDirectories(source.root));
+      for (const path of this.dirtyLibraryPaths.keys()) {
+        if (!this.libraryGroup(path, source.root) && !directories.includes(path)) this.dirtyLibraryPaths.delete(path);
+      }
+    }
+    this.libraryFiles = source.files;
+    this.libraryRoot = source.root;
+    this.cachedLibraryGroups.clear();
+    for (const group of source.groups) this.cachedLibraryGroups.add(group);
+    for (const [path, generation] of source.dirty) {
+      if (this.dirtyLibraryPaths.get(path) === generation) this.dirtyLibraryPaths.delete(path);
+    }
+  }
+
+  private async reconcileLibrary(previous: LibrarySnapshot | undefined, full: boolean): Promise<LibrarySnapshot> {
+    const source = await this.readLibrarySources(["annotations", "cells", "scenes", "profiles", "proposals"], full);
+    const { root, files } = source;
+    const snapshot = buildLibrarySnapshot(files, this.libraryRoot === root ? this.lastLibrarySnapshot ?? previous : previous);
+    // Await every output even on error, so the next refresh cannot race old writes.
+    await settleWrites([
+      this.app.vault.adapter.write(this.indexPath(), serializeLibraryCache(snapshot)),
+      this.writeLibraryOutputs(snapshot, root)
+    ]);
+    if (this.memoryRoot() !== root) return this.reconcileLibrary(undefined, false);
+    this.publishLibrarySources(source);
+    this.lastLibrarySnapshot = snapshot;
     return snapshot;
+  }
+
+  private libraryDirectories(root: string): Record<LibraryGroup, string> {
+    return {
+      annotations: `${root}/annotations`, cells: `${root}/memory-cells`, scenes: `${root}/scenes`,
+      profiles: `${root}/profiles`, proposals: `${root}/proposals/pending`
+    };
+  }
+
+  private libraryGroup(path: string, root = this.memoryRoot()): LibraryGroup | undefined {
+    for (const [group, directory] of Object.entries(this.libraryDirectories(root))) {
+      if (path.endsWith(".md") && parentPath(path) === directory) return group as LibraryGroup;
+    }
+    return undefined;
   }
 
   public async loadLibraryCache(): Promise<LibrarySnapshot | null> {
@@ -677,14 +870,18 @@ export class VaultStore {
   }
 
   public async appendTask(task: Task): Promise<void> {
-    const current = (await this.readVaultFile(this.inboxPath())) ?? "";
-    await this.writeVaultFile(this.inboxPath(), `${appendTask(current, task)}\n`);
+    const file = this.fileAt(this.inboxPath());
+    if (file) await this.processVaultFile(file, current => `${appendTask(current, task)}\n`);
+    else await this.writeVaultFile(this.inboxPath(), `${appendTask("", task)}\n`);
   }
 
-  public async setTaskStatus(id: string, status: TaskStatus): Promise<void> {
-    const current = await this.readVaultFile(this.inboxPath());
-    if (current === null) return;
-    await this.writeVaultFile(this.inboxPath(), setTaskStatus(current, id, status));
+  public async setTaskStatus(id: string, status: TaskStatus, onlyIf?: readonly TaskStatus[]): Promise<void> {
+    const file = this.fileAt(this.inboxPath());
+    if (file) await this.processVaultFile(file, current => {
+      const task = parseTasks(current).find(task => task.id === id);
+      if (onlyIf && (!task || !onlyIf.includes(task.status))) return current;
+      return setTaskStatus(current, id, status);
+    });
   }
 
   /** Tidy the inbox (dedupe open tasks, drop finished/dangling). Returns removed count. */
@@ -696,41 +893,38 @@ export class VaultStore {
     return removed;
   }
 
-  private async writeLibraryOutputs(snapshot: LibrarySnapshot): Promise<void> {
+  private async writeLibraryOutputs(snapshot: LibrarySnapshot, root = this.memoryRoot()): Promise<void> {
     const generatedAt = new Date().toISOString();
     const options = {
-      memoryRoot: this.memoryRoot(),
+      memoryRoot: root,
       generatedAt,
       memoryWriteMode: this.getSettings().memoryWriteMode,
       allowPreferenceWrites: this.getSettings().allowPreferenceWrites,
       reviewLanguage: this.getSettings().reviewLanguage
     };
-    await this.writeVaultFile(
-      this.overviewPath(),
+    const writes = [this.writeVaultFile(
+      `${root}/annotation-memory.md`,
       renderOverview(snapshot.annotations, snapshot.cells, options)
-    );
-    await this.writeVaultFile(
-      this.recentLearningPath(),
+    ), this.writeVaultFile(
+      `${root}/recent-learning.md`,
       renderRecentLearning(snapshot.annotations, options)
-    );
-    await this.writeVaultFile(
-      this.annotationIndexPath(),
+    ), this.writeVaultFile(
+      `${root}/indexes/annotations.md`,
       renderAnnotationIndex(snapshot.annotations, options)
-    );
-    await this.writeVaultFile(
-      this.cellIndexPath(),
+    ), this.writeVaultFile(
+      `${root}/indexes/cells.md`,
       renderCellIndex(snapshot.cells, options)
-    );
-    await this.writeVaultFile(
-      this.sceneIndexPath(),
+    ), this.writeVaultFile(
+      `${root}/indexes/scenes.md`,
       renderSceneIndex(snapshot.scenes, options)
-    );
+    )];
     if (this.getSettings().createAgentInstructions) {
-      await this.writeVaultFile(
-        this.agentsPath(),
+      writes.push(this.writeVaultFile(
+        `${root}/AGENTS.md`,
         renderAgentInstructions(options)
-      );
+      ));
     }
+    await settleWrites(writes);
   }
 
   /**
@@ -767,7 +961,7 @@ export class VaultStore {
     const archivePath = `${this.archivedProposalsDir()}/${proposal.id}.md`;
     await this.writeVaultFile(archivePath, serializeProposal(proposal));
     const pending = this.fileAt(pendingPath);
-    if (pending) await this.app.vault.delete(pending);
+    if (pending) await this.deleteVaultFile(pending);
   }
 
   // --- low-level helpers -----------------------------------------------------
@@ -799,21 +993,42 @@ export class VaultStore {
 
   private async writeVaultFile(path: string, content: string): Promise<void> {
     const file = this.fileAt(path);
+    this.markWritten(path, content);
     if (file) {
       await this.app.vault.modify(file, content);
     } else {
       await this.ensureFolder(parentPath(path));
       await this.app.vault.create(path, content);
     }
-    this.markWritten(path);
+    this.markWritten(path, content);
   }
 
   private async writeIfMissing(path: string, content: string): Promise<void> {
     if (!this.fileAt(path)) {
       await this.ensureFolder(parentPath(path));
+      this.markWritten(path, content);
       await this.app.vault.create(path, content);
-      this.markWritten(path);
+      this.markWritten(path, content);
     }
+  }
+
+  private async processVaultFile(file: TFile, transform: (data: string) => string): Promise<void> {
+    let written = "";
+    await this.app.vault.process(file, data => {
+      const next = transform(data);
+      written = next;
+      this.markWritten(file.path, next);
+      return next;
+    });
+    // A refresh may have read the old content while process was persisting.
+    // Publish a fresh dirty generation only after the write has completed.
+    this.markWritten(file.path, written);
+  }
+
+  private async deleteVaultFile(file: TFile): Promise<void> {
+    this.markWritten(file.path, null);
+    await this.app.vault.delete(file);
+    this.markWritten(file.path, null);
   }
 
   private async ensureFolder(folder: string): Promise<void> {
@@ -831,6 +1046,21 @@ export class VaultStore {
 function parentPath(path: string): string {
   const index = path.lastIndexOf("/");
   return index <= 0 ? "" : path.slice(0, index);
+}
+
+/** Compare generated content while keeping stable creation/update timestamps. */
+function sameDerivedScene(current: Scene, derived: Scene): boolean {
+  return current.id === derived.id && current.type === derived.type &&
+    current.title === derived.title && current.status === derived.status &&
+    current.summary === derived.summary &&
+    current.cells.length === derived.cells.length && current.cells.every((id, index) => id === derived.cells[index]) &&
+    current.tags.length === derived.tags.length && current.tags.every((tag, index) => tag === derived.tags[index]);
+}
+
+async function settleWrites(writes: Promise<void>[]): Promise<void> {
+  const results = await Promise.allSettled(writes);
+  const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (failure) throw failure.reason;
 }
 
 /** Prepend the prior review (if any) to the existing Review History block. */

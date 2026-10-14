@@ -24,6 +24,15 @@ const { VaultStore } = await import("../src/store.js");
 const MANIFEST = "annotation-tutor-lite";
 const NOW = "2026-06-07T10:00:00.000Z";
 
+describe("board resources and the learning watcher",()=>{
+  it("excludes board assets and independent learning records but retains legacy learning files",()=>{
+    const {store}=makeStore();const root=store.memoryRoot();
+    for(const directory of ["boards","ink","ink-packs","tiles","brushes","characters","references","tasks","learning"])
+      expect(store.isLearningWatchedPath(`${root}/${directory}/test.json`)).toBe(false);
+    expect(store.isLearningWatchedPath(`${root}/scenes/test.md`)).toBe(true);
+  });
+});
+
 function makeStore(): { store: InstanceType<typeof VaultStore>; vault: MockVault } {
   const app = createMockApp();
   const settings = {

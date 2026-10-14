@@ -1,0 +1,28 @@
+{
+  "format": "tutor-board-artist-strategy-v1",
+  "taskIds": ["anime-01", "anime-04", "anime-05", "anime-07", "general-06", "general-07"],
+  "strategies": ["single-prompt", "few-shot", "planner-tools"],
+  "fixedConditions": {
+    "artboard": "1024x1024",
+    "maxOperationsPerStage": 40,
+    "nativeBrushesOnly": true,
+    "plannerFeedbackRounds": 3,
+    "singlePassFeedbackRounds": 1
+  },
+  "rubric": {
+    "instructionFit": "1-5",
+    "composition": "1-5",
+    "anatomyOrStructure": "1-5",
+    "materialQuality": "1-5",
+    "nativeEditability": "1-5",
+    "operationEconomy": "1-5"
+  },
+  "hardGates": [
+    "schemaValid",
+    "insideArtboard",
+    "noHumanObjectMutation",
+    "nativeBrushesOnly",
+    "singleUndoTransaction",
+    "cancelSafe"
+  ]
+}

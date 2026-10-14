@@ -1,5 +1,8 @@
 # Annotation Tutor Lite
 
+> Current source candidate: **0.5.4** (checked 2026-10-14). Full commercial and desktop acceptance remain open; learning, check-ins and expert features are opt-in. See [implementation status and C67 installation](docs/qa/implementation-status-20261012/report.md), [usage and rollback](docs/tutor-learning-upgrade.md), and [optimization verification](docs/optimization-stage2-2026-10-14.md).
+
+
 **Read closely. Think in the margins. Remember what matters.**
 
 **English** · [简体中文](README.zh-CN.md)
@@ -20,7 +23,7 @@ Select a passage in Markdown or a text-based PDF, write your understanding, and 
 
 No separate annotation database or mandatory hosted TutorLite account. Your notes remain readable, editable Markdown in your Vault. Saving annotations does not require AI; reviews, chat, and translation need an engine you configure.
 
-## New in 0.2.4
+## Reading and annotation features (since 0.2.4)
 
 | What you read | What you can do |
 | --- | --- |
@@ -52,7 +55,8 @@ AI features are not an included model service or a guarantee of correct feedback
 
 ## More than a highlighter
 
-- **Web Clipper:** the companion Chromium extension saves webpage highlights and notes and sends selections or readable pages into your Vault. [Extension setup →](extension/README.md)
+- **Inspiration board:** draw over Markdown Live Preview, source mode, reading view, and PDFs; Markdown modes share the same board. Use the vertical tool rail for handwriting, text, and shapes. The board and sidebar share the model, API connection, and conversation; replies and drawings stream as they arrive. Closing the sidebar moves the latest reply into a temporary handwritten caption while preserving artwork. Includes uploaded and co-created sticker assets independent of the current Tutor character. [Board guide →](docs/inspiration-board.md)
+- **Web capture:** the official [Obsidian Web Clipper](https://github.com/obsidianmd/obsidian-clipper) is the default cross-browser capture UI. Import Tutor's versioned template from **Settings → TutorWeb** so saved Markdown can be analyzed through either Direct API or OpenCode. The bundled Chromium extension remains an optional **Tutor Advanced Clipper** for in-page Tutor Q&A, per-highlight notes, and raw HTML snapshots. [Advanced extension setup →](extension/README.md)
 - **Reading assistance:** inline glosses and whole-note pre-translation for supported Markdown workflows. PDF whole-document text extraction is not included.
 - **Connected learning:** generated notebooks link back to annotations and source material; scenes and profiles retain context.
 - **Four interface languages:** English, 简体中文, 繁體中文, 日本語.
@@ -64,7 +68,7 @@ AI features are not an included model service or a guarantee of correct feedback
 
 ### Build the current source
 
-This page describes source version **0.2.4**. The latest GitHub Release may be older; check its version before installing. To get the current source, use **Node 22.13+** and **pnpm 10**:
+This page describes local source candidate **0.5.4**. The remote Git branch may lag behind this workspace; check `manifest.json` after cloning. The latest GitHub Release may be older; check its version before installing. To get the current source, use **Node 22.13+** and **pnpm 10**:
 
 ```bash
 git clone https://github.com/Chain-Tang/AnnotationTutor.git
@@ -73,17 +77,17 @@ pnpm install --frozen-lockfile
 pnpm install:vault -- --vault "/path/to/YourVault"
 ```
 
-The install command builds, copies plugin files, and updates the Vault's enabled-plugin list. Save open annotations, then reload Obsidian or disable and re-enable the plugin. Copying files alone does not reload a running instance.
+The install command builds, copies plugin files including the offline `assets/fonts/` directory, and updates the Vault's enabled-plugin list. Save open annotations, then reload Obsidian or disable and re-enable the plugin. Copying files alone does not reload a running instance.
 
 ### Install a packaged release
 
-Open [Releases](https://github.com/Chain-Tang/AnnotationTutor/releases) and check the version and available assets. If a plugin ZIP is provided, extract it under your Vault's `.obsidian/plugins/` folder. Alternatively place matching `main.js`, `manifest.json`, and `styles.css` files together in:
+Open [Releases](https://github.com/Chain-Tang/AnnotationTutor/releases) and check the version and available assets. If a plugin ZIP is provided, extract it under your Vault's `.obsidian/plugins/` folder. For manual installation, copy the complete sealed plugin directory, including `main.js`, `desktop.js`, `mobile.js`, manifest, styles, credential compatibility metadata, offline fonts and licenses, into:
 
 ```text
 <YourVault>/.obsidian/plugins/annotation-tutor-lite/
 ```
 
-Enable **Annotation Tutor Lite** in Community plugins settings. BRAT can install from `Chain-Tang/AnnotationTutor` when a compatible release is available; it does not install unpublished source changes.
+The full plugin ZIP and source installation scripts include the fonts. Copying only the three conventional plugin files is insufficient for board handwriting. Enable **Annotation Tutor Lite** in Community plugins settings. BRAT can install compatible releases from `Chain-Tang/AnnotationTutor`; ensure the release also supplies `assets/fonts/`, or use the complete ZIP. BRAT does not install unpublished source changes.
 
 ### Make your first annotation
 
@@ -98,8 +102,8 @@ On first run, TutorLite creates its memory folder (default `Agent Memory/`) and,
 
 Choose an engine in **Settings → Annotation Tutor Lite → General**:
 
-- **Direct API:** supply your own OpenAI-compatible endpoint, model, and API key. The key is saved in local plugin configuration, not this repository.
-- **OpenCode:** install and authenticate the CLI yourself, then select it as the engine. TutorLite uses the authenticated CLI through ACP.
+- **Direct API:** supply your own OpenAI-compatible endpoint, model, and API key. The current candidate uses system-encrypted credential storage outside the Vault; plugin configuration stores references. When secure storage is unavailable, new credentials are session-only. Historical configurations may still contain old plaintext.
+- **OpenCode:** install and authenticate the CLI yourself, then select it as the engine. **Set up OpenCode** now validates the executable, model catalog, ACP handshake, selected model, and a minimal real model round-trip instead of reporting success from the catalog alone.
 
 **Local-first is not the same as offline AI.** A configured remote engine may receive the text and context you send for review, chat, or translation. Provider privacy policies, retention, usage limits, and charges apply separately. Keep plugin configuration and credentials out of public repositories.
 
@@ -136,21 +140,23 @@ Source quotes and your notes remain separate from agent reviews. Choose confirma
 - PDF “bold” uses a heavier underline rather than modifying canvas-rendered glyphs.
 - Repeated table text is matched by occurrence, not a complete semantic row/column identity. Unknown legacy anchor tokens are not automatically removed.
 - Physical-pointer PDF workflows and real touch devices still need broader end-to-end validation. DOM regressions are not a substitute for every Obsidian version or theme.
-- Handwriting, pen pressure, and mobile support are not implemented in this desktop build.
+- The desktop board implements handwriting and pressure-aware strokes. Mobile/Android device acceptance and the full physical-input matrix remain open; see the validation records.
 
 ## Develop and contribute
 
 ```bash
+pnpm install --frozen-lockfile
+npm --prefix extension ci
 pnpm typecheck
 pnpm test
 pnpm build
 ```
 
-`pnpm dev` watches source changes. `pnpm package` creates release artifacts. The local 0.2.4 verification run passed **531 tests across 62 files**, including hover behavior, drag-through-refresh, PDF event routing, highlight styles, and table anchoring. GitHub CI separately runs builds and tests on Linux, Windows, and macOS.
+`pnpm dev` watches source changes. `pnpm package` rebuilds the plugin and extension, then creates release artifacts; `pnpm package:verify` checks the sealed ZIP. The current local verification counts and remaining gates are recorded in the [dated optimization verification](docs/optimization-verification-2026-10-14.md). CI is configured to check types, tests and packaging on Linux, Windows and macOS; remote results require a push.
 
 When reporting an interaction issue, include plugin/Obsidian versions, skin, view mode, reproduction steps, and whether the plugin was reloaded after installation. Prefer a non-sensitive sample document.
 
-[User guide](docs/guide.md) · [Changelog](CHANGELOG.md) · [Table/PDF implementation notes](docs/table-and-pdf-anchoring.md) · [Pad design proposal](docs/pad-handwriting-spec.md)
+[User guide](docs/guide.md) · [Changelog](CHANGELOG.md) · [Table/PDF implementation notes](docs/table-and-pdf-anchoring.md) · [Pad design proposal](docs/pad-handwriting-spec.md) · [Next development: Pad & collaborative drawing](docs/next-development-plan.md)
 
 ## License
 

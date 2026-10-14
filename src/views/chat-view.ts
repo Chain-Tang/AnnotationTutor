@@ -1,18 +1,21 @@
+import { mountSupportCheckin } from "../support-panel.js";
+import { openSupportDialog } from "../support-modal.js";
+import { mountLearningPanel } from "../learning-panel.js";
 // The Claudian-style tutor chat: the plugin's right-leaf sidebar. A multi-turn
 // conversation with contextual memory that can answer questions about what the
 // learner is reading, read the whole note on demand (OpenCode), and jump to a
 // specific annotation. The dashboard table now lives in Settings → Annotations.
 //
-// The view owns the conversation state (the live ACP session for OpenCode, or
-// the resent message history for the Direct API) and a mode toggle (Ask / Plan /
-// Build) that maps to the OpenCode session mode. All prompt assembly is pure and
-// lives in chat-prompt.ts; engine glue (settings, the Vault, spawning) lives on
-// the plugin, so this file is just UI + flow.
+// The plugin-owned TutorConversation keeps history and generation alive while
+// this sidebar is hidden or closed. The view renders its stream and retains the
+// existing Ask / Plan / Build and editable-note proposal UI.
 
 import {
   ItemView,
   MarkdownRenderer,
   Modal,
+  Menu,
+  Notice,
   setIcon,
   setTooltip,
   type WorkspaceLeaf
@@ -22,18 +25,14 @@ import type { EditTarget } from "../main.js";
 import type { ChatLog, ChatLogHead, IndexRecord } from "../model.js";
 import { t } from "../i18n.js";
 import { classifyIntent } from "../intent.js";
-import { detectLanguageName } from "../lang.js";
+import { localLearnerAuthority } from "../learning-control-v3.js";
+import { shouldResolveTutorAction } from "../tutor-intent.js";
 import { diffLineClass, lineDiff } from "../line-diff.js";
 import { buildEditInstruction, EDIT_START, resolveEdit } from "../edit-parse.js";
-import {
-  buildApiMessages,
-  opencodePreamble,
-  type ChatContext
-} from "../chat-prompt.js";
-import type { ChatMessage } from "../api-runner.js";
+import type { ChatContext } from "../chat-prompt.js";
+import { tutorRouteForText, type TutorConversationState, type TutorMessage } from "../tutor-conversation.js";
 import type {
   AcpCommand,
-  AcpSessionHandle,
   AcpStreamEvent
 } from "../acp-session.js";
 import {
@@ -42,8 +41,6 @@ import {
   type ChatSegment
 } from "../chat-stream.js";
 import { ConfirmModal } from "./annotation-modal.js";
-import { makeId, nowIso } from "../ids.js";
-import { capChatLog, chatTitleFrom } from "../markdown/chat-log-file.js";
 
 /** An annotation pinned as the conversation's context (from a margin card). */
 type PinnedAnnotation = {
@@ -58,31 +55,32 @@ export const CHAT_VIEW_TYPE = "annotation-tutor-lite-chat";
 export type ChatMode = "ask" | "plan" | "build";
 const MODES: ChatMode[] = ["ask", "plan", "build"];
 // Ask is conversational read-only; Plan is OpenCode's read-only planning mode.
-const ACP_MODE: Record<ChatMode, string> = { ask: "build", plan: "plan", build: "build" };
 
 export class ChatView extends ItemView {
-  private mode: ChatMode = "ask";
+  private get mode(): ChatMode { return this.plugin.tutorConversation.mode; }
+  private set mode(mode: ChatMode) { this.plugin.tutorConversation.mode = mode; }
   private busy = false;
-  private session: AcpSessionHandle | null = null;
-  private sessionKey = ""; // engine+command+model the live session was built for
-  private firstTurn = true;
+  private stopLearning:(()=>void)|undefined;
+  private stopSupport:(()=>void)|undefined;
   private lastSentNotePath = ""; // so we can re-index OpenCode when the note changes
   private pinned: PinnedAnnotation | null = null;
-  private readonly apiHistory: ChatMessage[] = [];
+  private selectionContext: ChatContext | null = null;
+  private unsubscribe: (() => void) | null = null;
+  private readonly sidebarId = `tutor-sidebar-${Math.random().toString(36).slice(2)}`;
+  private renderedHistory: readonly TutorMessage[] | null = null;
+  private rendered = new Map<string, { el: HTMLElement; status: TutorMessage["status"]; events: number; stream?: ReturnType<ChatView["addStreamingAssistant"]> }>();
   /** Slash commands the live OpenCode session has advertised (empty for API). */
-  private commands: AcpCommand[] = [];
+  private get commands(): readonly AcpCommand[] { return this.plugin.tutorConversation.state.commands; }
   /** The saved session this conversation persists into (null until the first turn). */
-  private currentLog: ChatLog | null = null;
-  /** True until the first reply after a restore; the recap is prefixed once. */
-  private restoredFromHistory = false;
+  private get currentLog(): ChatLog | null { return this.plugin.tutorConversation.log; }
+  private set currentLog(log: ChatLog | null) { this.plugin.tutorConversation.log = log; }
 
   private messagesEl!: HTMLElement;
   private contextEl!: HTMLElement;
+  private contextRenderVersion = 0;
   private inputEl!: HTMLTextAreaElement;
   private sendBtn!: HTMLButtonElement;
   private commandPopupEl!: HTMLElement;
-  /** Set when the learner hits the stop control mid-turn; guards the result. */
-  private stopRequested = false;
 
   public constructor(
     leaf: WorkspaceLeaf,
@@ -105,15 +103,35 @@ export class ChatView extends ItemView {
 
   public override async onOpen(): Promise<void> {
     this.render();
-    this.registerEvent(
-      this.app.workspace.on("active-leaf-change", () => void this.renderContext())
-    );
+    this.unsubscribe = this.plugin.tutorConversation.subscribe(state => this.renderConversation(state));
+    this.registerEvent(this.app.workspace.on("active-leaf-change", () => {
+      void this.renderContext(); this.updateVisibility();
+    }));
+    this.registerEvent(this.app.workspace.on("layout-change", () => this.updateVisibility()));
+    const win = this.contentEl.ownerDocument.defaultView;
+    const Resize = (win as Window & { ResizeObserver?: typeof ResizeObserver } | null)?.ResizeObserver;
+    if (Resize) {
+      const observer = new Resize(() => this.updateVisibility());
+      observer.observe(this.contentEl); this.register(() => observer.disconnect());
+    }
+    this.updateVisibility();
     void this.restoreLatestSession();
   }
 
   public override async onClose(): Promise<void> {
-    this.disposeSession();
+    this.stopSupport?.(); this.stopSupport=undefined;
+    this.stopLearning?.(); this.stopLearning=undefined;
+    this.contextRenderVersion++;
+    this.unsubscribe?.(); this.unsubscribe = null;
+    this.plugin.tutorConversation.setSidebarVisible(this.sidebarId, false, this.contentEl.ownerDocument);
     this.contentEl.empty();
+  }
+
+  private updateVisibility(): void {
+    const rect = this.contentEl.getBoundingClientRect();
+    const collapsed = this.contentEl.closest(".is-sidedock-collapsed");
+    const visible = this.contentEl.isConnected && !collapsed && rect.width > 0 && rect.height > 0;
+    this.plugin.tutorConversation.setSidebarVisible(this.sidebarId, visible, this.contentEl.ownerDocument);
   }
 
   /** Re-read settings-derived chrome (model badge) when settings change. */
@@ -124,7 +142,12 @@ export class ChatView extends ItemView {
   // --- layout ---------------------------------------------------------------
 
   private render(): void {
+    const draft = this.inputEl?.value ?? "";
+    this.stopSupport?.();
+    this.stopLearning?.();
     this.contentEl.empty();
+    this.rendered.clear();
+    this.renderedHistory = null;
     const root = this.contentEl.createDiv({ cls: "atl-chat" });
 
     const header = root.createDiv({ cls: "atl-chat-header" });
@@ -138,10 +161,14 @@ export class ChatView extends ItemView {
     const spacer = header.createSpan({ cls: "atl-spacer" });
     spacer.style.flex = "1";
     this.iconButton(header, "plus", t("chat.new"), () => this.newChat());
-    this.iconButton(header, "history", t("chat.history"), () => void this.showHistory());
-    this.iconButton(header, "settings", t("panel.settings"), () =>
-      this.plugin.openSettings()
-    );
+    const more=this.iconButton(header, "ellipsis", t("upgrade.chatMore"), () => {
+      const menu=new Menu();
+      menu.addItem(item=>item.setTitle(t("chat.history")).setIcon("history").onClick(()=>void this.showHistory()));
+      if(this.plugin.support)menu.addItem(item=>item.setTitle(t("upgrade.supportOpen")).setIcon("message-circle-off").onClick(()=>openSupportDialog(this.app,this.plugin.support!,()=>this.plugin.settings.supportRetentionDays)));
+      menu.addSeparator();
+      menu.addItem(item=>item.setTitle(t("panel.settings")).setIcon("settings").onClick(()=>this.plugin.openSettings()));
+      const rect=more.getBoundingClientRect();menu.showAtPosition({x:rect.left,y:rect.bottom});
+    });
 
     const modeRow = root.createDiv({ cls: "atl-chat-mode" });
     for (const mode of MODES) {
@@ -156,14 +183,27 @@ export class ChatView extends ItemView {
       };
     }
 
+    if(this.plugin.support)this.stopSupport=mountSupportCheckin(root,this.plugin.support,{quiet:()=>this.plugin.supportQuiet(),open:draft=>openSupportDialog(this.app,this.plugin.support!,()=>this.plugin.settings.supportRetentionDays,draft)});
+    if(this.plugin.settings.learningFlowEnabled && this.plugin.learningCard){
+      this.stopLearning=mountLearningPanel(root,{activity:()=>this.plugin.learningActivity(),card:this.plugin.learningCard,minutes:()=>this.plugin.settings.learningDailyMinutes,
+        run:async(action,present,options)=>{
+          const selection=this.selectionContext,pinned=this.pinned?{...this.pinned}:undefined;
+          const pinnedSource=options?.newRecord&&!selection?.notePath&&pinned?await this.plugin.tutorContext(pinned.notePath,0,1):undefined;
+          const source=options?.newRecord?(selection?.notePath?{path:selection.notePath,version:selection.observation!.version}:pinned&&pinnedSource?{path:pinned.notePath,version:pinnedSource.revision,annotationId:pinned.annotationId}:undefined):undefined;
+          const sourceBinding=selection?.sourceBinding??pinnedSource?.sourceBinding;
+          return this.plugin.runLearningCard(action,present,{...options,...(source?{source}:{}),...(sourceBinding?{sourceBinding}:{})});
+        },
+        help:async(mode,text)=>{await this.plugin.learningHelp(mode,text);},draw:()=>this.plugin.learningDraw(),explain:answer=>this.plugin.checkLearningExplanation(answer),...(this.plugin.settings.learningExpertsEnabled?{expert:async(kind:import("../learning-experts.js").LearningExpertKind)=>this.plugin.openLearningExpert(kind)}:{})});
+    }
     this.messagesEl = root.createDiv({ cls: "atl-chat-messages" });
-    if (this.apiHistory.length === 0 && this.messagesEl.childElementCount === 0) {
+    if (this.plugin.tutorConversation.state.history.length === 0) {
       const empty = this.messagesEl.createDiv({ cls: "atl-chat-empty" });
       setIcon(empty.createDiv({ cls: "atl-chat-empty-icon" }), "graduation-cap");
       empty.createDiv({ cls: "atl-chat-empty-text", text: t("chat.welcome") });
       // One-tap starters: they send immediately, so the surface never sits
       // blank waiting for the learner to think of a first question.
       const suggest = empty.createDiv({ cls: "atl-chat-suggest" });
+      suggest.hidden=!!this.selectionContext;
       const prompts: Array<[string, string]> = [
         ["pen-line", t("chat.suggest.review")],
         ["book-open", t("chat.suggest.summarize")],
@@ -180,6 +220,15 @@ export class ChatView extends ItemView {
       }
     }
 
+    const boardActions = root.createDiv({ cls: "atl-chat-board-actions" });
+    for (const [icon, key] of [["circle-help", "chat.board.question"], ["workflow", "chat.board.diagram"], ["smile", "chat.board.expression"]]) {
+      const button = boardActions.createEl("button", { cls: "atl-chat-suggest-btn" });
+      const explain = !!this.selectionContext && key === "chat.board.question";
+      const label = t(explain ? "upgrade.selectionExplain" : key!);
+      setIcon(button.createSpan(), icon!); button.createSpan({ text: label });
+      setTooltip(button, label);
+      button.onclick = () => { this.inputEl.value = label; void this.send(explain ? undefined : "board"); };
+    }
     this.contextEl = root.createDiv({ cls: "atl-chat-context" });
     void this.renderContext();
 
@@ -193,7 +242,9 @@ export class ChatView extends ItemView {
     this.inputEl = inputRow.createEl("textarea", { cls: "atl-chat-input" });
     this.inputEl.placeholder = t("chat.placeholder");
     this.inputEl.rows = 2;
+    this.inputEl.value = draft;
     this.inputEl.addEventListener("keydown", (event) => {
+      if (event.isComposing || event.keyCode === 229) return;
       if (this.navigateCommandPopup(event)) return;
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
@@ -213,35 +264,45 @@ export class ChatView extends ItemView {
       if (this.busy) this.stop();
       else void this.send();
     };
+    this.renderConversation(this.plugin.tutorConversation.state);
   }
 
   private async renderContext(): Promise<void> {
-    if (!this.contextEl?.isConnected) return;
-    this.contextEl.empty();
+    const version = ++this.contextRenderVersion;
+    const target = this.contextEl;
+    if (!target?.isConnected) return;
+    target.empty();
     if (this.pinned) {
-      this.contextEl.createSpan({
+      target.createSpan({
         cls: "atl-chat-chip atl-chat-chip--pinned",
         text: `💬 ${this.pinned.annotationId}`
       });
-      this.addSelectionChip(this.pinned.selection);
+      this.addSelectionChip(this.pinned.selection, target);
       return;
     }
-    const ctx = await this.plugin.chatContext();
+    const ctx = this.selectionContext ?? await this.plugin.chatContext();
+    // A layout rebuild may have replaced the target while an older Vault read
+    // was pending. Only the latest request may populate its original container.
+    if (version !== this.contextRenderVersion || target !== this.contextEl || !target.isConnected) return;
     if (!ctx?.notePath) {
-      this.contextEl.createSpan({ cls: "atl-chat-chip atl-muted", text: t("chat.context.none") });
+      target.createSpan({ cls: "atl-chat-chip atl-muted", text: t("chat.context.none") });
       return;
     }
-    this.contextEl.createSpan({
+    target.createSpan({
       cls: "atl-chat-chip",
       text: `📄 ${ctx.noteTitle ?? ctx.notePath}`
     });
-    this.addSelectionChip(ctx.selection);
+    const selectionRow=this.selectionContext ? target.createDiv({cls:"atl-chat-selection-preview"}) : target;
+    this.addSelectionChip(ctx.selection, selectionRow);
+    if (this.selectionContext) this.iconButton(selectionRow,"x",t("upgrade.selectionRelease"),()=>{
+      this.selectionContext=null; this.render(); this.inputEl.focus();
+    });
   }
 
-  private addSelectionChip(selection?: string): void {
+  private addSelectionChip(selection?: string, target = this.contextEl): void {
     const sel = selection?.trim();
     if (!sel) return;
-    this.contextEl.createSpan({
+    target.createSpan({
       cls: "atl-chat-chip",
       text: `✦ ${sel.length > 30 ? `${sel.slice(0, 30)}…` : sel}`
     });
@@ -250,15 +311,26 @@ export class ChatView extends ItemView {
   // --- conversation ---------------------------------------------------------
 
   private newChat(): void {
-    this.disposeSession();
-    this.apiHistory.length = 0;
-    this.firstTurn = true;
+    this.plugin.tutorConversation.reset();
     this.lastSentNotePath = "";
     this.pinned = null;
-    this.commands = [];
-    this.currentLog = null;
-    this.restoredFromHistory = false;
+    this.selectionContext = null;
+    this.inputEl.value = "";
     this.render();
+  }
+
+  public seedSelection(context: ChatContext): void {
+    this.pinned = null;
+    this.selectionContext = structuredClone({...context,selectionBound:true});
+    this.mode = "ask";
+    this.render(); this.inputEl.focus();
+  }
+  public renameSelectionSource(oldPath: string, newPath: string): void {
+    const context=this.selectionContext;
+    if (context?.notePath !== oldPath) return;
+    context.notePath=newPath; context.noteTitle=newPath.split("/").pop();
+    if(context.observation)context.observation.source=newPath;
+    void this.renderContext();
   }
 
   /**
@@ -270,12 +342,10 @@ export class ChatView extends ItemView {
     record: IndexRecord,
     opts?: { mode?: ChatMode; send?: string }
   ): void {
-    this.disposeSession();
-    this.apiHistory.length = 0;
-    this.firstTurn = true;
+    this.plugin.tutorConversation.reset();
     this.lastSentNotePath = "";
-    this.currentLog = null;
-    this.restoredFromHistory = false;
+    this.selectionContext = null;
+    this.inputEl.value = "";
     this.pinned = {
       annotationId: record.annotationId,
       notePath: record.sourceFile,
@@ -294,79 +364,11 @@ export class ChatView extends ItemView {
 
   // --- session persistence ----------------------------------------------------
 
-  /**
-   * Persist one turn to the session file, creating the session on the first
-   * turn. Best-effort: a write failure surfaces a notice but never breaks the
-   * conversation.
-   */
-  private async persistTurn(
-    role: "user" | "assistant",
-    text: string
-  ): Promise<void> {
-    if (!this.plugin.settings.persistChatLog) return;
-    try {
-      const now = nowIso();
-      if (!this.currentLog) {
-        const heads = await this.plugin.store.listChatLogs();
-        this.currentLog = {
-          id: makeId("CHAT", heads.map((head) => head.id)),
-          title: chatTitleFrom(text),
-          engine: this.plugin.settings.chatEngine,
-          mode: this.mode,
-          status: "active",
-          turns: [],
-          createdAt: now,
-          updatedAt: now
-        };
-      }
-      this.currentLog = {
-        ...this.currentLog,
-        // The engine may have been toggled mid-conversation; keep the file honest.
-        engine: this.plugin.settings.chatEngine,
-        mode: this.mode,
-        turns: [...this.currentLog.turns, { role, text, at: now }],
-        updatedAt: now
-      };
-      await this.plugin.store.saveChatLog(this.currentLog);
-    } catch {
-      this.addNotice(t("chat.persistError"));
-    }
-  }
-
-  /**
-   * Show a saved session and continue it in place: capped turns render behind a
-   * divider, `apiHistory` is rebuilt so the API engine keeps its memory, and the
-   * next OpenCode turn gets a transcript recap (it is a brand-new session).
-   */
   private loadSession(log: ChatLog): void {
-    this.disposeSession();
-    this.apiHistory.length = 0;
-    this.firstTurn = true;
-    this.lastSentNotePath = "";
-    this.pinned = null;
-    this.commands = [];
-    this.currentLog = log;
-    this.restoredFromHistory = log.turns.length > 0;
-    const { turns, truncated } = capChatLog(log.turns);
-    this.apiHistory.push(
-      ...turns.map((turn) => ({ role: turn.role, content: turn.text }))
-    );
+    this.pinned = null; this.selectionContext = null;
+    this.inputEl.value = "";
+    this.plugin.tutorConversation.restore(log);
     this.render();
-    const divider = this.messagesEl.createDiv({ cls: "atl-chat-divider" });
-    divider.createSpan({
-      text: t("chat.earlierSession", {
-        date: log.updatedAt.slice(0, 10),
-        count: log.turns.length
-      })
-    });
-    for (const turn of turns) {
-      if (turn.role === "user") this.addMessage("user", turn.text);
-      else void this.renderAssistant(turn.text);
-    }
-    if (truncated > 0) {
-      this.addNotice(t("chat.truncatedNotice", { count: truncated }));
-    }
-    this.scrollToBottom();
   }
 
   /** After a restart, reload the newest saved session so the chat survives. */
@@ -374,8 +376,8 @@ export class ChatView extends ItemView {
     if (!this.plugin.settings.persistChatLog) return;
     if (
       this.currentLog ||
-      this.apiHistory.length > 0 ||
-      this.messagesEl.childElementCount > 0
+      this.plugin.tutorConversation.state.history.length > 0 ||
+      this.plugin.tutorConversation.state.busy
     ) {
       return;
     }
@@ -383,7 +385,7 @@ export class ChatView extends ItemView {
       const [latest] = await this.plugin.store.listChatLogs();
       if (!latest) return;
       const log = await this.plugin.store.loadChatLog(latest.id);
-      if (log && log.turns.length > 0) this.loadSession(log);
+      if (log && log.turns.length > 0 && !this.selectionContext && !this.pinned && !this.plugin.tutorConversation.state.busy && this.plugin.tutorConversation.state.history.length === 0) this.loadSession(log);
     } catch {
       /* history is best-effort: a read failure must not break the chat */
     }
@@ -391,89 +393,28 @@ export class ChatView extends ItemView {
 
   /** A modal listing saved sessions on a timeline: click to reopen, trash to delete. */
   private async showHistory(): Promise<void> {
-    let heads: ChatLogHead[] = [];
-    try {
-      heads = await this.plugin.store.listChatLogs();
-    } catch {
-      /* fall through to the empty list */
-    }
     const modal = new Modal(this.app);
     modal.titleEl.setText(t("chat.history"));
     modal.modalEl.addClass("atl-history-modal");
-    const list = modal.contentEl.createDiv({ cls: "atl-chat-history" });
-    if (heads.length === 0) {
-      const empty = list.createDiv({ cls: "atl-chat-history-empty" });
-      setIcon(empty.createDiv({ cls: "atl-chat-history-empty-icon" }), "messages-square");
-      empty.createDiv({ text: t("chat.historyEmpty") });
-    }
-    // Load full logs for previews. The modal is on-demand and sessions are
-    // capped (chatLogKeepSessions), so a handful of small file reads is fine.
-    const logs = await Promise.all(
-      heads.map((head) => this.plugin.store.loadChatLog(head.id).catch(() => null))
-    );
-    let lastBucket = "";
-    for (const [index, head] of heads.entries()) {
-      const bucket = this.historyBucket(head.updatedAt);
-      if (bucket !== lastBucket) {
-        list.createDiv({ cls: "atl-chat-history-group", text: bucket });
-        lastBucket = bucket;
-      }
-      const row = list.createDiv({ cls: "atl-chat-history-item" });
-      const open = row.createEl("button", { cls: "atl-chat-history-open" });
-      const titleRow = open.createDiv({ cls: "atl-chat-history-titlerow" });
-      titleRow.createSpan({ cls: "atl-chat-history-title", text: head.title });
-      titleRow.createSpan({
-        cls: "atl-chat-history-time",
-        text: this.historyTime(head.updatedAt)
-      });
-      const preview = this.previewOf(logs[index] ?? null);
-      if (preview) {
-        open.createDiv({ cls: "atl-chat-history-preview", text: preview });
-      }
-      const meta = open.createDiv({ cls: "atl-chat-history-meta" });
-      meta.createSpan({
-        cls: "atl-chat-history-badge",
-        text: head.engine === "api" ? "API" : "OpenCode"
-      });
-      meta.createSpan({
-        cls: "atl-chat-history-badge atl-chat-history-badge--mode",
-        text: t(`chat.mode.${head.mode}`)
-      });
-      meta.createSpan({
-        cls: "atl-muted",
-        text: t("chat.turnsCount", { count: head.turns })
-      });
-      open.onclick = () => {
-        void this.plugin.store.loadChatLog(head.id).then((log) => {
-          if (log) this.loadSession(log);
-        });
-        modal.close();
-      };
-      const del = row.createEl("button", { cls: "atl-iconbtn atl-chat-history-del" });
-      setIcon(del, "trash-2");
-      setTooltip(del, t("chat.deleteSession"));
-      del.onclick = () => {
-        new ConfirmModal(this.app, {
-          title: t("chat.deleteSession"),
-          body: t("chat.deleteSessionBody", { title: head.title }),
-          confirmText: t("chat.deleteSession"),
-          warning: true,
-          onConfirm: async () => {
-            await this.plugin.store.deleteChatLog(head.id);
-            row.remove();
-            if (this.currentLog?.id === head.id) {
-              this.currentLog = null;
-              this.restoredFromHistory = false;
-            }
-          }
-        }).open();
-      };
-    }
-    const footer = modal.contentEl.createDiv({ cls: "atl-chat-history-footer" });
-    const clearAll = footer.createEl("button", {
-      text: t("chat.deleteAllSessions"),
-      cls: "mod-warning"
+    const intro = modal.contentEl.createDiv({ cls: "atl-chat-history-intro" });
+    setIcon(intro.createDiv({ cls: "atl-chat-history-intro-icon" }), "history");
+    const introCopy = intro.createDiv({ cls: "atl-chat-history-intro-copy" });
+    introCopy.createDiv({ cls: "atl-chat-history-heading", text: t("chat.history") });
+    introCopy.createDiv({ cls: "atl-chat-history-subtitle", text: t("chat.historySubtitle") });
+    const search = modal.contentEl.createDiv({ cls: "atl-chat-history-search" });
+    setIcon(search.createSpan({ cls: "atl-chat-history-search-icon" }), "search");
+    const searchInput = search.createEl("input", {
+      cls: "atl-chat-history-search-input",
+      attr: { type: "search", placeholder: t("chat.historySearch"), "aria-label": t("chat.historySearch") }
     });
+    const list = modal.contentEl.createDiv({ cls: "atl-chat-history" });
+    const footer = modal.contentEl.createDiv({ cls: "atl-chat-history-footer" });
+    const count = footer.createSpan({ cls: "atl-chat-history-count" });
+    const clearAll = footer.createEl("button", {
+      cls: "atl-chat-history-clear"
+    });
+    setIcon(clearAll.createSpan(), "trash-2");
+    clearAll.createSpan({ text: t("chat.deleteAllSessions") });
     clearAll.onclick = () => {
       new ConfirmModal(this.app, {
         title: t("chat.deleteAllSessions"),
@@ -483,13 +424,90 @@ export class ChatView extends ItemView {
         onConfirm: async () => {
           await this.plugin.store.clearChatLogs();
           this.currentLog = null;
-          this.restoredFromHistory = false;
           modal.close();
           this.newChat();
         }
       }).open();
     };
     modal.open();
+    list.setAttribute("aria-busy", "true");
+    const loading = list.createDiv({ cls: "atl-chat-history-loading" });
+    for (let i = 0; i < 3; i++) loading.createDiv({ cls: "atl-chat-history-skeleton" });
+    let heads: ChatLogHead[] = [];
+    try {
+      heads = await this.plugin.store.listChatLogs();
+    } catch {
+      /* fall through to the empty list */
+    }
+    if (!modal.contentEl.isConnected) return;
+    // Load full logs for previews. The modal is on-demand and sessions are
+    // capped (chatLogKeepSessions), so a handful of small file reads is fine.
+    const loaded = await Promise.all(
+      heads.map(async head => [head.id, await this.plugin.store.loadChatLog(head.id).catch(() => null)] as const)
+    );
+    const logs = new Map(loaded);
+    const renderList = (): void => {
+      list.empty(); list.setAttribute("aria-busy", "false");
+      const query = searchInput.value.trim().toLocaleLowerCase();
+      const visible = heads.filter(head => {
+        const preview = this.previewOf(logs.get(head.id) ?? null);
+        return !query || `${head.title} ${preview}`.toLocaleLowerCase().includes(query);
+      });
+      count.textContent = t("chat.historySessionCount", { count: heads.length });
+      clearAll.hidden = heads.length === 0;
+      if (visible.length === 0) {
+        const empty = list.createDiv({ cls: "atl-chat-history-empty" });
+        setIcon(empty.createDiv({ cls: "atl-chat-history-empty-icon" }), query ? "search-x" : "messages-square");
+        empty.createDiv({ cls: "atl-chat-history-empty-title", text: query ? t("chat.historyNoResults") : t("chat.historyEmpty") });
+        if (!query) empty.createDiv({ cls: "atl-chat-history-empty-hint", text: t("chat.historyEmptyHint") });
+        return;
+      }
+      let lastBucket = "";
+      for (const head of visible) {
+        const bucket = this.historyBucket(head.updatedAt);
+        if (bucket !== lastBucket) {
+          list.createDiv({ cls: "atl-chat-history-group", text: bucket });
+          lastBucket = bucket;
+        }
+        const active = this.currentLog?.id === head.id;
+        const row = list.createDiv({ cls: `atl-chat-history-item${active ? " is-current" : ""}` });
+        const open = row.createEl("button", { cls: "atl-chat-history-open" });
+        if (active) open.setAttribute("aria-current", "true");
+        setIcon(open.createSpan({ cls: "atl-chat-history-row-icon" }), active ? "message-circle-more" : "message-circle");
+        const content = open.createDiv({ cls: "atl-chat-history-content" });
+        const titleRow = content.createDiv({ cls: "atl-chat-history-titlerow" });
+        titleRow.createSpan({ cls: "atl-chat-history-title", text: head.title });
+        titleRow.createSpan({ cls: "atl-chat-history-time", text: this.historyTime(head.updatedAt) });
+        const preview = this.previewOf(logs.get(head.id) ?? null);
+        if (preview && preview !== head.title) content.createDiv({ cls: "atl-chat-history-preview", text: preview });
+        const meta = content.createDiv({ cls: "atl-chat-history-meta" });
+        if (active) meta.createSpan({ cls: "atl-chat-history-current", text: t("chat.historyCurrent") });
+        meta.createSpan({ cls: "atl-chat-history-badge", text: head.engine === "api" ? "API" : "OpenCode" });
+        meta.createSpan({ cls: "atl-chat-history-badge atl-chat-history-badge--mode", text: t(`chat.mode.${head.mode}`) });
+        meta.createSpan({ cls: "atl-chat-history-turns", text: t("chat.turnsCount", { count: head.turns }) });
+        open.onclick = () => {
+          void this.plugin.store.loadChatLog(head.id).then(log => { if (log) this.loadSession(log); });
+          modal.close();
+        };
+        const del = row.createEl("button", { cls: "atl-iconbtn atl-chat-history-del" });
+        setIcon(del, "trash-2"); setTooltip(del, t("chat.deleteSession"));
+        del.onclick = event => {
+          event.stopPropagation();
+          new ConfirmModal(this.app, {
+            title: t("chat.deleteSession"), body: t("chat.deleteSessionBody", { title: head.title }),
+            confirmText: t("chat.deleteSession"), warning: true,
+            onConfirm: async () => {
+              await this.plugin.store.deleteChatLog(head.id);
+              heads = heads.filter(item => item.id !== head.id); logs.delete(head.id);
+              if (this.currentLog?.id === head.id) this.currentLog = null;
+              renderList();
+            }
+          }).open();
+        };
+      }
+    };
+    searchInput.addEventListener("input", renderList);
+    renderList();
   }
 
   /** Group a session into a human date bucket for the history timeline. */
@@ -534,201 +552,139 @@ export class ChatView extends ItemView {
     return oneLine.length > 120 ? `${oneLine.slice(0, 119)}\u2026` : oneLine;
   }
 
-  /**
-   * A bounded transcript recap for the engine: a restored OpenCode session is a
-   * brand-new process with no memory, so its first prompt replays the tail of
-   * the saved conversation (the API engine needs no recap — apiHistory carries it).
-   */
-  private transcriptRecap(): string {
-    const { turns } = capChatLog(this.currentLog?.turns ?? [], 20, 1200);
-    const lines = turns.map((turn) => {
-      const who = turn.role === "user" ? "Learner" : "Tutor";
-      const text = turn.text.replace(/\s+/g, " ").trim();
-      return `${who}: ${text.length > 300 ? `${text.slice(0, 300)}…` : text}`;
-    });
-    return `[This conversation was restored from an earlier session. Recent transcript:\n${lines.join("\n").slice(0, 1500)}\nContinue from here.]`;
-  }
-
   private async toggleEngine(): Promise<void> {
     this.plugin.settings.chatEngine =
       this.plugin.settings.chatEngine === "opencode" ? "api" : "opencode";
     await this.plugin.persistSettings();
-    this.disposeSession();
     this.render();
   }
 
   /** The note context for this turn: the pinned annotation, else the active note. */
   private async resolveContext(): Promise<ChatContext> {
-    if (this.pinned) {
+    if(this.selectionContext)return structuredClone(this.selectionContext);
+    const pinned=this.pinned?{...this.pinned}:null;
+    if (pinned) {
       const profileSummary = this.plugin.learnerProfileSummary();
+      const source=await this.plugin.tutorContext(pinned.notePath,0,6000);
       return {
-        notePath: this.pinned.notePath,
-        noteTitle: this.pinned.noteTitle,
-        selection: this.pinned.selection,
-        content: await this.plugin.noteContent(this.pinned.notePath),
+        notePath: pinned.notePath,
+        noteTitle: pinned.noteTitle,
+        selection: pinned.selection,
+        content: source.text,
+        sourceBinding:source.sourceBinding,
+        observation:{source:pinned.notePath,version:source.revision,scope:"selection",hasImage:false},
         ...(profileSummary ? { profileSummary } : {})
       };
     }
     return (await this.plugin.chatContext()) ?? {};
   }
 
-  private async send(): Promise<void> {
-    if (this.busy) return;
+  private async send(forcedRoute?: "board"): Promise<void> {
     const text = this.inputEl.value.trim();
-    if (!text) return;
+    if (!text || this.busy) return;
+    const conversation = this.plugin.tutorConversation;
+    const conversationId=conversation.conversationId,selection=this.selectionContext,pinned=this.pinned,mode=this.mode;
     this.inputEl.value = "";
-    this.clearEmpty();
-    this.addMessage("user", text);
-
-    // First layer: decide whether this is a quick "locate" the plugin can answer
-    // without the model, a "write" (hint toward Build), or a plain question.
     const intent = classifyIntent(text);
     if (intent === "locate" && this.tryLocate(text)) return;
-
-    // Local-only turns (locate above) are not worth a session file; everything
-    // that reaches an engine is.
-    await this.persistTurn("user", text);
-
-    this.stopRequested = false;
-    this.setBusy(true);
-    // Everything from here on lives inside the try: `resolveContext()` reads the
-    // Vault and `captureEditTarget()` touches the editor, so either can throw —
-    // and outside the try that left `busy` stuck on, silently swallowing every
-    // later message (callers use `void this.send()`, so nothing else catches it).
     try {
+      const route = forcedRoute ?? tutorRouteForText(text, {
+        mode, pinned: !!pinned, hasBoard: conversation.hasBoard()
+      });
       const ctx = await this.resolveContext();
-      // The agent may propose an edit when in Build mode or when the message
-      // clearly asks for one ("insert a table…", "draw a diagram…") — so writing
-      // and inserting work without first switching to Build. Capture where the
-      // edit would land and append the edit protocol to the message the engine
-      // receives. With an annotation pinned (e.g. a "polish" routed from a card),
-      // prefer its selected text so the edit replaces the annotated span.
-      const wantsEdit = this.mode === "build" || intent === "write";
-      const target = wantsEdit
-        ? this.plugin.captureEditTarget(this.pinned?.selection)
-        : null;
-      const engineText = wantsEdit
-        ? `${buildEditInstruction(target?.hasSelection ?? false)}\n\n${text}`
-        : text;
-      if (this.plugin.settings.chatEngine === "opencode") {
-        await this.runOpenCodeWithFallback(ctx, engineText, text, target);
-      } else {
-        await this.runApiTurn(ctx, engineText, text, target);
-      }
+      if(conversation.conversationId!==conversationId||this.selectionContext!==selection||this.pinned!==pinned)
+        throw new DOMException(t("upgrade.conversationSourceChanged"), "AbortError");
+      const resolveIntent=route !== "chat" && mode === "ask" && !pinned && (!!forcedRoute || shouldResolveTutorAction(text, conversation.hasBoard()));
+      // Semantic visual preparation must precede edit guards or target tools.
+      // A selected drawing request without an open board otherwise looks like
+      // an edit to this heuristic and is rejected before preparation can run.
+      const wantsEdit = route !== "board" && (mode === "build" || intent === "write"&&!resolveIntent);
+      if (wantsEdit && ctx.selectionBound) throw new Error(t("upgrade.selectionEditSource"));
+      const target = wantsEdit ? this.plugin.captureEditTarget(pinned?.selection, ctx.notePath) : null;
+      const engineText = wantsEdit ? `${buildEditInstruction(target?.hasSelection ?? false)}\n\n${text}` : text;
+      this.lastSentNotePath = ctx.notePath ?? "";
+      await conversation.submit(text, { source: "chat", route, mode,
+        learningTurn: {entry:"sidebar",kind:wantsEdit?"document-edit":"conversation",authority:localLearnerAuthority()},
+        resolveIntent,
+        context: { chat: ctx, engineText }, metadata: { target, mode,...(pinned?{annotationId:pinned.annotationId}:{}) } });
     } catch (error) {
-      this.addNotice(
-        t("chat.error", {
-          detail: error instanceof Error ? error.message : String(error)
-        })
-      );
-    } finally {
-      this.setBusy(false);
+      if (!this.inputEl.value) this.inputEl.value=text;
+      this.addNotice(t("chat.error", { detail: error instanceof Error ? error.message : String(error) }));
     }
   }
 
-  /** Prefer OpenCode (it can read the Vault); fall back to the API if it can't start. */
-  private async runOpenCodeWithFallback(
-    ctx: ChatContext,
-    engineText: string,
-    rawText: string,
-    target: EditTarget | null
-  ): Promise<void> {
-    try {
-      await this.runOpenCodeTurn(ctx, engineText, rawText, target);
-    } catch (error) {
-      // The session could not be spawned (OpenCode missing / unreachable).
-      if (this.plugin.settings.apiKey.trim()) {
-        this.addNotice(
-          t("chat.fallbackApi", {
-            detail: error instanceof Error ? error.message : String(error)
-          })
-        );
-        await this.runApiTurn(ctx, engineText, rawText, target);
-        return;
+  private renderConversation(state: TutorConversationState): void {
+    if (!this.messagesEl?.isConnected) return;
+    if (this.renderedHistory !== state.history && this.rendered.size) {
+      this.messagesEl.empty(); this.rendered.clear();
+    }
+    this.renderedHistory = state.history;
+    if (state.history.length) this.clearEmpty();
+    // Only the tail can change during a turn. Long transcripts must not be
+    // traversed or rendered again for every token arriving from the model.
+    for (const message of state.history.slice(Math.max(0, this.rendered.size - 1))) {
+      let rendered = this.rendered.get(message.id);
+      if (!rendered) {
+        if (message.role === "user") {
+          rendered = { el: this.addMessage("user", message.text), status: message.status, events: 0 };
+        } else {
+          const stream = this.addStreamingAssistant();
+          rendered = { el: stream.el, status: "streaming", events: 0, stream };
+        }
+        this.rendered.set(message.id, rendered);
       }
-      throw error;
-    }
-  }
-
-  private async runApiTurn(
-    ctx: ChatContext,
-    engineText: string,
-    rawText: string,
-    target: EditTarget | null
-  ): Promise<void> {
-    if (!this.plugin.settings.apiKey.trim()) {
-      this.addNotice(t("notice.apiKeyMissing"));
-      return;
-    }
-    const thinking = this.addThinking();
-    const messages = buildApiMessages(
-      this.apiHistory,
-      ctx,
-      engineText,
-      this.languageTarget(rawText)
-    );
-    const result = await this.plugin.chatApiTurn(messages);
-    thinking.remove();
-    if (this.stopRequested) return;
-    if (!result.ok || !result.reviewText) {
-      this.addNotice(result.error ? t("chat.error", { detail: result.error }) : t("chat.empty"));
-      return;
-    }
-    // Keep the conversation history clean (the raw message, not the protocol).
-    this.apiHistory.push({ role: "user", content: rawText });
-    this.apiHistory.push({ role: "assistant", content: result.reviewText });
-    await this.persistTurn("assistant", result.reviewText);
-    await this.presentReply(result.reviewText, null, target);
-  }
-
-  private async runOpenCodeTurn(
-    ctx: ChatContext,
-    engineText: string,
-    rawText: string,
-    target: EditTarget | null
-  ): Promise<void> {
-    const session = await this.ensureSession();
-    const bubble = this.addStreamingAssistant();
-    let raw = "";
-    let gotChunk = false;
-    bubble.onUpdate = (event: AcpStreamEvent): void => {
-      if (event.type === "message") {
-        gotChunk = true;
-        raw += event.text;
-        bubble.appendRaw(raw);
-        this.scrollToBottom();
-      } else if (event.type === "thought" || event.type === "tool") {
-        bubble.addEvent(event);
-        this.scrollToBottom();
+      if (message.role === "assistant" && rendered.stream) {
+        rendered.stream.appendRaw(message.text);
+        for (const event of message.events.slice(rendered.events)) rendered.stream.addEvent(event);
+        rendered.events = message.events.length;
+        if (message.status !== "streaming") {
+          rendered.stream.finalize(); rendered.stream = undefined;
+          const meta = message.metadata as { target?: EditTarget | null; locate?: IndexRecord } | undefined;
+          if (meta?.locate) {
+            rendered.el.createDiv({ cls: "atl-chat-locate", text: message.text });
+            if (meta.locate.userNoteSummary) rendered.el.createDiv({ cls: "atl-muted", text: meta.locate.userNoteSummary });
+            const open = rendered.el.createEl("button", { cls: "mod-cta", text: t("chat.locate.open") });
+            open.onclick = () => this.plugin.chatJump(meta.locate!);
+          } else void this.presentReply(message.text, rendered.el, meta?.target ?? null);
+        }
       }
-    };
-    const prompt = `${this.opencodeContextPrefix(ctx, rawText)}${engineText}`;
-    this.firstTurn = false;
-    if (ctx.notePath) this.lastSentNotePath = ctx.notePath;
-    const result = await session.session.prompt(prompt, { mode: ACP_MODE[this.mode] });
-    bubble.onUpdate = null;
-    if (this.stopRequested) {
-      // Keep whatever streamed so far; skip the error/empty notices and don't persist.
-      if (gotChunk) bubble.finalize();
-      else bubble.el.remove();
-      return;
+      if (message.execution) {
+        const badge=rendered.el.querySelector<HTMLElement>(".atl-chat-execution") ?? rendered.el.createDiv({cls:"atl-chat-execution atl-muted"});
+        badge.textContent=t("board.executionModel",{model:message.execution.model,engine:message.execution.engine})+(message.execution.mode === "custom" ? ` · ${t("board.connectionCustom")}` : "");
+        badge.dataset.engine=message.execution.engine;badge.dataset.model=message.execution.model;
+      }
+      rendered.status = message.status;
     }
-    const finalText = result.text || raw;
-    if (!result.ok && !finalText) {
-      bubble.el.remove();
-      this.addNotice(result.error ? t("chat.error", { detail: result.error }) : t("chat.empty"));
-      // A dead session should be rebuilt next turn.
-      this.disposeSession();
-      return;
-    }
-    if (!gotChunk && !finalText) {
-      bubble.el.remove();
-      this.addNotice(t("chat.empty"));
-      return;
-    }
-    bubble.finalize();
-    await this.presentReply(finalText, bubble.el, target);
-    await this.persistTurn("assistant", finalText);
+    this.setBusy(state.busy);
+    this.updateCommandPopup();
+    let error = this.messagesEl.querySelector<HTMLElement>(".atl-chat-current-error");
+    if (state.error && state.taskStatus !== "blocked") {
+      error ??= this.messagesEl.createDiv({ cls: "atl-chat-msg atl-chat-notice atl-chat-current-error" });
+      error.textContent = state.error === "board-unavailable" ? t("chat.board.openFirst") : /^teaching-(?:envelope|control|reply|stream)-[a-z-]+$/.test(state.error) ? t("chat.learningProtocolError") : t("chat.error", { detail: state.error });
+    } else error?.remove();
+    let task = this.messagesEl.querySelector<HTMLElement>(".atl-chat-task-status");
+    if (state.taskStatus) {
+      task ??= this.messagesEl.createDiv({cls:"atl-chat-task-status"});
+      task.setAttribute("role","status");task.empty();
+      task.createSpan({text:t(`board.task${state.taskStatus[0]!.toUpperCase()}${state.taskStatus.slice(1)}`)});
+      if (state.failure && state.execution) task.createSpan({cls:"atl-chat-execution atl-muted",text:t("board.executionModel",{model:state.execution.model,engine:state.execution.engine})+(state.execution.mode === "custom" ? ` · ${t("board.connectionCustom")}` : "")});
+      if(state.taskStatus!=="reconciliation"&&state.failure?.recovery === "connection") {
+        task.createEl("button",{text:t("board.checkConnection")}).onclick=()=>this.plugin.tutorConversation.openConnectionSettings();
+        if(state.execution?.mode === "custom") task.createEl("button",{text:t("board.followAndRetry")}).onclick=()=>{void this.plugin.tutorConversation.useChatConnectionAndRetry();};
+      }
+      if(state.taskStatus==="reconciliation"&&state.taskId&&state.commit){
+        for(const action of ["inspect",...(state.commit.durability==="applied-not-durable"?["retry-save"]:[])] as Array<"inspect"|"retry-save">){
+          const button=task.createEl("button",{text:t(action==="inspect"?"board.inspectSavedDrawing":"board.retryDrawingSave")});
+          button.onclick=()=>{button.disabled=true;void this.plugin.recoverLocalDrawing(state.taskId!,action).catch(error=>new Notice(error instanceof Error?error.message:"Drawing recovery unavailable")).finally(()=>button.disabled=false);};
+        }
+      }
+      if(state.canRetry) task.createEl("button",{text:t("board.retryTask")}).onclick=()=>{void this.plugin.tutorConversation.retry();};
+      if(state.requestToEdit) task.createEl("button",{text:t("board.editRequest")}).onclick=()=>{
+        this.inputEl.value=state.requestToEdit!;this.inputEl.focus();
+      };
+      this.messagesEl.append(task);
+    } else task?.remove();
+    this.scrollToBottom();
   }
 
   /**
@@ -741,8 +697,6 @@ export class ChatView extends ItemView {
     container: HTMLElement | null,
     target: EditTarget | null
   ): Promise<void> {
-    // The engine answered, so the restored-session recap must not repeat.
-    this.restoredFromHistory = false;
     // `target` is non-null exactly when this turn asked the agent to write; also
     // handle a reply that carries edit markers even if there's no note to apply
     // to, so the raw markers are never shown as text.
@@ -766,8 +720,7 @@ export class ChatView extends ItemView {
 
   /** Coerce a captured target into an insert-at-cursor target for a generated block. */
   private insertTarget(target: EditTarget | null): EditTarget | null {
-    const base = target ?? this.plugin.captureEditTarget();
-    return base ? { ...base, hasSelection: false, original: "" } : null;
+    return target ? { ...target, hasSelection: false, original: "" } : null;
   }
 
   /** A preview card for a proposed edit: a diff plus Apply / Dismiss. */
@@ -804,34 +757,6 @@ export class ChatView extends ItemView {
     for (const line of diff.split("\n")) {
       pre.createDiv({ cls: diffLineClass(line), text: line });
     }
-  }
-
-  private async ensureSession(): Promise<AcpSessionHandle> {
-    const key = `opencode:${this.plugin.settings.agentCommand}:${this.plugin.settings.agentModel}:${this.plugin.settings.mcpServersJson}`;
-    if (this.session && this.sessionKey === key && !this.session.session.error) {
-      return this.session;
-    }
-    this.disposeSession();
-    this.firstTurn = true;
-    const handle = await this.plugin.startChatSession({
-      onUpdate: (event) => {
-        // Command broadcasts arrive right after session/new, between turns,
-        // so they are handled here rather than on the per-turn stream sink.
-        if (event.type === "commands") {
-          this.commands = event.commands;
-          this.updateCommandPopup();
-          return;
-        }
-        this.activeStream?.(event);
-      },
-      onExit: () => {
-        /* surfaced per-turn via prompt() resolving with an error */
-      }
-    });
-    this.session = handle;
-    this.sessionKey = key;
-    this.commands = handle.session.commands;
-    return handle;
   }
 
   // --- slash command popup ---------------------------------------------------
@@ -931,24 +856,11 @@ export class ChatView extends ItemView {
   private tryLocate(text: string): boolean {
     const record = this.plugin.chatLocate(text);
     if (!record) return false;
-    const card = this.messagesEl.createDiv({ cls: "atl-chat-msg atl-chat-msg--assistant" });
-    card.createDiv({
-      cls: "atl-chat-locate",
-      text: t("chat.locate.found", { id: record.annotationId })
-    });
-    if (record.userNoteSummary) {
-      card.createDiv({ cls: "atl-muted", text: record.userNoteSummary });
-    }
-    const open = card.createEl("button", { cls: "mod-cta", text: t("chat.locate.open") });
-    open.onclick = () => this.plugin.chatJump(record);
-    this.scrollToBottom();
+    this.plugin.tutorConversation.recordLocal(text, t("chat.locate.found", { id: record.annotationId }), { locate: record });
     return true;
   }
 
   // --- message rendering ----------------------------------------------------
-
-  /** The live OpenCode stream sink, set while a turn is in flight. */
-  private activeStream: ((event: AcpStreamEvent) => void) | null = null;
 
   private addMessage(role: "user" | "assistant", text: string): HTMLElement {
     const el = this.messagesEl.createDiv({
@@ -992,7 +904,7 @@ export class ChatView extends ItemView {
     let pendingText = "";
     const batcher = createFrameBatcher(() => {
       body.textContent = pendingText;
-    }, (callback) => window.requestAnimationFrame(callback));
+    }, (callback) => (this.contentEl.ownerDocument.defaultView ?? window).requestAnimationFrame(callback));
 
     // Thought/tool events fold into the segment blocks above the reply text.
     // Each block keeps its own updater so a re-render touches only what moved:
@@ -1062,7 +974,7 @@ export class ChatView extends ItemView {
       for (const stale of nodes.splice(segments.length)) stale.el.remove();
     };
     const segmentBatcher = createFrameBatcher(renderSegments, (callback) =>
-      window.requestAnimationFrame(callback)
+      (this.contentEl.ownerDocument.defaultView ?? window).requestAnimationFrame(callback)
     );
 
     const handle = {
@@ -1086,8 +998,6 @@ export class ChatView extends ItemView {
       },
       onUpdate: null as ((event: AcpStreamEvent) => void) | null
     };
-    // Bridge the session's single stream sink to this bubble for its lifetime.
-    this.activeStream = (event) => handle.onUpdate?.(event);
     return handle;
   }
 
@@ -1147,30 +1057,6 @@ export class ChatView extends ItemView {
 
   // --- helpers --------------------------------------------------------------
 
-  private languageTarget(text: string): string {
-    return this.plugin.settings.reviewLanguage.trim() || detectLanguageName(text);
-  }
-
-  /**
-   * The context the OpenCode turn is prefixed with: the full preamble on the
-   * first turn, and a short "now reading …" note whenever the active note has
-   * changed since the last turn (so the agent re-indexes the new file).
-   */
-  private opencodeContextPrefix(ctx: ChatContext, text: string): string {
-    let prefix = "";
-    if (this.firstTurn) {
-      prefix = `${opencodePreamble(ctx, this.languageTarget(text))}\n\n`;
-    } else if (ctx.notePath && ctx.notePath !== this.lastSentNotePath) {
-      const sel = ctx.selection?.trim();
-      const selPart = sel ? `, selected: "${sel}"` : "";
-      prefix = `[The learner is now reading: ${ctx.notePath}${selPart}. Read it with your file tools if helpful.]\n\n`;
-    }
-    if (this.restoredFromHistory) {
-      prefix += `${this.transcriptRecap()}\n\n`;
-    }
-    return prefix;
-  }
-
   private engineLabel(): string {
     return this.plugin.settings.chatEngine === "api"
       ? this.plugin.settings.apiModel.trim() || "API"
@@ -1179,23 +1065,18 @@ export class ChatView extends ItemView {
 
   private setBusy(busy: boolean): void {
     this.busy = busy;
+    if (this.sendBtn.dataset.busy === String(busy)) return;
+    this.sendBtn.dataset.busy = String(busy);
     // The send button stays clickable while busy — it morphs into the stop control.
     this.sendBtn.toggleClass("is-generating", busy);
     setIcon(this.sendBtn, busy ? "square" : "send-horizontal");
     setTooltip(this.sendBtn, busy ? t("chat.stop") : t("chat.send"));
-    this.inputEl.disabled = busy;
+    this.inputEl.disabled = false;
   }
 
   /** Abort the in-flight turn (the send button morphs into this stop control). */
   private stop(): void {
-    if (!this.busy) return;
-    this.stopRequested = true;
-    // OpenCode: tearing the session down settles the pending prompt at once.
-    // API: requestUrl can't be aborted mid-flight, so the pending result is
-    // discarded when it returns (see the stopRequested guards in the run* turns).
-    if (this.plugin.settings.chatEngine === "opencode") this.disposeSession();
-    this.setBusy(false);
-    this.addNotice(t("chat.stopped"));
+    this.plugin.tutorConversation.cancel();
   }
 
   private clearEmpty(): void {
@@ -1206,26 +1087,16 @@ export class ChatView extends ItemView {
     this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
   }
 
-  private disposeSession(): void {
-    this.session?.dispose();
-    this.session = null;
-    this.sessionKey = "";
-    this.activeStream = null;
-    // Second line of defence for the busy flag: tearing the session down mid-turn
-    // (new chat / engine switch / pinning a card) must never leave the composer
-    // disabled-in-spirit, because `send()` returns early on `busy` without a word.
-    this.setBusy(false);
-  }
-
   private iconButton(
     container: HTMLElement,
     icon: string,
     tooltip: string,
     handler: () => void
-  ): void {
+  ): HTMLButtonElement {
     const button = container.createEl("button", { cls: "atl-iconbtn" });
     setIcon(button, icon);
     setTooltip(button, tooltip);
     button.onclick = () => handler();
+    return button;
   }
 }

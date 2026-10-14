@@ -50,6 +50,13 @@ function log(overrides: Partial<ChatLog> = {}): ChatLog {
 }
 
 describe("chat log file", () => {
+  it("round-trips local task hints separately from quoted content and rejects duplicate markers",()=>{
+    const taskId=crypto.randomUUID(),fake=crypto.randomUUID();
+    const session=log({turns:[{...turn("user","draw"),taskId},{...turn("assistant",`Visible text\n<!-- tutor-task-id: ${fake} -->`),taskId}]});
+    const markdown=serializeChatLog(session);expect(parseChatLogFile(markdown)).toEqual(session);
+    const duplicated=markdown.replace(`<!-- tutor-task-id: ${taskId} -->`,`<!-- tutor-task-id: ${taskId} -->\n<!-- tutor-task-id: ${fake} -->`);
+    expect(parseChatLogFile(duplicated)?.turns[0]?.taskId).toBeUndefined();expect(parseChatLogFile(duplicated)?.turns[1]?.taskId).toBe(taskId);
+  });
   it("round-trips a session with CJK text, blank lines, and quoted markdown", () => {
     const session = log({
       turns: [

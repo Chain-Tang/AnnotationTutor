@@ -11,6 +11,12 @@ describe("migrateSettings", () => {
     expect(migrateSettings(null)).toEqual(DEFAULT_SETTINGS);
     expect(migrateSettings("nonsense")).toEqual(DEFAULT_SETTINGS);
   });
+  it("preserves the external surface journal identity and never erases malformed bindings",()=>{
+    const journalId=crypto.randomUUID();expect(migrateSettings({}).surfaceTransactionJournalId).toBe("");
+    expect(migrateSettings({surfaceTransactionJournalId:journalId}).surfaceTransactionJournalId).toBe(journalId);
+    expect(migrateSettings({surfaceTransactionJournalId:"malformed"}).surfaceTransactionJournalId).toBe("malformed");
+    for(const value of [null,undefined,42,{}])expect(migrateSettings({surfaceTransactionJournalId:value}).surfaceTransactionJournalId).toBe("invalid-surface-journal-identity");
+  });
 
   it("migrates the old highlightAnnotations boolean to highlightStyle", () => {
     expect(migrateSettings({ highlightAnnotations: false }).highlightStyle).toBe(
@@ -159,6 +165,10 @@ describe("migrateSettings", () => {
   it("fills the new Web Clipper fields with defaults", () => {
     const migrated = migrateSettings({});
     expect(migrated.webEnabled).toBe(false);
+    expect(migrated.webOfficialIntegrationEnabled).toBe(true);
+    expect(migrated.webOfficialTemplateVersion).toBe("");
+    expect(migrated.webEngine).toBe("api");
+    expect(migrated.webAutoAnalyze).toBe(false);
     expect(migrated.webBridgePort).toBe(51256);
     expect(migrated.webBridgeToken).toBe("");
     expect(migrated.webCaptureDir).toBe("");
@@ -168,15 +178,58 @@ describe("migrateSettings", () => {
     expect(migrated.webInstallPromptDismissed).toBe(false);
   });
 
+  it("fills and validates the independent AI image profile", () => {
+    const defaults = migrateSettings({});
+    expect(defaults.boardImageProvider).toBe("qwen-compatible");
+    expect(defaults.boardImageModel).toBe("qwen-image-3.0");
+    expect(defaults.boardImageWidth).toBe(1024);
+    expect(defaults.boardImageHeight).toBe(1024);
+    expect(defaults.boardImageCount).toBe(2);
+    expect(defaults.boardImageUseSharedApiKey).toBe(false);
+
+    const valid = migrateSettings({
+      boardImageProvider: "qwen-compatible",
+      boardImageWidth: 1200,
+      boardImageHeight: 900,
+      boardImageCount: 6,
+      boardImageSeed: "2147483647",
+      boardImagePromptExtendMode: "agent",
+    });
+    expect(valid.boardImageWidth).toBe(1200);
+    expect(valid.boardImageHeight).toBe(900);
+    expect(valid.boardImageCount).toBe(6);
+    expect(valid.boardImageSeed).toBe("2147483647");
+    expect(valid.boardImagePromptExtendMode).toBe("agent");
+
+    const invalid = migrateSettings({
+      boardImageProvider: "unknown",
+      boardImageWidth: 2048,
+      boardImageHeight: 2048,
+      boardImageCount: 9,
+      boardImageSeed: "-1",
+      boardImagePromptExtendMode: "smart",
+    });
+    expect(invalid.boardImageProvider).toBe(DEFAULT_SETTINGS.boardImageProvider);
+    expect(invalid.boardImageWidth).toBe(DEFAULT_SETTINGS.boardImageWidth);
+    expect(invalid.boardImageHeight).toBe(DEFAULT_SETTINGS.boardImageHeight);
+    expect(invalid.boardImageCount).toBe(DEFAULT_SETTINGS.boardImageCount);
+    expect(invalid.boardImageSeed).toBe("");
+    expect(invalid.boardImagePromptExtendMode).toBe("direct");
+  });
+
   it("coerces non-boolean Web Clipper flags back to their defaults", () => {
     const migrated = migrateSettings({
       webEnabled: "yes",
+      webEngine: "other",
+      webAutoAnalyze: 1,
       webAutoConvertMarkdown: 0,
       webSaveRenderedHtml: null,
       webSaveSourceHtml: "true",
       webInstallPromptDismissed: 1
     });
     expect(migrated.webEnabled).toBe(false);
+    expect(migrated.webEngine).toBe("api");
+    expect(migrated.webAutoAnalyze).toBe(false);
     expect(migrated.webAutoConvertMarkdown).toBe(true);
     expect(migrated.webSaveRenderedHtml).toBe(true);
     expect(migrated.webSaveSourceHtml).toBe(true);
@@ -186,14 +239,27 @@ describe("migrateSettings", () => {
   it("keeps valid Web Clipper flag and string overrides", () => {
     const migrated = migrateSettings({
       webEnabled: true,
+      webOfficialIntegrationEnabled: false,
+      webOfficialTemplateVersion: "official-v1",
+      webEngine: "opencode",
+      webAutoAnalyze: true,
       webAutoConvertMarkdown: false,
       webBridgeToken: "tok-123",
       webCaptureDir: "Clips/Web"
     });
     expect(migrated.webEnabled).toBe(true);
+    expect(migrated.webOfficialIntegrationEnabled).toBe(false);
+    expect(migrated.webOfficialTemplateVersion).toBe("official-v1");
+    expect(migrated.webEngine).toBe("opencode");
+    expect(migrated.webAutoAnalyze).toBe(true);
     expect(migrated.webAutoConvertMarkdown).toBe(false);
     expect(migrated.webBridgeToken).toBe("tok-123");
     expect(migrated.webCaptureDir).toBe("Clips/Web");
+  });
+
+  it("resolves the retired inherited board route during migration", () => {
+    expect(migrateSettings({ chatEngine: "api", boardEngine: "inherit" }).boardEngine).toBe("api");
+    expect(migrateSettings({ chatEngine: "opencode", boardEngine: "inherit" }).boardEngine).toBe("opencode");
   });
 
   it("rejects out-of-range / non-integer bridge ports, keeping valid ones", () => {

@@ -204,3 +204,11 @@ Open the command palette (`Ctrl/Cmd + P`) and search for these:
 | Suggest next steps (strengths) | Ask the tutor where to go deeper |
 | Rebuild Annotation Tutor index | Rebuild the cache (and refresh auto scenes) from the Markdown |
 | Toggle annotation marks | Show/hide the in-editor annotation highlights |
+
+### Drawing connection and mathematical plots
+
+The inspiration board follows the Tutor sidebar's engine, connection and model by default. In Settings → model routes, select the board's separate configuration to restore or override its own engine/model. Existing board presets are retained during migration; API keys are not replaced. Each drawing task identifies its actual execution model, including independent connections.
+
+Ask in the sidebar, for example, “Draw sin(x)/x near x=0, with an open point at its limit.” Tutor first identifies the drawing intent and opens the document board if needed. Function and finite-point limit diagrams use host-computed coordinates for curves, axes, guides and markers. The resulting objects remain editable and the entire reply is one undo step. Moving an object does not recompute the mathematical relationships. Numerical consistency checks are not proofs.
+
+A provider denial or empty answer is a connection/execution failure, not a drawing-format mistake. Use “Check connection”; when a separate board connection fails, “Retry with sidebar model” switches to the current chat connection while keeping the target board. Only malformed drawing content receives one automatic correction. Configuration changes cancel in-flight board requests and clear their previews.

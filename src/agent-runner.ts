@@ -1,3 +1,4 @@
+import { teachingInstructions } from "./teaching-policy.js";
 // Optional auto-run bridge: spawn an already-authenticated agent CLI (OpenCode by
 // default) to review one annotation in a SINGLE model call, then return the
 // review text so the plugin can write it into the annotation file itself.
@@ -35,6 +36,8 @@ export type CaptureOptions = {
   cwd?: string;
   /** Optional streaming hook for stdout/stderr chunks. */
   onLog?: (chunk: string) => void;
+  /** Per-child environment resolved by Tutor's OpenCode setup. */
+  env?: NodeJS.ProcessEnv;
 };
 
 export type CaptureResult = {
@@ -124,6 +127,7 @@ export function buildReviewPrompt(
   const profile = profileSummary.trim();
   const scenes = sceneSummary.trim();
   return [
+    teachingInstructions(),
     "You are a warm, knowledgeable learning assistant leaving a short note in the margin of a learner's book.",
     "Read the selected source text and the learner's note, then reply as a helpful tutor would.",
     "Reply with the note and nothing else — no preamble, no tool use, no headings, no bullet lists.",
@@ -232,9 +236,9 @@ export async function runAgentCapture(
             cwd,
             shell: true,
             windowsHide: true,
-            env: spawnEnv()
+            env: spawnEnv(opts.env)
           })
-        : spawn(opts.command, args, { cwd, shell: false, env: spawnEnv() });
+        : spawn(opts.command, args, { cwd, shell: false, env: spawnEnv(opts.env) });
     } catch (error) {
       finish({
         ok: false,
@@ -312,7 +316,8 @@ export type ModelListResult = {
  */
 export async function listModels(
   command: string,
-  timeoutMs = 20000
+  timeoutMs = 20000,
+  env?: NodeJS.ProcessEnv
 ): Promise<ModelListResult> {
   const args = ["models"];
   return await new Promise<ModelListResult>((resolve) => {
@@ -332,9 +337,9 @@ export async function listModels(
             cwd: tmpdir(),
             shell: true,
             windowsHide: true,
-            env: spawnEnv()
+            env: spawnEnv(env)
           })
-        : spawn(command, args, { cwd: tmpdir(), shell: false, env: spawnEnv() });
+        : spawn(command, args, { cwd: tmpdir(), shell: false, env: spawnEnv(env) });
     } catch (error) {
       finish({
         ok: false,

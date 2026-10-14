@@ -9,6 +9,7 @@ import type { ChatLog, ChatLogHead, ChatLogTurn } from "../model.js";
 import { chatLogHeadSchema, chatLogSchema } from "../schemas.js";
 import { fromBlockquote, toBlockquote } from "./blocks.js";
 import { parseFrontmatter, renderFrontmatter, section } from "./frontmatter.js";
+import { z } from "zod";
 
 // File labels are fixed English so parsing is locale-independent (same policy as
 // annotation-file.ts's DIALOGUE_LABEL); the chat UI shows localized labels.
@@ -21,6 +22,7 @@ const ROLE_LABEL: Record<ChatLogTurn["role"], string> = {
 export const CHAT_LOG_MAX_TURNS = 50;
 /** How many characters of a restored session are rendered / resent at most. */
 export const CHAT_LOG_MAX_CHARS = 20_000;
+const localTaskId=z.uuid();
 
 export function serializeChatLog(log: ChatLog): string {
   const turns = log.turns
@@ -28,7 +30,8 @@ export function serializeChatLog(log: ChatLog): string {
       const head = turn.at
         ? `### ${ROLE_LABEL[turn.role]} — ${turn.at}`
         : `### ${ROLE_LABEL[turn.role]}`;
-      return `${head}\n\n${toBlockquote(turn.text)}`;
+      const task=localTaskId.safeParse(turn.taskId).success?`\n\n<!-- tutor-task-id: ${turn.taskId} -->`:"";
+      return `${head}${task}\n\n${toBlockquote(turn.text)}`;
     })
     .join("\n\n");
   return renderFrontmatter(
@@ -131,11 +134,12 @@ function parseChatTurns(sectionBody: string): ChatLogTurn[] {
   const turns: ChatLogTurn[] = [];
   let role: ChatLogTurn["role"] | null = null;
   let at = "";
+  let taskId:string|undefined,taskMarkers=0;
   let buffer: string[] = [];
   const flush = (): void => {
     if (role !== null) {
       const text = fromBlockquote(buffer.join("\n"));
-      if (text) turns.push({ role, text, at });
+      if (text) turns.push({ role, text, at, ...(taskMarkers===1&&taskId?{taskId}:{}) });
     }
     buffer = [];
   };
@@ -147,10 +151,15 @@ function parseChatTurns(sectionBody: string): ChatLogTurn[] {
       const parts = title.split(" — ");
       const label = (parts[0] ?? "").trim().toLowerCase();
       at = parts.length > 1 ? parts.slice(1).join(" — ").trim() : "";
+      taskId=undefined;taskMarkers=0;
       role =
         label.startsWith("you") || label.startsWith("user")
           ? "user"
           : "assistant";
+    } else if(/^<!-- tutor-task-id:/.test(line)) {
+      taskMarkers++;
+      const value=/^<!-- tutor-task-id: ([^ ]+) -->$/.exec(line)?.[1];
+      if(localTaskId.safeParse(value).success)taskId=value;
     } else {
       buffer.push(line);
     }

@@ -32,6 +32,7 @@ export type AcpReviewResult = {
   ok: boolean;
   reviewText: string;
   timedOut?: boolean;
+  cancelled?: boolean;
   stopReason?: string;
   /** Set on spawn failure, protocol error, or a clean exit with no text. */
   error?: string;
@@ -76,7 +77,7 @@ export class AcpReviewConversation {
 
   public constructor(
     private readonly send: (message: Outgoing) => void,
-    private readonly opts: { cwd: string; model: string; prompt: string }
+    private readonly opts: { cwd: string; model: string; prompt: string; imageBase64?: string }
   ) {
     this.done = new Promise((resolve) => {
       this.resolveDone = resolve;
@@ -176,7 +177,12 @@ export class AcpReviewConversation {
       "session/prompt",
       {
         sessionId: this.sessionId,
-        prompt: [{ type: "text", text: this.opts.prompt }]
+        prompt: [
+          { type: "text", text: this.opts.prompt },
+          ...(this.opts.imageBase64
+            ? [{ type: "image", data: this.opts.imageBase64, mimeType: "image/png" }]
+            : []),
+        ]
       },
       "prompt"
     );
@@ -290,20 +296,25 @@ export async function runAcpReview(opts: {
   command: string;
   model: string;
   prompt: string;
+  imageBase64?: string;
   timeoutMs: number;
   cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  signal?: AbortSignal;
 }): Promise<AcpReviewResult> {
+  if (opts.signal?.aborted) return { ok: false, reviewText: "", cancelled: true, error: "cancelled" };
   const spec = resolveAcpSpawn(opts.command);
   const cwd = opts.cwd ?? tmpdir();
   return await new Promise<AcpReviewResult>((resolve) => {
     let settled = false;
     let stderr = "";
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let rl: ReturnType<typeof createInterface> | undefined;
     let child;
     try {
       child = spawn(spec.command, spec.args, {
         cwd,
-        env: spawnEnv(),
+        env: spawnEnv(opts.env),
         stdio: "pipe",
         windowsHide: true,
         shell: spec.shell
@@ -321,6 +332,10 @@ export async function runAcpReview(opts: {
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
+      opts.signal?.removeEventListener("abort", onAbort);
+      rl?.removeAllListeners("line");
+      rl?.close();
+      child.stderr?.removeListener("data", onStderr);
       // opencode may have spawned MCP children; take the whole tree down.
       killProcessTree(child);
       resolve(result);
@@ -334,10 +349,15 @@ export async function runAcpReview(opts: {
           // stdin closed; the close handler will report it.
         }
       },
-      { cwd, model: opts.model, prompt: opts.prompt }
+      { cwd, model: opts.model, prompt: opts.prompt, imageBase64: opts.imageBase64 }
     );
 
-    const rl = createInterface({ input: child.stdout!, crlfDelay: Infinity });
+    const onAbort = (): void => {
+      conversation.fail("cancelled");
+      finish({ ok: false, reviewText: "", cancelled: true, error: "cancelled" });
+    };
+    const onStderr = (chunk: Buffer): void => { stderr += chunk.toString(); };
+    rl = createInterface({ input: child.stdout!, crlfDelay: Infinity });
     rl.on("line", (line) => {
       const trimmed = line.trim();
       if (!trimmed.startsWith("{")) return;
@@ -347,9 +367,7 @@ export async function runAcpReview(opts: {
         // Not a JSON-RPC line — ignore.
       }
     });
-    child.stderr?.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString();
-    });
+    child.stderr?.on("data", onStderr);
     child.on("error", (error) =>
       finish({ ok: false, reviewText: "", error: error.message })
     );
@@ -376,7 +394,9 @@ export async function runAcpReview(opts: {
         error: outcome.error
       })
     );
-    conversation.start();
+    opts.signal?.addEventListener("abort", onAbort, { once: true });
+    if (opts.signal?.aborted) onAbort();
+    else conversation.start();
   });
 }
 

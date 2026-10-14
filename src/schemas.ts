@@ -118,6 +118,7 @@ export const chatLogModeSchema = z.enum(["ask", "plan", "build"]);
 const chatLogTurnSchema = z.object({
   role: z.enum(["user", "assistant"]),
   text: z.string(),
+  taskId: z.uuid().optional(),
   at: z.string()
 });
 

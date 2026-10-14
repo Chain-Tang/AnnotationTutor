@@ -21,6 +21,29 @@ jobs:
           node-version: 22.17.1
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The browser extension uses its own Chrome types and npm lockfile.
+      - run: npm --prefix extension ci
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm build
+        if: runner.os != 'Linux'
+      - run: pnpm test:coverage
+        if: runner.os == 'Linux'
+      - run: pnpm test:release
+      # Packaging builds both plugin and extension under the release lock.
+      - run: pnpm package
+      - run: pnpm package:verify
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ runner.os }}-${{ github.sha }}
+          path: |
+            dist/annotation-tutor-lite-*.zip
+            dist/package-verification.json
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always() && runner.os == 'Linux'
+        with:
+          name: coverage-${{ github.sha }}
+          path: coverage/
+          if-no-files-found: ignore
+          retention-days: 14

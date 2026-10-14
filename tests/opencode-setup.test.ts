@@ -1,10 +1,29 @@
 import { describe, expect, it } from "vitest";
 import {
+  classifyOpenCodeFailure,
   buildShellProbe,
   defaultShell,
   mergeShellPath,
+  openCodeSpawnEnv,
   parseShellProbe
 } from "../src/opencode-setup.js";
+
+describe("OpenCode runtime diagnostics", () => {
+  it("builds an isolated child PATH without changing the input environment", () => {
+    const base = { PATH: "/usr/bin", HOME: "/tmp/home" };
+    const built = openCodeSpawnEnv("/Users/me/opencode:/usr/bin", base, "darwin");
+    expect(built.PATH).toBe("/Users/me/opencode:/usr/bin");
+    expect(base.PATH).toBe("/usr/bin");
+  });
+
+  it("classifies actionable OpenCode failures", () => {
+    expect(classifyOpenCodeFailure("spawn opencode ENOENT")).toBe("command-not-found");
+    expect(classifyOpenCodeFailure("authentication required")).toBe("not-authenticated");
+    expect(classifyOpenCodeFailure("model unavailable")).toBe("model-unavailable");
+    expect(classifyOpenCodeFailure("no sessionId returned")).toBe("protocol-incompatible");
+    expect(classifyOpenCodeFailure("anything", true)).toBe("timeout");
+  });
+});
 
 describe("defaultShell", () => {
   it("prefers $SHELL when set", () => {

@@ -1,0 +1,8 @@
+import {it,expect} from 'vitest';
+import {mkdtemp,rm,realpath,writeFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';import {join} from 'node:path';
+import {DesktopStateIO} from '../src/desktop-state-io.js';import {loadClipperState} from '../src/web-bridge/state.js';
+async function fixture(run:(root:string,io:DesktopStateIO)=>Promise<void>){const root=await mkdtemp(join(await realpath(tmpdir()),'tutor-clipper-state-'));try{await run(root,new DesktopStateIO(root));}finally{await rm(root,{recursive:true,force:true});}}
+it('initializes only explicitly and retains the same valid vault identity on restart',()=>fixture(async(_,io)=>{await expect(loadClipperState(io,'vault-a','captures')).rejects.toThrow('not-initialized');expect((await loadClipperState(io,'vault-a','captures',true)).records).toEqual([]);expect((await loadClipperState(io,'vault-a','captures')).fresh).toBe(false);await expect(loadClipperState(io,'vault-b','captures')).rejects.toThrow('invalid');}));
+it.each(['clipper-policy-v2.json','clipper-clients-v2.json','clipper-requests-v2.json'])('does not reset lost %s even after an explicit re-enable',name=>fixture(async(root,io)=>{await loadClipperState(io,'vault','captures',true);await rm(join(root,name));await expect(loadClipperState(io,'vault','captures',true)).rejects.toThrow('incomplete');}));
+it('fails closed on corrupt request state and preserves it',()=>fixture(async(root,io)=>{await loadClipperState(io,'vault','captures',true);await writeFile(join(root,'clipper-requests-v2.json'),'{broken');await expect(loadClipperState(io,'vault','captures')).rejects.toThrow('invalid');expect(await io.read('clipper-requests-v2.json')).toBe('{broken');}));

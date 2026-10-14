@@ -1,0 +1,27 @@
+{
+  "name": "tutor",
+  "version": "0.4.4",
+  "description": "独立 Tutor 教学与精准共画，通过本机 MCP 连接 Obsidian。",
+  "author": {
+    "name": "Tutor contributors"
+  },
+  "license": "MIT",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Tutor",
+    "shortDescription": "Learning and precise drawing with your Obsidian Tutor.",
+    "longDescription": "Connect to an independently reasoning Tutor with scoped access, editable drawing transactions and cancellable tasks.",
+    "developerName": "Tutor contributors",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "请教 Tutor：结合我的学习材料解释这个问题。",
+      "请 Tutor 在授权画板上画一个示意图。",
+      "交给 Tutor 独立检查这段解释。"
+    ]
+  }
+}

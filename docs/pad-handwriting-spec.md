@@ -4,7 +4,18 @@
 > Date: 2026-08-09  
 > Product: Annotation Tutor Lite  
 > Delivery order: Android Pad first, iPad second  
-> Source of truth: this document until superseded by an approved revision
+> Source of truth: this document for Pad-specific requirements; see the dated update below for the expanded direction.
+
+> **2026-09-11 direction update:** [Pad & collaborative drawing](next-development-plan.md)
+> records the new shared foundation for handwriting and a human–Tutor drawing layer over
+> Markdown/PDF, including contextual observation and expressive doodles. Characters may be
+> built in, learner-uploaded, or co-created, in minimal or fixed original styles.
+> The non-goals below describe the original Pad MVP, not the full updated roadmap.
+> Ordinary handwriting keeps explicit recognition and submission; the new proposal adds
+> a separately enabled co-drawing session. Earlier progressive-recognition wording is
+> governed by the later explicit-trigger decision in sections 5.6, 8.2, and the decision log.
+> The native companion is already permitted by the decision log; its necessity and bridge
+> remain subject to a device spike. These documents describe planned capabilities.
 
 ## 1. Executive summary
 

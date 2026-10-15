@@ -42,6 +42,7 @@ async function seed() {
 afterEach(() => vi.restoreAllMocks());
 
 describe("incremental cells-to-scenes reconciliation", () => {
+  // Allow coverage/runner overhead for setup; the I/O counts define this regression.
   it("reads one changed cell and one generated scene across sync + index refresh in a 1,500-file library", async () => {
     const { store, vault } = fixture();
     for (let i = 0; i < 1000; i++) await vault.create(`${CELL_DIR}/CELL-${i}.md`, serializeMemoryCell(cell(`CELL-${i}`, `Concept ${Math.floor(i / 2)}`)));
@@ -62,7 +63,7 @@ describe("incremental cells-to-scenes reconciliation", () => {
     expect(snapshot.cells).toHaveLength(1001);
     expect(snapshot.scenes).toHaveLength(500);
     expect(snapshot.scenes.find(scene => scene.id === "SCENE-Concept-0")?.cells).toEqual(["CELL-0", "CELL-1", "CELL-new"]);
-  });
+  }, 20_000);
 
   it("handles immediately invalidated external cell edits, additions and deletions before UI refresh", async () => {
     const { store, vault } = await seed();

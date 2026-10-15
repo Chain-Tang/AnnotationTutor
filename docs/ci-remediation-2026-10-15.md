@@ -10,6 +10,7 @@
 - Windows checkout 的 CRLF 导致五个源码抽取测试无法定位方法或剥离 import。读取 fixture 时统一换行，并以 `.gitattributes` 约束源文本使用 LF；没有批量 renormalize 历史文件或修改二进制。
 - Vitest 的文件 URL alias 使用 `fileURLToPath`；恢复文件名使用 `basename`；POSIX 权限位只在支持的平台断言，加密、Vault 隔离与真实链接安全检查继续执行。
 - CLI 查找按传入的平台选择路径与 PATH 语义，避免在 Windows 执行 macOS 模拟用例时拼出反斜杠路径；新增 Windows 路径回归。
+- [第二轮](https://github.com/Chain-Tang/AnnotationTutor/actions/runs/38684512219) Windows 原有持久化、路径与换行问题均通过回归；Linux 和 Windows 仅剩同一项 1500 文件增量场景回归超过 Vitest 默认 5 秒限时。该例单独设置 20 秒上限，保留 1000 cells / 500 scenes 的库规模及 0/2 次读取、1 次更新的全部断言；不将共享运行器的总耗时当作被测算法的读写次数门槛。
 
 ## 本地验证
 

@@ -9,7 +9,7 @@ import { SupportSession, type SupportSummary } from "../src/support-session.js";
 
 // Run the production lifecycle and registry publication methods. Host services
 // are test boundaries; no Obsidian, disk, credentials or network are accessed.
-const source = readFileSync(resolve(process.cwd(), "src/main.ts"), "utf8");
+const source = readFileSync(resolve(process.cwd(), "src/main.ts"), "utf8").replace(/\r\n?/g, "\n");
 function methods(startMarker: string, endMarker: string) {
   const start = source.indexOf(startMarker), end = source.indexOf(endMarker, start);
   if (start < 0 || end < 0) throw new Error("Startup host fixture boundaries changed");

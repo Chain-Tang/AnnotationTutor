@@ -17,7 +17,7 @@ function helper(result:unknown,execute=false){
    for(const byte of bytes)child.stdout.write(Buffer.from([byte]));
   });return child;
  });
- const source=readFileSync(new URL('../scripts/obsidian-eval.mjs',import.meta.url),'utf8').replace(/^import .*;\n/gm,'').replace('export function evaluateObsidian','function evaluateObsidian');
+ const source=readFileSync(new URL('../scripts/obsidian-eval.mjs',import.meta.url),'utf8').replace(/\r\n?/g,'\n').replace(/^import .*;\n/gm,'').replace('export function evaluateObsidian','function evaluateObsidian');
  const evaluate=new Function('spawn','randomUUID',source+'\nreturn evaluateObsidian;')(spawn,()=> 'qa-id') as (code:string,options:{vault:string;timeout:number})=>Promise<unknown>;
  return {evaluate,spawn};
 }

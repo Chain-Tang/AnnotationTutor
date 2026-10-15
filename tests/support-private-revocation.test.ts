@@ -70,7 +70,11 @@ describe("durable private support revocation",()=>{
   });
   it("loads the legacy array, writes encrypted files with private modes, and refuses an in-Vault directory",async()=>{
     const f=await fixture(),item=summary("NO-PLAINTEXT-PRIVATE-FIXTURE"),db=f.store();await db.save([item]);expect(await db.load()).toEqual([item]);
-    expect((await stat(f.directory)).mode&0o777).toBe(0o700);expect((await stat(join(f.directory,"summaries.enc"))).mode&0o777).toBe(0o600);
+    // Windows does not expose POSIX group/other permission bits through stat.
+    // Encryption and Vault isolation below remain required on every platform.
+    if(process.platform!=="win32"){
+      expect((await stat(f.directory)).mode&0o777).toBe(0o700);expect((await stat(join(f.directory,"summaries.enc"))).mode&0o777).toBe(0o600);
+    }
     for(const name of await readdir(f.directory))expect((await f.read(name)).includes(Buffer.from(item.text))).toBe(false);
     const inside=new PrivateSupportStore(f.root,f.root,f.cipher);expect(inside.available()).toBe(false);await expect(inside.save([item])).rejects.toThrow();await expect(inside.writeDay("2026-10-10")).rejects.toThrow("support-store-unavailable");
   });

@@ -1,9 +1,9 @@
 import { mkdir,rename,rm,chmod,open,lstat } from "node:fs/promises";
-import { constants } from "node:fs";
 import { createHash,randomUUID } from "node:crypto";
 import { join,dirname,resolve,relative,isAbsolute,sep } from "node:path";
 import { z } from "zod";
 import { supportSummarySchema,type SupportStorage,type SupportSummary } from "./support-session.js";
+import { readPrivateFile, syncPrivateDirectory } from "./private-file-io.js";
 export type SupportCipher={isEncryptionAvailable():boolean;encryptString(text:string):Buffer;decryptString(data:Buffer):string;getSelectedStorageBackend?():string};
 const revocationsSchema=z.object({
   format:z.literal(1),ids:z.array(z.string().uuid()).max(4096),
@@ -28,7 +28,7 @@ export class PrivateSupportStore implements SupportStorage {
     if(dirname(path)===path)break;
   }}
   private async ensureDirectory(){await this.checkParents();await mkdir(this.directory,{recursive:true,mode:0o700});await this.checkParents();await chmod(this.directory,0o700);}
-  private async syncDirectory(){const dir=await open(this.directory,"r");try{await dir.sync();}finally{await dir.close();}}
+  private async syncDirectory(){await syncPrivateDirectory(this.directory);}
   private async write(name:string,bytes:string|Buffer,onReplace?:()=>Promise<void>){await this.ensureDirectory();const tmp=join(this.directory,`${name}.${randomUUID()}.tmp`);try{
     const file=await open(tmp,"wx",0o600);try{await file.writeFile(bytes);await file.sync();}finally{await file.close();}
     await rename(tmp,join(this.directory,name));await onReplace?.();await this.syncDirectory();
@@ -44,8 +44,7 @@ export class PrivateSupportStore implements SupportStorage {
     });queues.set(this.directory,task);const done=()=>{if(queues.get(this.directory)===task)queues.delete(this.directory);};void task.then(done,done);return task;
   }
   private async bytes(name:string,max=131072):Promise<Buffer|null>{try{
-    const file=await open(join(this.directory,name),constants.O_RDONLY|constants.O_NOFOLLOW);
-    try{const info=await file.stat();if(!info.isFile()||info.size>max)throw new Error("support-store-size");const bytes=await file.readFile();if(bytes.length>max)throw new Error("support-store-size");return bytes;}finally{await file.close();}
+    return await readPrivateFile(join(this.directory,name),max);
   }catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return null;throw error;}}
   private async revocations():Promise<Revocations>{const bytes=await this.bytes("revocations.enc",262144);return bytes?revocationsSchema.parse(JSON.parse(this.cipher!.decryptString(bytes))):{format:1,ids:[]};}
   private summaries(bytes:Buffer){const records=JSON.parse(this.cipher!.decryptString(bytes));if(!Array.isArray(records)||records.length>20)throw new Error("support-store-format");const parsed=records.map(x=>supportSummarySchema.parse(x));if(new Set(parsed.map(s=>s.id)).size!==parsed.length)throw new Error("support-store-format");return parsed;}

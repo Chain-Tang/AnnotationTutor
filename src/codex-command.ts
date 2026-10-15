@@ -1,6 +1,6 @@
 import { access, constants } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { posix, win32 } from "node:path";
 import { openCodeSpawnEnv, probeOpenCodeEnv } from "./opencode-setup.js";
 
 /** GUI apps may have only the system PATH. Never change the user's global environment. */
@@ -10,8 +10,9 @@ export async function resolveCodexCommand(command:string, env:NodeJS.ProcessEnv=
   platform:process.platform, home:homedir()
 }):Promise<{command:string;env:NodeJS.ProcessEnv}>{
   if(command!=="codex")return {command,env}; // An explicitly configured command always wins.
+  const {join}=deps.platform==="win32"?win32:posix;
   const probe=await deps.probe({binName:"codex",env,timeoutMs:5000});
-  const merged=probe?.path?openCodeSpawnEnv(probe.path,env):env;
+  const merged=probe?.path?openCodeSpawnEnv(probe.path,env,deps.platform):env;
   if(probe?.opencode && await deps.executable(probe.opencode))return {command:probe.opencode,env:merged};
   const candidates=[...(merged.PATH??merged.Path??"").split(deps.platform==="win32"?";":":").filter(Boolean).map(p=>join(p,"codex")),
     join(deps.home,".local/bin/codex"),"/opt/homebrew/bin/codex","/usr/local/bin/codex"];

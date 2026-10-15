@@ -16,7 +16,7 @@ import type { TutorRunnerInput } from "../src/tutor-conversation.js";
 
 // Execute the actual main.ts call sites and actual SSE parser. Only the HTTP
 // boundary is fake: this suite makes no Obsidian, model or network calls.
-const source = readFileSync(new URL("../src/main.ts", import.meta.url), "utf8");
+const source = readFileSync(new URL("../src/main.ts", import.meta.url), "utf8").replace(/\r\n?/g, "\n");
 function method(startMarker: string, endMarker: string): string {
   const start = source.indexOf(startMarker), end = source.indexOf(endMarker, start);
   if (start < 0 || end < 0) throw new Error("Conversation host fixture boundaries changed");

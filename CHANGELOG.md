@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Generate schema-valid stable scene IDs for Unicode and long concept titles.
 - Upgrade the extension's Readability to 0.6.0 for CVE-2025-2792 and package
   the licenses of all bundled extension parsing dependencies.
+- Fix Windows private-state saves, retain explicit symlink/identity checks
+  without O_NOFOLLOW, and make CI fixtures portable across paths and CRLF checkouts.
 
 ### Changed
 

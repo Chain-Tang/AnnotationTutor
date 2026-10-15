@@ -1,7 +1,7 @@
 import { mkdir, lstat, open, rename, unlink } from "node:fs/promises";
-import { constants } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { readPrivateFile, syncPrivateDirectory } from "./private-file-io.js";
 
 /** Fixed plugin-state files, independent of the user's learning directory.
  * A stale lock requires explicit reconciliation: time alone cannot authorize
@@ -23,10 +23,7 @@ export class DesktopStateIO {
     }
   }
   private async bytes(path:string):Promise<string|null>{
-    try{const file=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW);
-      try{const stat=await file.stat();if(!stat.isFile()||stat.size>this.maxBytes)throw new Error("state-file-invalid");
-        const data=await file.readFile("utf8");if(Buffer.byteLength(data)>this.maxBytes)throw new Error("state-file-too-large");return data;
-      }finally{await file.close();}}
+    try{return (await readPrivateFile(path,this.maxBytes)).toString("utf8");}
     catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return null;throw new Error("state-file-unavailable");}
   }
   async read(name:string):Promise<string|null>{const path=this.path(name);await this.checkParents(path);return this.bytes(path);}
@@ -43,7 +40,7 @@ export class DesktopStateIO {
       try{await file.writeFile(next,"utf8");await file.sync();}finally{await file.close();}
       if(await this.bytes(path)!==previous)throw new Error("state-file-conflict");
       await rename(temporary,path);
-      const directory=await open(dirname(path),"r");try{await directory.sync();}finally{await directory.close();}
+      await syncPrivateDirectory(dirname(path));
     }catch(error){throw new Error((error as NodeJS.ErrnoException).code==="EEXIST"?"state-file-locked":error instanceof Error&&error.message.startsWith("state-")?error.message:"state-save-not-confirmed");}
     finally{
       await unlink(temporary).catch(()=>{});

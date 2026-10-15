@@ -12,7 +12,7 @@ import { learningApiProtocol } from "../src/learning-api-protocol.js";
 
 // Run both actual host call sites against ACP's real mode guard and message
 // decoder. A fake child answers JSON-RPC; no model, process or Obsidian runs.
-const source=readFileSync(new URL("../src/main.ts",import.meta.url),"utf8");
+const source=readFileSync(new URL("../src/main.ts",import.meta.url),"utf8").replace(/\r\n?/g,"\n");
 function method(startMarker:string,endMarker:string):string{
   const start=source.indexOf(startMarker),end=source.indexOf(endMarker,start);
   if(start<0||end<0)throw new Error("ACP host fixture boundaries changed");return source.slice(start,end);

@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { StartupCancelled, StartupLifetime } from "../src/startup.js";
 import { emptyLibrarySnapshot, type LibrarySnapshot } from "../src/library-index.js";
 
-const source = readFileSync(new URL("../src/main.ts", import.meta.url), "utf8");
+const source = readFileSync(new URL("../src/main.ts", import.meta.url), "utf8").replace(/\r\n?/g, "\n");
 function method(startMarker: string, endMarker: string) {
   const start = source.indexOf(startMarker), end = source.indexOf(endMarker, start);
   if (start < 0 || end < 0) throw new Error("Layout startup fixture boundaries changed");

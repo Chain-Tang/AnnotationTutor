@@ -1,8 +1,9 @@
 import { defineConfig } from "vitest/config";
+import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   // The npm Obsidian package only ships types; DOM tests use a narrow host stub.
-  resolve: { alias: { obsidian: new URL("./tests/helpers/obsidian.ts", import.meta.url).pathname } },
+  resolve: { alias: { obsidian: fileURLToPath(new URL("./tests/helpers/obsidian.ts", import.meta.url)) } },
   test: {
     environment: "node",
     // Only the plugin's own suites; the default glob would also sweep cloned

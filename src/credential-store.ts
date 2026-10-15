@@ -1,10 +1,10 @@
 import { chmod, lstat, mkdir, open, rename, rm, unlink } from "node:fs/promises";
-import { constants } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { SupportCipher } from "./support-private-store.js";
 import { privateEncryptionAvailable } from "./desktop-private-storage.js";
 import { isCredentialReference, type CredentialReference, type CredentialSlot } from "./credential-types.js";
+import { readPrivateFile, syncPrivateDirectory } from "./private-file-io.js";
 
 export interface CredentialStore {
   available(): boolean;
@@ -22,16 +22,11 @@ async function noSymlinks(file:string):Promise<void> {
 }
 async function readRegular(file:string,maximum:number):Promise<Buffer> {
   await noSymlinks(file);
-  const handle=await open(file,constants.O_RDONLY|constants.O_NOFOLLOW);
-  try {const stat=await handle.stat();if(!stat.isFile()||stat.size>maximum)throw new Error("credential-file-invalid");return await handle.readFile();}
-  finally {await handle.close();}
+  return readPrivateFile(file,maximum);
 }
 async function writeDurable(file:string,bytes:string|Buffer):Promise<void> {
   const handle=await open(file,"wx",0o600);
   try {await handle.writeFile(bytes);await handle.sync();}finally{await handle.close();}
-}
-async function syncDirectory(directory:string):Promise<void> {
-  const handle=await open(directory,"r");try{await handle.sync();}finally{await handle.close();}
 }
 /** Immutable encrypted records live separately from support summaries. Keeping
  * old records makes old references usable after managed rollback/re-upgrade. */
@@ -57,7 +52,7 @@ export class PrivateCredentialStore implements CredentialStore {
       await noSymlinks(this.directory!);
       const bytes=this.cipher!.encryptString(JSON.stringify({...reference,vaultId:this.vaultId,value}));
       if (bytes.length>524288) throw new Error("credential-store-size");
-      await writeDurable(temporary,bytes);await rename(temporary,target);await syncDirectory(this.directory!);
+      await writeDurable(temporary,bytes);await rename(temporary,target);await syncPrivateDirectory(this.directory!);
       if (await this.get(reference)!==value) throw new Error("credential-verification-failed");
       return reference;
     } catch { throw new Error("credential-store-unavailable"); }
@@ -106,7 +101,7 @@ export class AtomicCredentialSettingsFile implements CredentialSettingsWriter {
       if((await readRegular(temporary,16777216)).toString("utf8")!==next)throw new Error("credential-settings-verification-failed");
       if(await this.bytes()!==this.#expected)throw new Error("credential-settings-changed");
       await rename(temporary,this.file);this.#expected=next;
-      await syncDirectory(dirname(this.file));
+      await syncPrivateDirectory(dirname(this.file));
     } catch(error) {
       if(error instanceof Error && ["credential-settings-changed","credential-settings-locked"].includes(error.message))throw error;
       throw new Error("credential-settings-save-failed");

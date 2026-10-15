@@ -1,6 +1,6 @@
 import { mkdtemp,realpath,mkdir,writeFile,readFile,readdir,rm,symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename,join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { describe,it,expect,afterEach } from "vitest";
 const {diagnoseTutorLock,recoverTutorLock}=await import(new URL("../scripts/recover-private-state.mjs",import.meta.url).href);
@@ -20,7 +20,7 @@ describe("private support lock recovery",()=>{
     await expect(recoverTutorLock(f.file,{expected:diagnostic.fingerprint})).rejects.toThrow("confirm-stopped");
     const recovered=await recoverTutorLock(f.file,{expected:diagnostic.fingerprint,confirmStopped:true});expect(recovered.kind).toBe("private-support");expect(await readFile(recovered.quarantine,"utf8")).toBe(f.bytes);
     expect(await readFile(join(f.directory,"summaries.enc"))).toEqual(before);expect(await readFile(join(f.directory,"revocations.enc"))).toEqual(record);
-    expect((await readdir(f.directory)).sort()).toEqual(["revocations.enc",recovered.quarantine.split("/").at(-1),"summaries.enc"].sort());
+    expect((await readdir(f.directory)).sort()).toEqual(["revocations.enc",basename(recovered.quarantine),"summaries.enc"].sort());
   });
   it("does not remove a live owner's lock",async()=>{
     const f=await fixture(process.pid),d=await diagnoseTutorLock(f.file);expect(d.recoverable).toBe(false);await expect(recoverTutorLock(f.file,{expected:d.fingerprint,confirmStopped:true})).rejects.toThrow("live or unknown");expect(await readFile(f.file,"utf8")).toBe(f.bytes);

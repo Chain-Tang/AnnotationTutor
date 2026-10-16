@@ -80,10 +80,16 @@ type LibraryRead = {
   groups: Set<LibraryGroup>;
   dirty: Map<string, number>;
 };
+type OwnWrite = { hash: string | null; generation: number };
+type LibraryOutput = { generatedAt: string; write: OwnWrite };
 
 export class VaultStore {
-  private readonly ownWrites = new Map<string, { hash: string | null; generation: number }>();
+  private readonly ownWrites = new Map<string, OwnWrite>();
   private readonly dirtyLibraryPaths = new Map<string, number>();
+  private readonly dirtyLibraryOutputs = new Map<string, number>();
+  private readonly libraryOutputs = new Map<string, LibraryOutput>();
+  private libraryOutputsRoot = "";
+  private libraryCache: { path: string; hash: string } | undefined;
   private writeGeneration = 0;
   private libraryFiles: LibraryFiles | undefined;
   private readonly cachedLibraryGroups = new Set<LibraryGroup>();
@@ -211,8 +217,15 @@ export class VaultStore {
 
   /** Invalidate immediately on vault events, before any debounced UI refresh. */
   public invalidateLibrary(paths: readonly string[]): void {
-    const directories = Object.values(this.libraryDirectories(this.memoryRoot()));
+    const root = this.memoryRoot();
+    const directories = Object.values(this.libraryDirectories(root));
+    const outputs = this.libraryOutputPaths(root);
     for (const path of paths) {
+      for (const output of outputs) {
+        if (path === output || output.startsWith(`${path}/`)) {
+          this.dirtyLibraryOutputs.set(output, ++this.writeGeneration);
+        }
+      }
       if (this.libraryGroup(path)) {
         this.dirtyLibraryPaths.set(path, ++this.writeGeneration);
       } else {
@@ -231,12 +244,14 @@ export class VaultStore {
   public async isOwnWrite(path: string): Promise<boolean> {
     if (!this.ownWrites.has(path)) return false;
     const expected = this.ownWrites.get(path)!;
+    const outputGeneration = this.dirtyLibraryOutputs.get(path);
     const content = await this.readVaultFile(path);
     if (this.ownWrites.get(path) !== expected) return false;
     const matches = expected.hash === (content === null ? null : sha256(content));
     // Once an external version is observed, returning to an old self version is
     // another external change. Never suppress that A -> B -> A transition.
     if (!matches) this.ownWrites.delete(path);
+    else if (this.dirtyLibraryOutputs.get(path) === outputGeneration) this.dirtyLibraryOutputs.delete(path);
     return matches;
   }
 
@@ -721,8 +736,8 @@ export class VaultStore {
     const snapshot = buildLibrarySnapshot(files, this.libraryRoot === root ? this.lastLibrarySnapshot ?? previous : previous);
     // Await every output even on error, so the next refresh cannot race old writes.
     await settleWrites([
-      this.app.vault.adapter.write(this.indexPath(), serializeLibraryCache(snapshot)),
-      this.writeLibraryOutputs(snapshot, root)
+      this.writeLibraryCache(snapshot, full),
+      this.writeLibraryOutputs(snapshot, root, full)
     ]);
     if (this.memoryRoot() !== root) return this.reconcileLibrary(undefined, false);
     this.publishLibrarySources(source);
@@ -735,6 +750,21 @@ export class VaultStore {
       annotations: `${root}/annotations`, cells: `${root}/memory-cells`, scenes: `${root}/scenes`,
       profiles: `${root}/profiles`, proposals: `${root}/proposals/pending`
     };
+  }
+
+  private libraryOutputPaths(root: string): string[] {
+    return ["annotation-memory.md", "recent-learning.md", "indexes/annotations.md", "indexes/cells.md", "indexes/scenes.md", "AGENTS.md"]
+      .map(path => `${root}/${path}`);
+  }
+
+  private async writeLibraryCache(snapshot: LibrarySnapshot, full: boolean): Promise<void> {
+    const path = this.indexPath();
+    const content = serializeLibraryCache(snapshot);
+    const hash = sha256(content);
+    if (!full && this.libraryCache?.path === path && this.libraryCache.hash === hash &&
+      await this.app.vault.adapter.exists(path)) return;
+    await this.app.vault.adapter.write(path, content);
+    this.libraryCache = { path, hash };
   }
 
   private libraryGroup(path: string, root = this.memoryRoot()): LibraryGroup | undefined {
@@ -893,38 +923,75 @@ export class VaultStore {
     return removed;
   }
 
-  private async writeLibraryOutputs(snapshot: LibrarySnapshot, root = this.memoryRoot()): Promise<void> {
+  private async writeLibraryOutputs(snapshot: LibrarySnapshot, root: string, full: boolean): Promise<void> {
+    if (this.libraryOutputsRoot !== root) {
+      this.libraryOutputs.clear();
+      this.libraryOutputsRoot = root;
+      for (const path of this.dirtyLibraryOutputs.keys()) {
+        if (!path.startsWith(`${root}/`)) this.dirtyLibraryOutputs.delete(path);
+      }
+    }
     const generatedAt = new Date().toISOString();
     const options = {
       memoryRoot: root,
-      generatedAt,
       memoryWriteMode: this.getSettings().memoryWriteMode,
       allowPreferenceWrites: this.getSettings().allowPreferenceWrites,
       reviewLanguage: this.getSettings().reviewLanguage
     };
-    const writes = [this.writeVaultFile(
+    const write = (path: string, render: (at: string) => string): Promise<void> =>
+      this.writeLibraryOutput(path, render, generatedAt, full);
+    const writes = [write(
       `${root}/annotation-memory.md`,
-      renderOverview(snapshot.annotations, snapshot.cells, options)
-    ), this.writeVaultFile(
+      at => renderOverview(snapshot.annotations, snapshot.cells, { ...options, generatedAt: at })
+    ), write(
       `${root}/recent-learning.md`,
-      renderRecentLearning(snapshot.annotations, options)
-    ), this.writeVaultFile(
+      at => renderRecentLearning(snapshot.annotations, { ...options, generatedAt: at })
+    ), write(
       `${root}/indexes/annotations.md`,
-      renderAnnotationIndex(snapshot.annotations, options)
-    ), this.writeVaultFile(
+      at => renderAnnotationIndex(snapshot.annotations, { ...options, generatedAt: at })
+    ), write(
       `${root}/indexes/cells.md`,
-      renderCellIndex(snapshot.cells, options)
-    ), this.writeVaultFile(
+      at => renderCellIndex(snapshot.cells, { ...options, generatedAt: at })
+    ), write(
       `${root}/indexes/scenes.md`,
-      renderSceneIndex(snapshot.scenes, options)
+      at => renderSceneIndex(snapshot.scenes, { ...options, generatedAt: at })
     )];
     if (this.getSettings().createAgentInstructions) {
-      writes.push(this.writeVaultFile(
+      writes.push(write(
         `${root}/AGENTS.md`,
-        renderAgentInstructions(options)
+        () => renderAgentInstructions(options)
       ));
     }
     await settleWrites(writes);
+  }
+
+  private async writeLibraryOutput(
+    path: string,
+    render: (generatedAt: string) => string,
+    generatedAt: string,
+    full: boolean
+  ): Promise<void> {
+    const previous = this.libraryOutputs.get(path);
+    const dirty = this.dirtyLibraryOutputs.get(path);
+    // Keep the previous successful timestamp while comparing actual output.
+    // An unchanged projection does not acquire a new timestamp or vault event.
+    const content = render(previous?.generatedAt ?? generatedAt);
+    if (!full && previous?.write.hash === sha256(content) &&
+      previous.write === this.ownWrites.get(path) && this.fileAt(path)) {
+      if (dirty === undefined) return;
+      // With automatic watching disabled (or before its debounce), our own
+      // vault events are still invalidated but have not had fingerprint checks.
+      if (await this.isOwnWrite(path).catch(() => false) && !this.dirtyLibraryOutputs.has(path) &&
+        previous.write === this.ownWrites.get(path)) return;
+    }
+    const next = previous && previous.generatedAt !== generatedAt ? render(generatedAt) : content;
+    await this.writeVaultFile(path, next);
+    const write = this.ownWrites.get(path);
+    // Concurrent writes may evict this fingerprint from the bounded guard.
+    if (write) this.libraryOutputs.set(path, { generatedAt, write });
+    else this.libraryOutputs.delete(path);
+    // A newer vault event during persistence must survive for the next refresh.
+    if (this.dirtyLibraryOutputs.get(path) === dirty) this.dirtyLibraryOutputs.delete(path);
   }
 
   /**

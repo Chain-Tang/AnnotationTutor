@@ -144,13 +144,13 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     } finally { state?.restore(); }
   }
 
-  private updateSection(container: HTMLElement, render: (content: HTMLElement) => void): void {
+  private updateSection(container: HTMLElement, render: (content: HTMLElement) => void, reuseEditors = true): void {
     if (!this.containerEl.contains(container)) return;
     const state = captureSettingsUi(container);
     const content = container.ownerDocument.createElement("div");
     render(content);
     try {
-      state.reuse(content);
+      if (reuseEditors) state.reuse(content);
       container.replaceChildren(...content.childNodes);
       prepareSettingsUi(this.containerEl);
     } finally { state.restore(); }
@@ -252,7 +252,7 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
             this.plugin.applyDisplaySettings();
           })
       );
-    this.renderHighlightColor(container);
+    this.renderHighlightColor(container.createDiv({ cls: "atl-highlight-color-fields" }));
     this.addToggle(container, "set.showMarker", "showMarker");
     this.addToggle(container, "set.marginComments", "marginComments");
     new Setting(container)
@@ -423,12 +423,6 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     }
   }
 
-  /**
-   * Annotation color control: a mode picker (follow the theme accent, or a custom
-   * color) plus, in custom mode, a color picker. A mode switch re-renders the
-   * page to reveal/hide the picker; the picker itself only repaints the highlight
-   * (no full re-render, which would close the open picker) so dragging stays live.
-   */
   /** Folder buttons under the Card skin picker: open, create starter, reload. */
   private renderSkinTools(container: HTMLElement): void {
     new Setting(container)
@@ -459,7 +453,8 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       );
   }
 
-  private renderHighlightColor(container: HTMLElement): void {
+  /** Keep the mounted section in handlers when rendering into a temporary fragment. */
+  private renderHighlightColor(container: HTMLElement, section = container): void {
     const custom = this.plugin.settings.highlightColor !== "";
     new Setting(container)
       .setName(t("set.highlightColor"))
@@ -478,7 +473,7 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
                 : "";
             await this.plugin.persistSettings();
             this.plugin.applyHighlightColor();
-            this.display();
+            this.updateSection(section, content => this.renderHighlightColor(content, section));
           })
       );
     if (!custom) return;
@@ -875,7 +870,6 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
             this.plugin.settings.autoRunAgent = value;
             await this.plugin.persistSettings();
             this.plugin.applyDisplaySettings();
-            this.display();
           })
       );
     container.createEl("h3", { text: t("set.connections") });
@@ -895,16 +889,11 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       .addDropdown(dropdown => dropdown.addOptions({inherit:t("board.connectionInherit"),custom:t("board.connectionCustom")})
         .setValue(this.plugin.settings.boardConnectionMode).onChange(async value => {
           this.plugin.settings.boardConnectionMode = value === "custom" ? "custom" : "inherit";
-          await this.plugin.persistSettings(); this.display();
+          await this.plugin.persistSettings();
+          this.updateSection(boardFields, content => this.renderBoardConnectionFields(content, boardFields));
         }));
-    if (this.plugin.settings.boardConnectionMode === "custom") {
-      this.renderEngineRoute(container, "set.boardEngine", "boardEngine");
-      const key = this.plugin.settings.boardEngine === "api" ? "boardApiModel" : "boardAgentModel";
-      new Setting(container).setName(t("board.connectionModel")).setDesc(t("board.connectionModelDesc"))
-        .addText(text => text.setValue(this.plugin.settings[key]).onChange(async value => {
-          this.plugin.settings[key] = value.trim(); await this.plugin.persistSettings();
-        }));
-    }
+    const boardFields = container.createDiv({ cls: "atl-board-connection-fields" });
+    this.renderBoardConnectionFields(boardFields);
     this.renderEngineRoute(container, "set.web.engine", "webEngine");
 
     new Setting(container)
@@ -926,10 +915,24 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       });
   }
 
+  private renderBoardConnectionFields(container: HTMLElement, section = container): void {
+    if (this.plugin.settings.boardConnectionMode !== "custom") return;
+    this.renderEngineRoute(container, "set.boardEngine", "boardEngine", () => {
+      // A different engine selects a different model setting and listener.
+      this.updateSection(section, content => this.renderBoardConnectionFields(content, section), false);
+    });
+    const key = this.plugin.settings.boardEngine === "api" ? "boardApiModel" : "boardAgentModel";
+    new Setting(container).setName(t("board.connectionModel")).setDesc(t("board.connectionModelDesc"))
+      .addText(text => text.setValue(this.plugin.settings[key]).onChange(async value => {
+        this.plugin.settings[key] = value.trim(); await this.plugin.persistSettings();
+      }));
+  }
+
   private renderEngineRoute(
     container: HTMLElement,
     i18nKey: string,
-    key: "chatEngine" | "reviewEngine" | "boardEngine" | "webEngine"
+    key: "chatEngine" | "reviewEngine" | "boardEngine" | "webEngine",
+    onChanged?: () => void
   ): void {
     new Setting(container)
       .setName(t(i18nKey))
@@ -941,6 +944,7 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings[key] = value as ReviewEngine;
             await this.plugin.persistSettings();
+            onChanged?.();
           })
       );
   }
@@ -1468,9 +1472,9 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
   }
 
   private renderFeedback(container: HTMLElement): void {
-    this.addToggle(container, "upgrade.learningFlowEnabled", "learningFlowEnabled", true);
-    this.addToggle(container, "upgrade.supportCheckinEnabled", "supportCheckinEnabled", true);
-    this.addToggle(container, "upgrade.learningExpertsEnabled", "learningExpertsEnabled", true);
+    this.addToggle(container, "upgrade.learningFlowEnabled", "learningFlowEnabled");
+    this.addToggle(container, "upgrade.supportCheckinEnabled", "supportCheckinEnabled");
+    this.addToggle(container, "upgrade.learningExpertsEnabled", "learningExpertsEnabled");
     new Setting(container).setName(t("upgrade.supportRetentionDays")).addText(text=>text.setValue(String(this.plugin.settings.supportRetentionDays)).onChange(async value=>{
       if(!/^\d+$/.test(value))return;this.plugin.settings.supportRetentionDays=Math.max(1,Math.min(30,Number(value)));await this.plugin.persistSettings();
     }));

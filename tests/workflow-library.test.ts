@@ -70,6 +70,193 @@ describe("library I/O reconciliation", () => {
     expect((await store.refreshLibrary(repaired)).annotations.map(record => record.annotationId)).toEqual(["ANN-2"]);
   });
 
+  it("does no I/O writes on an unchanged refresh and only writes affected projections after a note edit", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime("2026-10-14T00:00:00.000Z");
+    const { store, vault } = fixture();
+    await store.createAnnotation(annotation());
+    await store.rebuildLibrary();
+    const before = new Map(vault.files);
+    const read = vi.spyOn(vault, "read"), modify = vi.spyOn(vault, "modify"), create = vi.spyOn(vault, "create");
+    const cacheWrite = vi.spyOn(vault.adapter, "write");
+    vi.setSystemTime("2026-10-15T00:00:00.000Z");
+    await store.refreshLibrary();
+    expect(read).not.toHaveBeenCalled();
+    expect(modify).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+    expect(cacheWrite).not.toHaveBeenCalled();
+    expect(vault.files).toEqual(before);
+
+    await store.updateAnnotation("ANN-1", { userNote: "Changed note" });
+    await store.refreshLibrary();
+    expect(read.mock.calls.map(([file]) => file.path)).toEqual([store.annotationPath("ANN-1")]);
+    expect(modify.mock.calls.map(([file]) => file.path)).toEqual([store.overviewPath()]);
+    expect(cacheWrite).toHaveBeenCalledTimes(1);
+    expect(vault.files.get(store.overviewPath())).toContain("Updated: 2026-10-15T00:00:00.000Z");
+    expect(vault.files.get(store.recentLearningPath())).toBe(before.get(store.recentLearningPath()));
+  });
+
+  it("regenerates only agent instructions after a relevant settings change", async () => {
+    const { store, vault, settings } = fixture();
+    await store.rebuildLibrary();
+    const modify = vi.spyOn(vault, "modify"), cacheWrite = vi.spyOn(vault.adapter, "write");
+    settings.reviewLanguage = "Chinese";
+    await store.refreshLibrary();
+    expect(modify.mock.calls.map(([file]) => file.path)).toEqual([store.agentsPath()]);
+    expect(vault.files.get(store.agentsPath())).toContain("Write the review content in Chinese.");
+    expect(cacheWrite).not.toHaveBeenCalled();
+  });
+
+  it("does not trust a derived output whose own-write fingerprint was evicted", async () => {
+    const { store, vault } = fixture();
+    const mark = store.markWritten.bind(store);
+    const markWritten = vi.spyOn(store, "markWritten").mockImplementation((path, content) => {
+      mark(path, content);
+      if (path === store.overviewPath()) {
+        for (let index = 0; index < 4_096; index++) mark(`Other writes/${index}.md`, "concurrent write");
+      }
+    });
+    await store.rebuildLibrary(); markWritten.mockRestore();
+    const modify = vi.spyOn(vault, "modify");
+    await store.refreshLibrary();
+    expect(modify.mock.calls.map(([file]) => file.path)).toEqual([store.overviewPath()]);
+    modify.mockClear(); await store.refreshLibrary();
+    expect(modify).not.toHaveBeenCalled();
+  });
+
+  it("repairs invalidated output edits with automatic watching disabled and recreates missing outputs", async () => {
+    const { store, vault, settings } = fixture();
+    await store.rebuildLibrary();
+    settings.watchMemoryFiles = false;
+    const watcher = new MemoryWatcher(store, () => settings, vi.fn());
+    await vault.modify(new TFile(store.overviewPath()), "external replacement");
+    watcher.notify(store.overviewPath());
+    const modify = vi.spyOn(vault, "modify"), create = vi.spyOn(vault, "create");
+    await store.refreshLibrary();
+    expect(modify.mock.calls.map(([file]) => file.path)).toEqual([store.overviewPath()]);
+    expect(vault.files.get(store.overviewPath())).toContain("# Annotation Memory");
+    await vault.delete(new TFile(store.cellIndexPath()));
+    await store.refreshLibrary();
+    expect(create.mock.calls.map(([path]) => path)).toEqual([store.cellIndexPath()]);
+    watcher.dispose();
+  });
+
+  it("repairs no-event corruption on a full rebuild and starts a fresh store without trusting old outputs", async () => {
+    const { store, vault } = fixture();
+    await store.createAnnotation(annotation());
+    await store.rebuildLibrary();
+    vault.files.set(store.overviewPath(), "no-event replacement");
+    vault.adapter.store.set(store.indexPath(), "invalid cache");
+    await store.rebuildLibrary();
+    expect(vault.files.get(store.overviewPath())).toContain("ANN-1");
+    expect((await store.loadLibraryCache())?.annotations).toHaveLength(1);
+
+    vault.files.set(store.overviewPath(), "replaced while unloaded");
+    const replacement = new VaultStore({ vault } as unknown as App, "annotation-tutor-lite", () => ({
+      memoryRoot: "Agent Memory", createAgentInstructions: true
+    }) as AnnotationTutorLiteSettings);
+    await replacement.refreshLibrary();
+    expect(vault.files.get(store.overviewPath())).toContain("ANN-1");
+    vault.adapter.store.delete(store.indexPath());
+    await replacement.refreshLibrary();
+    expect((await replacement.loadLibraryCache())?.annotations).toHaveLength(1);
+  });
+
+  it("retries a failed repair even when generated content matches the last successful output", async () => {
+    const { store, vault } = fixture();
+    await store.rebuildLibrary();
+    vault.files.set(store.overviewPath(), "external replacement");
+    store.invalidateLibrary([store.overviewPath()]);
+    const modify = vi.spyOn(vault, "modify").mockRejectedValueOnce(new Error("repair unavailable"));
+    await expect(store.refreshLibrary()).rejects.toThrow("repair unavailable");
+    modify.mockRestore();
+    await store.refreshLibrary();
+    expect(vault.files.get(store.overviewPath())).toContain("# Annotation Memory");
+  });
+
+  it("repairs an invalidated generated output when its optional fingerprint read fails", async () => {
+    const { store, vault } = fixture();
+    await store.rebuildLibrary();
+    vault.files.set(store.overviewPath(), "external replacement");
+    store.invalidateLibrary([store.overviewPath()]);
+    vi.spyOn(vault, "read").mockRejectedValueOnce(new Error("fingerprint unavailable"));
+    await store.refreshLibrary();
+    expect(vault.files.get(store.overviewPath())).toContain("# Annotation Memory");
+  });
+
+  it("does not carry cached projections across memory root switches", async () => {
+    const { store, vault, settings } = fixture();
+    await store.createAnnotation(annotation());
+    await store.rebuildLibrary();
+    settings.memoryRoot = "New Memory";
+    await store.refreshLibrary();
+    expect(vault.files.get(store.overviewPath())).not.toContain("ANN-1");
+    vault.files.set("Agent Memory/annotation-memory.md", "replaced while inactive");
+    settings.memoryRoot = "Agent Memory";
+    await store.refreshLibrary();
+    expect(vault.files.get(store.overviewPath())).toContain("ANN-1");
+  });
+
+  it("preserves a newer output invalidation made while the previous output was persisting", async () => {
+    const { store, vault } = fixture();
+    await store.createAnnotation(annotation());
+    await store.rebuildLibrary();
+    await store.updateAnnotation("ANN-1", { userNote: "New note" });
+    const original = vault.modify.bind(vault);
+    let replace = true;
+    vi.spyOn(vault, "modify").mockImplementation(async (file, content) => {
+      await original(file, content);
+      if (replace && file.path === store.overviewPath()) {
+        replace = false;
+        vault.files.set(file.path, "external replacement during persistence");
+        store.invalidateLibrary([file.path]);
+      }
+    });
+    await store.refreshLibrary();
+    expect(vault.files.get(store.overviewPath())).toBe("external replacement during persistence");
+    await store.refreshLibrary();
+    expect(vault.files.get(store.overviewPath())).toContain("New note");
+  });
+
+  it("does not clear an external output event arriving during a self-fingerprint check", async () => {
+    const { store, vault } = fixture();
+    await store.rebuildLibrary();
+    store.invalidateLibrary([store.overviewPath()]);
+    const started = deferred(), gate = deferred(), original = vault.read.bind(vault);
+    let block = true;
+    vi.spyOn(vault, "read").mockImplementation(async file => {
+      const content = await original(file);
+      if (block && file.path === store.overviewPath()) {
+        block = false;
+        started.resolve();
+        await gate.promise;
+      }
+      return content;
+    });
+    const refresh = store.refreshLibrary();
+    await started.promise;
+    vault.files.set(store.overviewPath(), "newer external replacement");
+    store.invalidateLibrary([store.overviewPath()]);
+    gate.resolve();
+    await refresh;
+    expect(vault.files.get(store.overviewPath())).toContain("# Annotation Memory");
+  });
+
+  it("invalidates every derived page beneath a renamed or replaced output directory", async () => {
+    const { store, vault } = fixture();
+    await store.rebuildLibrary();
+    vault.files.set(store.annotationIndexPath(), "external replacement");
+    vault.files.set(store.cellIndexPath(), "external replacement");
+    const modify = vi.spyOn(vault, "modify"), read = vi.spyOn(vault, "read");
+    await store.refreshLibrary(undefined, [store.indexesDir()]);
+    expect(read.mock.calls.map(([file]) => file.path).sort()).toEqual([
+      store.annotationIndexPath(), store.cellIndexPath(), store.sceneIndexPath()
+    ].sort());
+    expect(modify.mock.calls.map(([file]) => file.path).sort()).toEqual([
+      store.annotationIndexPath(), store.cellIndexPath()
+    ].sort());
+  });
+
   it("serializes refresh outputs and keeps writes made during a refresh dirty for the next one", async () => {
     const { store, vault } = fixture();
     await store.createAnnotation(annotation());
@@ -114,7 +301,8 @@ describe("library I/O reconciliation", () => {
     const { store, vault } = fixture();
     await store.createAnnotation(annotation());
     await store.rebuildLibrary();
-    await store.updateAnnotation("ANN-1", { userNote: "Retry" });
+    // Both projections must change: a note alone only changes the overview.
+    await store.updateAnnotation("ANN-1", { userNote: "Retry", status: "reviewed" });
     const gate = deferred(), started = deferred(), originalModify = vault.modify.bind(vault);
     let fail = true;
     vi.spyOn(vault, "modify").mockImplementation(async (file, content) => {
@@ -163,6 +351,54 @@ describe("library I/O reconciliation", () => {
 });
 
 describe("watcher ownership and serialization", () => {
+  it.each([false, true])("does not repeat an output batch after self events when watchMemoryFiles=%s", async watchMemoryFiles => {
+    vi.useFakeTimers();
+    const { store, vault, settings } = fixture();
+    settings.watchMemoryFiles = watchMemoryFiles;
+    const watcher = new MemoryWatcher(store, () => settings, vi.fn(), 10);
+    const originalCreate = vault.create.bind(vault), originalModify = vault.modify.bind(vault);
+    const create = vi.spyOn(vault, "create").mockImplementation(async (path, content) => {
+      const file = await originalCreate(path, content);
+      watcher.notify(path);
+      return file;
+    });
+    const modify = vi.spyOn(vault, "modify").mockImplementation(async (file, content) => {
+      await originalModify(file, content);
+      watcher.notify(file.path);
+    });
+    await store.rebuildLibrary();
+    create.mockClear(); modify.mockClear();
+    const read = vi.spyOn(vault, "read"), cacheWrite = vi.spyOn(vault.adapter, "write");
+    // Do not advance the debounce: refresh must itself recognize pending self events.
+    await store.refreshLibrary();
+    expect(read).toHaveBeenCalledTimes(6);
+    expect(create).not.toHaveBeenCalled();
+    expect(modify).not.toHaveBeenCalled();
+    expect(cacheWrite).not.toHaveBeenCalled();
+    read.mockClear();
+    await store.refreshLibrary();
+    expect(read).not.toHaveBeenCalled();
+    expect(modify).not.toHaveBeenCalled();
+    watcher.dispose();
+  });
+
+  it("clears confirmed self-output invalidations without generating another output batch", async () => {
+    vi.useFakeTimers();
+    const { store, vault, settings } = fixture();
+    await store.rebuildLibrary();
+    const flush = vi.fn(), watcher = new MemoryWatcher(store, () => settings, flush, 10);
+    for (const path of [store.overviewPath(), store.recentLearningPath(), store.annotationIndexPath(), store.cellIndexPath(), store.sceneIndexPath(), store.agentsPath()]) {
+      watcher.notify(path);
+    }
+    await vi.advanceTimersByTimeAsync(10);
+    expect(flush).not.toHaveBeenCalled();
+    const modify = vi.spyOn(vault, "modify"), cacheWrite = vi.spyOn(vault.adapter, "write");
+    await store.refreshLibrary();
+    expect(modify).not.toHaveBeenCalled();
+    expect(cacheWrite).not.toHaveBeenCalled();
+    watcher.dispose();
+  });
+
   it("does not use an old fingerprint after a concurrent self-write changed its generation", async () => {
     const { store, vault } = fixture();
     await store.createAnnotation(annotation());

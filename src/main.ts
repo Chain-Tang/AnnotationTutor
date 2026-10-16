@@ -423,6 +423,8 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     const support = this.support;
     try {await support.initialize();} catch {support.error="support-store-unavailable";}
     if (!startup.active) { support.dispose(); return; }
+  }
+  private observeSupportActivity():void {
     const observed=new WeakSet<Document>();
     const attach=()=>{const docs=new Set<Document>([this.app.workspace.containerEl.ownerDocument]);this.app.workspace.iterateAllLeaves(leaf=>{docs.add(leaf.view.containerEl.ownerDocument);});
       for(const doc of docs){if(observed.has(doc))continue;observed.add(doc);
@@ -749,8 +751,29 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     coreServicesReady();
     this.learning = new LearningFlow(new LearningEpisodeStore(learningVaultIO(this.app), `${this.settings.memoryRoot}/learning/v1/episodes`));
     this.initializeLearningDialogue();
-    if(this.settings.learningFlowEnabled)await timings.measure("learning", () => startup.waitFor(() => this.learning.load()));
+    this.tutorJournal=new TutorJournal(this.app.vault.adapter,this.settings.memoryRoot);
+    // These stores restore independent state. Keep one readiness barrier before
+    // publishing views/services, and drain every restore even if one fails so
+    // unload cannot close credentials while another durable operation is active.
+    let recoveryFailure: { error: unknown } | undefined;
+    const restore = (stage: "learning" | "support" | "tutor-results", run: () => Promise<void>) =>
+      timings.measure(stage, () => startup.waitFor(run)).catch(error => {
+        if (!(error instanceof StartupCancelled) && !recoveryFailure) {
+          recoveryFailure = { error };
+          startup.cancel();
+          this.support?.dispose();
+        }
+        throw error;
+      });
+    const restored = await Promise.allSettled([
+      ...(this.settings.learningFlowEnabled ? [restore("learning", () => this.learning.load())] : []),
+      restore("support", () => this.initializeSupport(startup)),
+      restore("tutor-results", () => this.initializeTutorResults(startup)),
+    ]);
+    if (recoveryFailure) throw recoveryFailure.error;
     startup.assertActive();
+    for (const result of restored) if (result.status === "rejected") throw result.reason;
+    this.observeSupportActivity();
     const learningChanged=(file:{path:string})=>{
       const v1=file.path.startsWith(`${this.settings.memoryRoot}/learning/v1/episodes/`);
       const v3=file.path.startsWith(`${this.settings.memoryRoot}/learning/v3/`);
@@ -767,8 +790,6 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     this.registerEvent(this.app.vault.on("modify",learningChanged));
     this.registerEvent(this.app.vault.on("delete",learningChanged));
     this.registerEvent(this.app.vault.on("create",learningChanged));
-    await timings.measure("support", () => startup.waitFor(() => this.initializeSupport(startup)));
-    startup.assertActive();
     this.registerEvent(this.app.vault.on("rename",(file,oldPath)=>{
       if(file instanceof TFile && ["md","pdf"].includes(file.extension)){
         const change={sources:[oldPath,file.path],unknownScope:false};
@@ -784,9 +805,6 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     // A document having one active exercise does not make every completed task
     // learning help. Drawing links are attached by an explicitly bound learning
     // request, never inferred afterward from whichever episode happens to exist.
-    this.tutorJournal=new TutorJournal(this.app.vault.adapter,this.settings.memoryRoot);
-    await timings.measure("tutor-results", () => startup.waitFor(() => this.initializeTutorResults(startup)));
-    startup.assertActive();
     const registrationsReady = timings.begin("registrations");
     const phases=new Map<string,string>();
     this.register(this.tutorConversation.tasks.subscribe(task=>{const key=`${task.state}:${task.phase}`;if(phases.get(task.id)===key)return;phases.set(task.id,key);if(phases.size>200)phases.delete(phases.keys().next().value!);void this.tutorJournal!.record(task).catch(()=>{});const rootId=task.parentId??task.id;if(this.recoveredExpertRoots.has(rootId)){const saving=this.saveExpertResult(rootId).catch(()=>{new Notice("专家结果暂未保存，当前结果仍可查看。");});this.expertWrites.add(saving);void saving.finally(()=>this.expertWrites.delete(saving));}}));

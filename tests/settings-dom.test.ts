@@ -103,7 +103,7 @@ async function fixture(overrides: Record<string, unknown> = {}) {
     allSkins: vi.fn(() => [{ id: "flat", builtin: true, name: "Flat" }]),
     libraryPaths: () => ({ overview: "Overview.md" }),
     persistSettings: vi.fn(async () => { await session.save(); }),
-    applyDisplaySettings: vi.fn(), applyLocale: () => setLocale(settings.language),
+    applyDisplaySettings: vi.fn(), applyHighlightColor: vi.fn(), applyLocale: () => setLocale(settings.language),
     changeMemoryRoot: vi.fn(async (value: string) => { settings.memoryRoot = value; return { ok: true }; }),
     refreshApiModels: vi.fn(async () => {}), refreshAvailableModels: vi.fn(async () => {}),
     boardMcpConnection: () => ({ running: settings.boardMcpEnabled, port: 51257, recentCalls: 0, token: "" }),
@@ -137,6 +137,75 @@ function page(tab: AnnotationTutorLiteSettingTab, name: string) {
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; }
 
 describe("settings DOM updates", () => {
+  it("limits highlight and board mode changes to their dependent rows", async () => {
+    const { tab, plugin, scroll } = await fixture({ boardConnectionMode: "inherit" });
+    const memory = input(tab, "set.memoryFolder"), apiKey = input(tab, "set.apiKey");
+    draft(memory, "Pending folder"); memory.focus(); memory.setSelectionRange(2, 6);
+    tab.containerEl.scrollTop = 300; scroll.scrollTop = 620;
+    const totalRows = tab.containerEl.querySelectorAll(".setting-item").length;
+    const create = vi.spyOn(HTMLElement.prototype, "createDiv");
+    const newRows = () => create.mock.calls.filter(([options]) => typeof options === "object" && options?.cls === "setting-item").length;
+    change(select(tab, "set.highlightColor"), "custom");
+    await vi.waitFor(() => expect(tab.containerEl.querySelector('.atl-highlight-color-fields input[type="color"]')).not.toBeNull());
+    expect(newRows()).toBe(2); expect(totalRows).toBeGreaterThan(40);
+    create.mockClear();
+    change(select(tab, "set.highlightColor"), "theme");
+    await vi.waitFor(() => expect(tab.containerEl.querySelector('.atl-highlight-color-fields input[type="color"]')).toBeNull());
+    expect(newRows()).toBe(1);
+    create.mockClear();
+    const mode = select(tab, "board.connectionMode"); change(mode, "custom");
+    await vi.waitFor(() => expect(tab.containerEl.querySelector(".atl-board-connection-fields input")).not.toBeNull());
+    expect(newRows()).toBe(2);
+    create.mockClear(); change(mode, "inherit");
+    await vi.waitFor(() => expect(tab.containerEl.querySelector(".atl-board-connection-fields input")).toBeNull());
+    expect(newRows()).toBe(0);
+    expect(input(tab, "set.memoryFolder")).toBe(memory); expect(input(tab, "set.apiKey")).toBe(apiKey);
+    expect(memory.value).toBe("Pending folder"); expect(document.activeElement).toBe(memory);
+    expect([memory.selectionStart, memory.selectionEnd]).toEqual([2, 6]);
+    expect([tab.containerEl.scrollTop, scroll.scrollTop]).toEqual([300, 620]);
+    expect(plugin.changeMemoryRoot).not.toHaveBeenCalled();
+    expect(plugin.refreshApiModels).not.toHaveBeenCalled(); expect(plugin.refreshAvailableModels).not.toHaveBeenCalled();
+  });
+
+  it("keeps unrelated controls mounted for toggles with no conditional settings", async () => {
+    const { tab, plugin } = await fixture();
+    const memory = input(tab, "set.memoryFolder"), autoRun = input(tab, "set.autoRunAgent");
+    toggle(autoRun, !plugin.settings.autoRunAgent);
+    await vi.waitFor(() => expect(plugin.applyDisplaySettings).toHaveBeenCalled());
+    expect(input(tab, "set.memoryFolder")).toBe(memory); expect(input(tab, "set.autoRunAgent")).toBe(autoRun);
+    page(tab, "feedback");
+    const duration = input(tab, "upgrade.dailyMinutes");
+    const create = vi.spyOn(HTMLElement.prototype, "createDiv");
+    for (const [label, key] of [["upgrade.learningFlowEnabled", "learningFlowEnabled"], ["upgrade.supportCheckinEnabled", "supportCheckinEnabled"], ["upgrade.learningExpertsEnabled", "learningExpertsEnabled"]] as const) {
+      const control = input(tab, label), value = !plugin.settings[key];
+      const calls = plugin.applyDisplaySettings.mock.calls.length;
+      toggle(control, value);
+      await vi.waitFor(() => expect(plugin.applyDisplaySettings.mock.calls.length).toBeGreaterThan(calls));
+      expect(plugin.settings[key]).toBe(value); expect(input(tab, label)).toBe(control);
+      expect(input(tab, "upgrade.dailyMinutes")).toBe(duration);
+    }
+    expect(create.mock.calls.filter(([options]) => typeof options === "object" && options?.cls === "setting-item")).toHaveLength(0);
+  });
+
+  it.each(["custom", "inherit"])("rebinds the board model editor from %s mode without replacing other drafts", async mode => {
+    const { tab, plugin } = await fixture({ boardConnectionMode: mode, boardEngine: "api", boardApiModel: "api-model", boardAgentModel: "agent-model" });
+    const memory = input(tab, "set.memoryFolder"); draft(memory, "Pending memory folder");
+    if (mode === "inherit") {
+      change(select(tab, "board.connectionMode"), "custom");
+      await vi.waitFor(() => expect(tab.containerEl.querySelector(".atl-board-connection-fields input")).not.toBeNull());
+    }
+    const api = input(tab, "board.connectionModel"); draft(api, "edited-api-model");
+    change(select(tab, "set.boardEngine"), "opencode");
+    await vi.waitFor(() => expect(input(tab, "board.connectionModel").value).toBe("agent-model"));
+    const agent = input(tab, "board.connectionModel"); expect(agent).not.toBe(api);
+    draft(agent, "edited-agent-model");
+    change(select(tab, "set.boardEngine"), "api");
+    await vi.waitFor(() => expect(input(tab, "board.connectionModel").value).toBe("edited-api-model"));
+    expect(plugin.settings.boardAgentModel).toBe("edited-agent-model");
+    expect(input(tab, "set.memoryFolder")).toBe(memory); expect(memory.value).toBe("Pending memory folder");
+    expect(plugin.changeMemoryRoot).not.toHaveBeenCalled();
+  });
+
   it("keeps an uncommitted editor, focus, caret and ancestor scroll during model/skin refresh", async () => {
     const { tab, plugin, scroll } = await fixture();
     const editor = input(tab, "set.memoryFolder");

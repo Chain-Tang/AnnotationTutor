@@ -187,13 +187,14 @@ describe("production startup lifecycle", () => {
     await vi.waitFor(() => expect(r.journalInitialize).toHaveBeenCalledOnce());
     expect(r.learningLoad).not.toHaveBeenCalled(); expect(r.registeredViews).toEqual([]);
     r.journal.resolve();
-    await vi.waitFor(() => expect(r.learningLoad).toHaveBeenCalledOnce());
-    expect(r.resultInitialize).not.toHaveBeenCalled(); expect(r.registeredViews).toEqual([]);
-    r.learning.resolve();
-    r.supportSummaries.resolve([]);
-    await vi.waitFor(() => expect(r.resultInitialize).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(r.supportLoad).toHaveBeenCalledOnce());
+    expect(r.learningLoad).toHaveBeenCalledOnce(); expect(r.resultInitialize).toHaveBeenCalledOnce();
     expect(r.registeredViews).toEqual([]);
-    r.results.resolve(); await loading;
+    r.learning.resolve();
+    r.results.resolve();
+    await vi.waitFor(() => expect(r.host.startupDiagnostics()).toContainEqual(expect.objectContaining({ stage: "tutor-results", status: "ready" })));
+    expect(r.registeredViews).toEqual([]); expect(r.layouts).toEqual([]);
+    r.supportSummaries.resolve([]); await loading;
     expect(r.registeredViews).toEqual(["dashboard", "chat", "studio"]);
     expect(r.host.activeRailSkin().id).toBe("flat"); expect(r.scan).not.toHaveBeenCalled();
     r.layouts[0]!();
@@ -207,6 +208,90 @@ describe("production startup lifecycle", () => {
     await r.host.reloadSkins();
     expect(r.host.customSkins).toHaveLength(1);
     expect(r.settingRefresh).toHaveBeenCalledOnce(); expect(r.displayRefresh).toHaveBeenCalledOnce();
+    r.host.onunload();
+  });
+
+  it.each(["learning", "support", "results"] as const)("overlaps independent recovery IO and waits for %s before publishing views", async stage => {
+    const r = fixture(), loading = r.host.onload();
+    r.credentials.resolve({ state: "ready" }); r.journal.resolve();
+    await vi.waitFor(() => expect(r.supportLoad).toHaveBeenCalledOnce());
+    expect(r.learningLoad).toHaveBeenCalledOnce(); expect(r.resultInitialize).toHaveBeenCalledOnce();
+    if (stage !== "learning") r.learning.resolve();
+    if (stage !== "support") r.supportSummaries.resolve([]);
+    if (stage !== "results") r.results.resolve();
+    const diagnosticsStage = stage === "results" ? "tutor-results" : stage;
+    await vi.waitFor(() => expect(r.host.startupDiagnostics().filter(record =>
+      ["learning", "support", "tutor-results"].includes(record.stage) && record.stage !== diagnosticsStage
+    ).every(record => record.status === "ready")).toBe(true));
+    expect(r.registeredViews).toEqual([]); expect(r.layouts).toEqual([]);
+    if (stage === "learning") r.learning.resolve();
+    if (stage === "support") r.supportSummaries.resolve([]);
+    if (stage === "results") r.results.resolve();
+    await loading;
+    expect(r.registeredViews).toEqual(["dashboard", "chat", "studio"]);
+    r.host.onunload();
+  });
+
+  it("drains all started recovery IO before propagating a failure", async () => {
+    const r = fixture(), error = new Error("PRIVATE_LEARNING_FAILURE"), settled = vi.fn();
+    const loading = r.host.onload();
+    void loading.then(settled, settled);
+    const rejected = expect(loading).rejects.toBe(error);
+    r.credentials.resolve({ state: "ready" }); r.journal.resolve();
+    await vi.waitFor(() => expect(r.supportLoad).toHaveBeenCalledOnce());
+    r.learning.reject(error);
+    await vi.waitFor(() => expect(r.host.startupDiagnostics()).toContainEqual(expect.objectContaining({ stage: "learning", status: "failed" })));
+    expect(settled).not.toHaveBeenCalled();
+    r.results.resolve();
+    await vi.waitFor(() => expect(r.host.startupDiagnostics()).toContainEqual(expect.objectContaining({ stage: "tutor-results", status: "cancelled" })));
+    expect(settled).not.toHaveBeenCalled(); expect(r.registeredViews).toEqual([]);
+    r.supportSummaries.resolve([]); await rejected;
+    expect(r.registeredViews).toEqual([]); expect(r.layouts).toEqual([]); expect(r.supportListeners).not.toHaveBeenCalled();
+    expect(JSON.stringify(r.host.startupDiagnostics())).not.toContain("PRIVATE");
+    r.host.onunload();
+  });
+
+  it("disposes an already restored support expiry timer when sibling recovery fails", async () => {
+    vi.useFakeTimers();
+    const r = fixture(), error = new Error("learning-restore-failed"), loading = r.host.onload();
+    const rejected = expect(loading).rejects.toBe(error);
+    r.credentials.resolve({ state: "ready" }); r.journal.resolve();
+    await vi.waitFor(() => expect(r.supportLoad).toHaveBeenCalledOnce());
+    r.supportSummaries.resolve([{ format: 1, id: crypto.randomUUID(), text: "saved summary",
+      confirmedAt: new Date(Date.now() - 86400000).toISOString(), expiresAt: new Date(Date.now() + 86400000).toISOString() }]);
+    await vi.waitFor(() => expect(r.host.startupDiagnostics()).toContainEqual(expect.objectContaining({ stage: "support", status: "ready" })));
+    expect(vi.getTimerCount()).toBe(1); expect(r.supportListeners).not.toHaveBeenCalled();
+    r.learning.reject(error);
+    await vi.waitFor(() => expect(r.host.startupDiagnostics()).toContainEqual(expect.objectContaining({ stage: "learning", status: "failed" })));
+    expect(vi.getTimerCount()).toBe(0);
+    r.results.resolve(); await rejected;
+    expect(r.restoreTasks).not.toHaveBeenCalled(); expect(r.registeredViews).toEqual([]);
+    r.host.onunload();
+  });
+
+  it("waits for sibling recovery IO during unload even after another restore failed", async () => {
+    const r = fixture(), error = new Error("recovery-failed"), loading = r.host.onload();
+    const rejected = expect(loading).rejects.toBe(error);
+    r.credentials.resolve({ state: "ready" }); r.journal.resolve();
+    await vi.waitFor(() => expect(r.supportLoad).toHaveBeenCalledOnce());
+    r.learning.reject(error);
+    await vi.waitFor(() => expect(r.host.startupDiagnostics()).toContainEqual(expect.objectContaining({ stage: "learning", status: "failed" })));
+    r.host.onunload();
+    expect(r.credentialDispose).not.toHaveBeenCalled();
+    r.results.resolve();
+    await vi.waitFor(() => expect(r.host.startupDiagnostics()).toContainEqual(expect.objectContaining({ stage: "tutor-results", status: "cancelled" })));
+    expect(r.credentialDispose).not.toHaveBeenCalled(); expect(r.restoreTasks).not.toHaveBeenCalled();
+    r.supportSummaries.resolve([]); await rejected;
+    await vi.waitFor(() => expect(r.credentialDispose).toHaveBeenCalled());
+    expect(r.supportListeners).not.toHaveBeenCalled(); expect(r.registeredViews).toEqual([]); expect(r.layouts).toEqual([]);
+  });
+
+  it("keeps disabled learning recovery out of the parallel startup barrier", async () => {
+    const r = fixture(); r.settings.learningFlowEnabled = false;
+    r.credentials.resolve({ state: "ready" }); r.journal.resolve(); r.supportSummaries.resolve([]); r.results.resolve();
+    await r.host.onload();
+    expect(r.learningLoad).not.toHaveBeenCalled();
+    expect(r.registeredViews).toEqual(["dashboard", "chat", "studio"]);
     r.host.onunload();
   });
 

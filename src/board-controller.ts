@@ -56,6 +56,7 @@ import { boardStickerExpressions, boardStickerKey, builtInBoardAssets } from "./
 import { decorateBoardButton } from "./board-ui.js";
 import { BoardAnchorRegistry } from "./board-anchors.js";
 import { cloneBoardValue as copy } from "./board-clone.js";
+import { portableBoardObjects } from "./board-portable-layout.js";
 import {
   BoardEditorBridge,
   type BoardEditorEvent,
@@ -170,46 +171,12 @@ function clientBounds(object: BoardObject, surface: BoardSurface): BoardRect {
     ),
   );
 }
-/** Use all rotated corners when laying out a portable preview. */
-function objectCorners(object: BoardObject): BoardPoint[] {
-  const angle = object.rotation ?? 0,
-    c = Math.cos(angle),
-    s = Math.sin(angle);
-  return [
-    [0, 0],
-    [object.width, 0],
-    [0, object.height],
-    [object.width, object.height],
-  ].map(([x = 0, y = 0]) => ({
-    x: object.x + x * c - y * s,
-    y: object.y + x * s + y * c,
-  }));
-}
 function supported(view: SourceView): boolean {
   return (
     !!view.file &&
     (view.file.extension === "pdf" || view.file.extension === "md")
   );
 }
-
-/** Preview/export geometry is derived only; anchors retain their original local coordinates. */
-function portableObjects(objects: BoardObject[]): {objects: BoardObject[]; width: number; height: number} {
-    let y = 20,
-      width = 600;
-    const anchors = [...new Set(objects.map((o) => anchorKey(o.anchor)))];
-    for (const key of anchors) {
-      const group = objects.filter((o) => anchorKey(o.anchor) === key);
-      const box = bounds(group.flatMap(objectCorners));
-      const padding = Math.max(20, ...group.map((o) => o.strokeWidth * 2));
-      for (const o of group) {
-        o.x += padding - box.x;
-        o.y += y + padding - box.y;
-      }
-      y += box.height + padding * 2;
-      width = Math.max(width, box.width + padding * 2);
-    }
-    return { objects, width, height: Math.max(100, y) };
- }
 
 /** Per-view lifecycle; repositories remain bound to the root they were opened in. */
 export class InspirationBoards {
@@ -535,7 +502,7 @@ export class InspirationBoards {
             if (bundle.document.objects.length > 1000 || Object.values(bundle.ink).reduce((count, stroke) => count + stroke.points.length, 0) > 50_000) {
               preview.hidden = true; row.createEl("p", {text: t("board.sourceBranchPreviewLarge")}); ready(choose); return;
             }
-            const layout = portableObjects(copy(bundle.document.objects));
+            const layout = portableBoardObjects(bundle.document.objects);
             const svg = renderBoardSvg(layout.objects, { width: layout.width, height: layout.height, characters: [...builtInBoardAssets(), ...profiles], ink: bundle.ink, layers: bundle.document.layers, vectorAssets: bundle.document.vectorAssets,
               resolveAsset: path => path.startsWith(repository.memoryRoot + "/characters/") ? this.host.app.vault.adapter.getResourcePath?.(path) : undefined });
             preview.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`; ready(choose);
@@ -3937,8 +3904,9 @@ class BoardLayer {
     objects: BoardObject[]; width: number; height: number;
     objectMatrices?:ReadonlyMap<string,import("./board-types.js").BoardMatrix>;
   } {
-    const objects=copy(bundle.document.objects.filter(o=>!selectedOnly||this.selection.has(o.id)));
-    if(!bundle.layout?.slots.length)return portableObjects(objects);
+    const objects=bundle.document.objects.filter(o=>!selectedOnly||this.selection.has(o.id));
+    if(!bundle.layout?.slots.length)return portableBoardObjects(objects);
+    // Slotted previews transform through matrices and only read object data.
     const bindings=new Map(bundle.layout.slots.flatMap(s=>s.bindings.map(b=>[b.objectId,{slot:s.id,...b}] as const)));
     const groups=new Map<string,BoardObject[]>(),matrices=new Map<string,import("./board-types.js").BoardMatrix>();
     for(const o of objects){const b=bindings.get(o.id),valid=b?.digests.includes(layoutObjectDigest(o));

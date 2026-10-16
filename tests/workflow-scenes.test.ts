@@ -49,11 +49,14 @@ describe("incremental cells-to-scenes reconciliation", () => {
     await store.syncScenesFromCells();
     await store.rebuildLibrary();
     const read = vi.spyOn(vault, "read"), process = vi.spyOn(vault, "process"), modify = vi.spyOn(vault, "modify"), create = vi.spyOn(vault, "create");
+    const cacheWrite = vi.spyOn(vault.adapter, "write");
     await store.syncScenesFromCells();
+    await store.refreshLibrary();
     expect(read).not.toHaveBeenCalled();
     expect(process).not.toHaveBeenCalled();
     expect(modify).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
+    expect(cacheWrite).not.toHaveBeenCalled();
     await store.createMemoryCell(cell("CELL-new", "Concept 0"));
     await store.syncScenesFromCells();
     expect(read.mock.calls.map(([file]) => file.path)).toEqual([`${CELL_DIR}/CELL-new.md`]);
@@ -63,6 +66,8 @@ describe("incremental cells-to-scenes reconciliation", () => {
     expect(snapshot.cells).toHaveLength(1001);
     expect(snapshot.scenes).toHaveLength(500);
     expect(snapshot.scenes.find(scene => scene.id === "SCENE-Concept-0")?.cells).toEqual(["CELL-0", "CELL-1", "CELL-new"]);
+    expect(modify.mock.calls.map(([file]) => file.path).sort()).toEqual([store.overviewPath(), store.cellIndexPath()].sort());
+    expect(cacheWrite).toHaveBeenCalledTimes(1);
   }, 20_000);
 
   it("handles immediately invalidated external cell edits, additions and deletions before UI refresh", async () => {

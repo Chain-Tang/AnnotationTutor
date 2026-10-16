@@ -10,6 +10,12 @@ export type Locale = "en" | "zh-cn" | "zh-tw" | "ja";
 type Dict = Record<string, string>;
 
 const en = {
+  "list.pagination": "Pagination",
+  "list.previous": "Previous",
+  "list.next": "Next",
+  "list.pageCount": "Page {page} of {pages} · {total} records",
+  "notice.settingsSaveFailed": "Settings could not be saved. Your draft is preserved; press Enter or leave the field to retry.",
+
   "notice.credentialAttention": "Some connection credentials are unavailable or session-only. Check the credential status in settings.",
   "notice.surfaceTransactionsUnavailable": "The drawing transaction journal is unavailable. Agent edits are paused to protect existing artwork; local drawing remains available.",
   "set.credentialStorage": "Credential storage",
@@ -603,6 +609,12 @@ const en = {
 type CoreDict = Record<keyof typeof en, string>;
 
 const zhCn: CoreDict = {
+  "list.pagination": "分页",
+  "list.previous": "上一页",
+  "list.next": "下一页",
+  "list.pageCount": "第 {page} / {pages} 页 · 共 {total} 条",
+  "notice.settingsSaveFailed": "设置未能保存，草稿已保留。请按 Enter 或离开输入框重试。",
+
   "notice.credentialAttention": "部分连接凭据暂不可用或仅保留在当前会话中，请查看设置中的凭据状态。",
   "notice.surfaceTransactionsUnavailable": "绘图事务记录暂时无法读取。为保护已有作品，Agent 修改已暂停，本地绘画仍可使用。",
   "set.credentialStorage": "凭据存储",
@@ -1194,6 +1206,12 @@ const zhCn: CoreDict = {
 };
 
 const zhTw: CoreDict = {
+  "list.pagination": "分頁",
+  "list.previous": "上一頁",
+  "list.next": "下一頁",
+  "list.pageCount": "第 {page} / {pages} 頁 · 共 {total} 筆",
+  "notice.settingsSaveFailed": "設定無法儲存，草稿已保留。請按 Enter 或離開輸入框重試。",
+
   "notice.credentialAttention": "部分連線憑證暫時無法使用或僅保留於目前工作階段，請查看設定中的憑證狀態。",
   "notice.surfaceTransactionsUnavailable": "繪圖交易紀錄暫時無法讀取。為保護既有作品，Agent 修改已暫停，本機繪畫仍可使用。",
   "set.credentialStorage": "憑證儲存",
@@ -1785,6 +1803,12 @@ const zhTw: CoreDict = {
 };
 
 const ja: CoreDict = {
+  "list.pagination": "ページ切り替え",
+  "list.previous": "前へ",
+  "list.next": "次へ",
+  "list.pageCount": "{page} / {pages} ページ · 全 {total} 件",
+  "notice.settingsSaveFailed": "設定を保存できませんでした。入力は保持されています。Enter またはフォーカス移動で再試行してください。",
+
   "notice.credentialAttention": "一部の接続の認証情報は利用できないか、セッション限定です。設定で認証情報の状態を確認してください。",
   "notice.surfaceTransactionsUnavailable": "描画トランザクションの記録を読み出せません。既存の作品を保護するため Agent の編集を停止しました。ローカルでの描画は引き続き利用できます。",
   "set.credentialStorage": "認証情報の保存",

@@ -20,14 +20,14 @@ beforeAll(()=>{
 const cleanups:Array<()=>void>=[];
 afterEach(()=>{for(const dispose of cleanups.splice(0))dispose();document.body.replaceChildren();vi.restoreAllMocks();});
 function barrier(){let entered!:()=>void,release!:()=>void;const reached=new Promise<void>(resolve=>entered=resolve),ready=new Promise<void>(resolve=>release=resolve);return {reached,release,wait:async()=>{entered();await ready;}};}
-async function rig(start=true){
+async function rig(start=true,settings:Pick<LearningPanelHost,"minutes"|"expertsEnabled">={minutes:()=>20}){
   setLocale("en");const f=protectionFixture(),commands=new LearningCommandsV3(f.store),source={path:"Synthetic/card.md",version:"v1"},authority=localLearnerAuthority(),conversationId=crypto.randomUUID();
   const legacy=[createEpisode(source,"value-limit")],card=new LearningCardV3(commands,{readLegacy:async()=>completeRecordReadResult(legacy)});
   await card.load();const base=()=>({authority,conversationId,requestId:crypto.randomUUID(),source,signal:new AbortController().signal,ensureCurrent:async()=>{},present:()=>false});
   if(start)await card.start(base(),"value-limit");
   const parent=document.createElement("div");document.body.append(parent);const help=vi.fn(async()=>{}),draw=vi.fn(async()=>{}),explain=vi.fn(async()=>{}),expert=vi.fn(async()=>{});
   const run=vi.fn<LearningPanelHost["run"]>(async(action,present)=>action(card,{...base(),present}));
-  const stop=mountLearningPanel(parent,{card,minutes:()=>20,run,help,draw,explain,expert});cleanups.push(()=>{stop();card.dispose();});
+  const stop=mountLearningPanel(parent,{card,...settings,run,help,draw,explain,expert});cleanups.push(()=>{stop();card.dispose();});
   const root=parent.querySelector<HTMLDetailsElement>(".atl-learning-card")!;root.open=true;
   const button=(text:string)=>{const value=[...parent.querySelectorAll<HTMLButtonElement>("button")].find(el=>el.textContent===text);if(!value)throw new Error(`button missing: ${text}`);return value;};
   const episode=()=>{const selected=card.snapshot.selected;if(selected?.kind!=="v3")throw new Error("v3 required");return selected.episode;};
@@ -39,6 +39,22 @@ async function rig(start=true){
 }
 
 describe("existing optional learning card on v3",()=>{
+  it("refreshes settings without remounting the card or losing local drafts",async()=>{
+    let minutes=20,experts=true;
+    const r=await rig(true,{minutes:()=>minutes,expertsEnabled:()=>experts});
+    const input=r.parent.querySelector<HTMLInputElement>('input[aria-label="Your answer"]')!;
+    input.value="7";input.dispatchEvent(new Event("input"));
+    const reflection=r.parent.querySelector<HTMLTextAreaElement>('textarea[aria-label="Explain it in your own words"]')??r.parent.querySelector("textarea")!;
+    reflection.value="my reasoning";reflection.dispatchEvent(new Event("input"));
+    expect(r.button("Verify explanation")).toBeDefined();
+    minutes=30;experts=false;r.stop.refresh();
+    expect(r.parent.querySelector(".atl-learning-card")).toBe(r.root);expect(r.root.open).toBe(true);
+    expect(r.parent.querySelector<HTMLInputElement>('input[aria-label="Your answer"]')!.value).toBe("7");
+    expect(r.parent.querySelector("textarea")!.value).toBe("my reasoning");
+    expect(r.parent.textContent).toContain("30");
+    expect([...r.parent.querySelectorAll("button")].some(button=>button.textContent==="Verify explanation")).toBe(false);
+    expect(r.run).not.toHaveBeenCalled();
+  });
   it("keeps old history read-only and makes Start create v3 using the new-record host scope",async()=>{
     const r=await rig(false),before=structuredClone(r.legacy);r.card.select(`v1:${r.legacy[0]!.id}`);
     expect(r.parent.textContent).toContain("older record is read-only");expect(r.parent.querySelector("input")).toBeNull();expect(r.parent.querySelector(".atl-learning-explanation")).toBeNull();

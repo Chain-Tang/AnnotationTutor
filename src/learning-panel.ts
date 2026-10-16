@@ -10,11 +10,13 @@ export type LearningPanelHost={
   run:(action:(card:LearningCardV3,scope:LearningCardActionScope)=>Promise<LearningRunResultV3>,present:(delta:string)=>boolean,options?:{newRecord?:boolean})=>Promise<LearningRunResultV3>;
   help?:(mode:TeachingMode,text:string)=>Promise<void>;draw?:()=>Promise<void>;explain?:(answer:string)=>Promise<void>;
   expert?:(kind:"explanation"|"diagram"|"research")=>Promise<void>;
+  expertsEnabled?:()=>boolean;
 };
+export type LearningPanelMount = (()=>void) & { refresh():void };
 
 /** The existing optional card is a presenter over shared V3 commands. It never
  * reconstructs a legacy flow or reads answer/explanation fields from a bank. */
-export function mountLearningPanel(parent:HTMLElement,host:LearningPanelHost):()=>void{
+export function mountLearningPanel(parent:HTMLElement,host:LearningPanelHost):LearningPanelMount{
   const root=parent.createEl("details",{cls:"atl-learning-card"});root.createEl("summary",{text:t("upgrade.learningTitle")});const body=root.createDiv();
   let answerDraft="",reflectionDraft="",localBusy=false,lastKey="",lastQuestion="",feedback="",errorText="",disposed=false,actionGeneration=0;
   let explanationOpen=false,explanationText="",explanationAttempted=false;
@@ -124,7 +126,7 @@ export function mountLearningPanel(parent:HTMLElement,host:LearningPanelHost):()
         button(t("upgrade.correctJudgment"),async()=>{if(reason.value.trim())await run((card,scope)=>card.correct(scope,item.id));},entry);
       }
     }
-    if(host.expert){const experts=body.createDiv({cls:"atl-learning-actions"});for(const kind of ["explanation","diagram","research"] as const)button(t(`upgrade.expert.${kind}`),()=>host.expert!(kind),experts);}
+    if(host.expert&&(host.expertsEnabled?.()??true)){const experts=body.createDiv({cls:"atl-learning-actions"});for(const kind of ["explanation","diagram","research"] as const)button(t(`upgrade.expert.${kind}`),()=>host.expert!(kind),experts);}
   };
-  const stop=host.card.subscribe(render);render();return()=>{disposed=true;actionGeneration++;stop();if(localBusy)host.card.cancel();root.remove();};
+  const stop=host.card.subscribe(render);render();return Object.assign(()=>{disposed=true;actionGeneration++;stop();if(localBusy)host.card.cancel();root.remove();},{refresh:render});
 }

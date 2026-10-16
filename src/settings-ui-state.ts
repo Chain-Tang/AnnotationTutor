@@ -39,6 +39,7 @@ export function prepareSettingsUi(root: HTMLElement): void {
       }, true);
       // Existing blur handlers commit or reject the draft before this listener.
       control.addEventListener("blur", () => initialValues.set(control, control.value));
+      control.addEventListener("atl-settings-committed", () => initialValues.set(control, control.value));
     }
   }
 }
@@ -62,7 +63,8 @@ export function captureSettingsUi(root: HTMLElement): {
       const control = editor as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
       if (control.dataset[CONTROL_KEY]) looseValues.set(control.dataset[CONTROL_KEY], control.value);
     }
-    if (!isEditor(editor) || (editor !== focused && editor.value === initialValues.get(editor))) continue;
+    if (!isEditor(editor) || (editor !== focused && editor.value === initialValues.get(editor)
+      && !editor.dataset["atlCommitState"] && editor.getAttribute("aria-invalid") !== "true")) continue;
     // Keep the original row and its closures, particularly credential bindings
     // and paired width/height inputs. Replaying input events could persist drafts.
     if (row?.dataset[ROW_KEY]) {

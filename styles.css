@@ -3813,3 +3813,6 @@
 /* View-only drawing space; never expands the document's horizontal width. */
 .atl-board-slot { display:block; width:100%; max-width:100%; min-width:0; overflow-x:auto; overflow-y:hidden; box-sizing:border-box; contain:layout; padding:0; margin:0; }
 .atl-board-slot-space { position:relative; pointer-events:none; max-width:none; flex:none; }
+
+.atl-pagination { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:8px; margin:12px 0; }
+.atl-pagination-count { color:var(--text-muted); font-size:var(--font-ui-small); }

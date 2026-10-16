@@ -14,7 +14,10 @@ import {
   type HotkeyDef,
   type ShortcutCommandId
 } from "./hotkeys.js";
-import { AnnotationTable } from "./views/annotation-table.js";
+import { replaceListOptions } from "./list-select.js";
+import { ListPagination, type ListPageState } from "./list-pagination.js";
+import { bindCommittedInput, bindSearchInput, commitSettingsInputs } from "./committed-input.js";
+import { AnnotationTable, type AnnotationTableState } from "./views/annotation-table.js";
 import { ConfirmModal } from "./views/annotation-modal.js";
 import { SceneCreateModal } from "./views/scene-modal.js";
 import { parseMcpConfig } from "./mcp-config.js";
@@ -79,6 +82,15 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
   private cellQuery: CellQuery = {};
   private sceneQuery: SceneQuery = {};
   private renderGeneration = 0;
+  private boardBindingGeneration = 0;
+  private ordinarySettingsQueue: Promise<void> = Promise.resolve();
+  private readonly cellPage: ListPageState = { page: 0 };
+  private readonly scenePage: ListPageState = { page: 0 };
+  private readonly annotationState: AnnotationTableState = { filter: {}, pagination: { page: 0 } };
+  private listRefresh: { page: SettingsPage; update: () => void } | undefined;
+  private tagsSnapshot: unknown;
+  private cachedTags = { cells: [] as string[], scenes: [] as string[] };
+  private readonly tagVersions = new WeakMap<HTMLSelectElement, unknown>();
 
   public constructor(
     app: App,
@@ -88,7 +100,9 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
   }
 
   public refresh(): void {
-    if (this.containerEl.isConnected) this.render(true);
+    if (!this.containerEl.isConnected) return;
+    if (this.listRefresh?.page === this.activePage) this.listRefresh.update();
+    else this.render(true);
   }
 
   public override display(): void {
@@ -99,6 +113,7 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     const state = preserveEditing ? captureSettingsUi(containerEl) : null;
     const generation = ++this.renderGeneration;
+    this.listRefresh = undefined;
     const content = containerEl.ownerDocument.createElement("div");
     containerEl.addClass("atl-settings");
     content.createEl("h2", { text: t("settings.title") });
@@ -134,13 +149,7 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       state?.reuse(content);
       containerEl.replaceChildren(...content.childNodes);
       prepareSettingsUi(containerEl);
-      if (preserveEditing && this.activePage === "annotations") {
-        // These controls filter a newly constructed AnnotationTable. Keep its
-        // fresh handlers and restore the UI query, rather than old table closures.
-        for (const control of containerEl.querySelectorAll(".atl-settings-annotations .atl-toolbar input, .atl-settings-annotations .atl-toolbar select")) {
-          control.dispatchEvent(new Event(control.tagName === "SELECT" ? "change" : "input"));
-        }
-      }
+
     } finally { state?.restore(); }
   }
 
@@ -185,8 +194,8 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.language)
           .onChange(async (value) => {
             this.plugin.settings.language = value as PluginLanguage;
-            await this.plugin.persistSettings();
             this.plugin.applyLocale();
+            await this.plugin.persistSettings();
             this.display();
           })
       );
@@ -196,13 +205,14 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       .setDesc(t("set.memoryFolderDesc"))
       .addText((text) => {
         text.setPlaceholder("Agent Memory").setValue(this.plugin.settings.memoryRoot);
-        text.inputEl.addEventListener("blur", () => {
-          void this.plugin.changeMemoryRoot(text.getValue()).then((result) => {
-            if (!result.ok) {
-              new Notice(result.message);
-              text.setValue(this.plugin.settings.memoryRoot);
-            }
-          });
+        bindCommittedInput(text.inputEl, {
+          read: () => this.plugin.settings.memoryRoot, parse: value => value.trim(),
+          save: value => this.queueOrdinarySettings(async () => {
+            if (value === this.plugin.settings.memoryRoot) return;
+            const result = await this.plugin.changeMemoryRoot(value);
+            if (!result.ok) throw new Error(result.message);
+          }),
+          onError: error => { new Notice(error instanceof Error ? error.message : t("notice.settingsSaveFailed")); }
         });
       });
 
@@ -310,15 +320,9 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       .addText((text) => {
         text.inputEl.type = "number";
         text.setValue(String(this.plugin.settings.pretranslateChunkChars));
-        text.inputEl.addEventListener("blur", () => {
-          const parsed = Number.parseInt(text.getValue(), 10);
-          const next =
-            Number.isFinite(parsed) && parsed >= MIN_PRETRANSLATE_CHUNK_CHARS
-              ? parsed
-              : DEFAULT_SETTINGS.pretranslateChunkChars;
-          this.plugin.settings.pretranslateChunkChars = next;
-          text.setValue(String(next));
-          void this.plugin.persistSettings();
+        this.bindSettingInput(text.inputEl, "pretranslateChunkChars", value => {
+          const parsed = Number.parseInt(value, 10);
+          return Number.isFinite(parsed) && parsed >= MIN_PRETRANSLATE_CHUNK_CHARS ? parsed : DEFAULT_SETTINGS.pretranslateChunkChars;
         });
       });
 
@@ -332,15 +336,9 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       .addText((text) => {
         text.inputEl.type = "number";
         text.setValue(String(this.plugin.settings.chatLogKeepSessions));
-        text.inputEl.addEventListener("blur", () => {
-          const parsed = Number.parseInt(text.getValue(), 10);
-          const next =
-            Number.isFinite(parsed) && parsed >= MIN_CHAT_LOG_KEEP_SESSIONS
-              ? parsed
-              : DEFAULT_SETTINGS.chatLogKeepSessions;
-          this.plugin.settings.chatLogKeepSessions = next;
-          text.setValue(String(next));
-          void this.plugin.persistSettings();
+        this.bindSettingInput(text.inputEl, "chatLogKeepSessions", value => {
+          const parsed = Number.parseInt(value, 10);
+          return Number.isFinite(parsed) && parsed >= MIN_CHAT_LOG_KEEP_SESSIONS ? parsed : DEFAULT_SETTINGS.chatLogKeepSessions;
         });
       });
 
@@ -536,8 +534,12 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       [t("settings.cleanInbox"), () => this.plugin.cleanInbox()],
       [t("settings.migrate"), () => this.plugin.migrateLegacyAnnotations()]
     ]);
-    new AnnotationTable(container.createDiv({ cls: "atl-settings-annotations" }), this.plugin).render();
-    this.renderDiagnostics(container, "annotation");
+    const table = new AnnotationTable(container.createDiv({ cls: "atl-settings-annotations" }), this.plugin, this.annotationState);
+    table.render();
+    const diagnostics = container.createDiv();
+    const refreshDiagnostics = () => { diagnostics.replaceChildren(); this.renderDiagnostics(diagnostics, "annotation"); };
+    refreshDiagnostics();
+    this.listRefresh = { page: "annotations", update: () => { table.refresh(); refreshDiagnostics(); } };
   }
 
   private renderCells(container: HTMLElement): void {
@@ -551,7 +553,8 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     const controls = container.createDiv({ cls: "atl-toolbar" });
     this.textFilter(controls, this.cellQuery.text ?? "", (value) => {
       this.cellQuery.text = value;
-      this.renderCurrentPage();
+      this.cellPage.page = 0;
+      updateRows();
     });
     this.selectFilter(
       controls,
@@ -560,22 +563,19 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       t("settings.allTypes"),
       (value) => {
         this.cellQuery.type = value as CellQuery["type"];
-        this.renderCurrentPage();
+        this.cellPage.page = 0;
+        updateRows();
       }
     );
-    this.selectFilter(
+    const tags = this.selectFilter(
       controls,
-      [
-        "",
-        ...new Set(
-          this.plugin.librarySnapshot.cells.flatMap((cell) => cell.tags)
-        )
-      ].sort(),
+      ["", ...this.tags("cells")],
       this.cellQuery.tag ?? "",
       t("settings.allTags"),
       (value) => {
         this.cellQuery.tag = value || undefined;
-        this.renderCurrentPage();
+        this.cellPage.page = 0;
+        updateRows();
       }
     );
     this.selectFilter(
@@ -585,10 +585,10 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       t("dash.allStatuses"),
       (value) => {
         this.cellQuery.status = value as CellQuery["status"];
-        this.renderCurrentPage();
+        this.cellPage.page = 0;
+        updateRows();
       }
     );
-    const rows = queryCells(this.plugin.librarySnapshot.cells, this.cellQuery);
     const table = this.table(container, [
       "ID",
       t("dash.col.concept"),
@@ -597,16 +597,27 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       t("settings.scenes"),
       t("dash.col.updated")
     ]);
-    for (const cell of rows) {
-      const row = table.createEl("tr");
-      this.openCell(row, cell.id, cell.path);
-      row.createEl("td", { text: cell.concept });
-      row.createEl("td", { text: cell.type });
-      row.createEl("td", { text: cell.status });
-      row.createEl("td", { text: cell.sceneIds.join(", ") || "—" });
-      row.createEl("td", { text: date(cell.updatedAt) });
-    }
-    this.renderDiagnostics(container, "memory-cell");
+    table.parentElement!.dataset["atlList"] = "cells";
+    const pager = new ListPagination(container, this.cellPage, () => updateRows());
+    const updateRows = (): void => {
+      this.refreshTags(tags, "cells", this.cellQuery.tag);
+      table.replaceChildren();
+      const rows = queryCells(this.plugin.librarySnapshot.cells, this.cellQuery);
+      for (const cell of pager.slice(rows)) {
+        const row = table.createEl("tr");
+        this.openCell(row, cell.id, cell.path);
+        row.createEl("td", { text: cell.concept });
+        row.createEl("td", { text: cell.type });
+        row.createEl("td", { text: cell.status });
+        row.createEl("td", { text: cell.sceneIds.join(", ") || "—" });
+        row.createEl("td", { text: date(cell.updatedAt) });
+      }
+    };
+    updateRows();
+    const diagnostics = container.createDiv();
+    const refreshDiagnostics = () => { diagnostics.replaceChildren(); this.renderDiagnostics(diagnostics, "memory-cell"); };
+    refreshDiagnostics();
+    this.listRefresh = { page: "cells", update: () => { updateRows(); refreshDiagnostics(); } };
   }
 
   private renderScenes(container: HTMLElement): void {
@@ -629,7 +640,8 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     const controls = container.createDiv({ cls: "atl-toolbar" });
     this.textFilter(controls, this.sceneQuery.text ?? "", (value) => {
       this.sceneQuery.text = value;
-      this.renderCurrentPage();
+      this.scenePage.page = 0;
+      updateRows();
     });
     this.selectFilter(
       controls,
@@ -638,7 +650,8 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       t("settings.allTypes"),
       (value) => {
         this.sceneQuery.type = value as SceneQuery["type"];
-        this.renderCurrentPage();
+        this.scenePage.page = 0;
+        updateRows();
       }
     );
     this.selectFilter(
@@ -648,25 +661,21 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       t("dash.allStatuses"),
       (value) => {
         this.sceneQuery.status = value as SceneQuery["status"];
-        this.renderCurrentPage();
+        this.scenePage.page = 0;
+        updateRows();
       }
     );
-    this.selectFilter(
+    const tags = this.selectFilter(
       controls,
-      [
-        "",
-        ...new Set(
-          this.plugin.librarySnapshot.scenes.flatMap((scene) => scene.tags)
-        )
-      ].sort(),
+      ["", ...this.tags("scenes")],
       this.sceneQuery.tag ?? "",
       t("settings.allTags"),
       (value) => {
         this.sceneQuery.tag = value || undefined;
-        this.renderCurrentPage();
+        this.scenePage.page = 0;
+        updateRows();
       }
     );
-    const rows = queryScenes(this.plugin.librarySnapshot.scenes, this.sceneQuery);
     const table = this.table(container, [
       "ID",
       t("settings.titleColumn"),
@@ -677,35 +686,46 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       t("dash.col.updated"),
       t("settings.actions")
     ]);
-    for (const scene of rows) {
-      const row = table.createEl("tr");
-      this.openCell(row, scene.id, scene.path);
-      row.createEl("td", { text: scene.title });
-      row.createEl("td", { text: scene.type });
-      row.createEl("td", { text: scene.status });
-      row.createEl("td", { text: String(scene.cells.length) });
-      row.createEl("td", { text: String(scene.sourceAnnotations.length) });
-      row.createEl("td", { text: date(scene.updatedAt) });
-      const actions = row.createEl("td");
-      if (scene.status === "active") {
-        const archive = actions.createEl("button", {
-          text: t("settings.archive"),
-          cls: "atl-link-button"
-        });
-        archive.onclick = () => {
-          new ConfirmModal(this.app, {
-            title: t("settings.archiveSceneTitle"),
-            body: t("settings.archiveSceneBody", { title: scene.title }),
-            confirmText: t("settings.archive"),
-            warning: true,
-            onConfirm: () => this.plugin.archiveScene(scene.id)
-          }).open();
-        };
-      } else {
-        actions.setText("—");
+    table.parentElement!.dataset["atlList"] = "scenes";
+    const pager = new ListPagination(container, this.scenePage, () => updateRows());
+    const updateRows = (): void => {
+      this.refreshTags(tags, "scenes", this.sceneQuery.tag);
+      table.replaceChildren();
+      const rows = queryScenes(this.plugin.librarySnapshot.scenes, this.sceneQuery);
+      for (const scene of pager.slice(rows)) {
+        const row = table.createEl("tr");
+        this.openCell(row, scene.id, scene.path);
+        row.createEl("td", { text: scene.title });
+        row.createEl("td", { text: scene.type });
+        row.createEl("td", { text: scene.status });
+        row.createEl("td", { text: String(scene.cells.length) });
+        row.createEl("td", { text: String(scene.sourceAnnotations.length) });
+        row.createEl("td", { text: date(scene.updatedAt) });
+        const actions = row.createEl("td");
+        if (scene.status === "active") {
+          const archive = actions.createEl("button", {
+            text: t("settings.archive"),
+            cls: "atl-link-button"
+          });
+          archive.onclick = () => {
+            new ConfirmModal(this.app, {
+              title: t("settings.archiveSceneTitle"),
+              body: t("settings.archiveSceneBody", { title: scene.title }),
+              confirmText: t("settings.archive"),
+              warning: true,
+              onConfirm: () => this.plugin.archiveScene(scene.id)
+            }).open();
+          };
+        } else {
+          actions.setText("—");
+        }
       }
-    }
-    this.renderDiagnostics(container, "scene");
+    };
+    updateRows();
+    const diagnostics = container.createDiv();
+    const refreshDiagnostics = () => { diagnostics.replaceChildren(); this.renderDiagnostics(diagnostics, "scene"); };
+    refreshDiagnostics();
+    this.listRefresh = { page: "scenes", update: () => { updateRows(); refreshDiagnostics(); } };
   }
 
   private renderProfile(container: HTMLElement): void {
@@ -888,9 +908,22 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     new Setting(container).setName(t("board.connectionMode")).setDesc(t("board.connectionModeDesc"))
       .addDropdown(dropdown => dropdown.addOptions({inherit:t("board.connectionInherit"),custom:t("board.connectionCustom")})
         .setValue(this.plugin.settings.boardConnectionMode).onChange(async value => {
-          this.plugin.settings.boardConnectionMode = value === "custom" ? "custom" : "inherit";
-          await this.plugin.persistSettings();
-          this.updateSection(boardFields, content => this.renderBoardConnectionFields(content, boardFields));
+          if (!await commitSettingsInputs(boardFields)) { dropdown.setValue(this.plugin.settings.boardConnectionMode); return; }
+          try {
+            await this.queueOrdinarySettings(async () => {
+              const previous = this.plugin.settings.boardConnectionMode, generation = this.boardBindingGeneration;
+              const next = value === "custom" ? "custom" : "inherit";
+              if (next === previous) return;
+              this.boardBindingGeneration++;
+              this.plugin.settings.boardConnectionMode = next;
+              try { await this.plugin.persistSettings(); }
+              catch (error) {
+                this.plugin.settings.boardConnectionMode = previous; this.boardBindingGeneration = generation;
+                throw error;
+              }
+              this.updateSection(boardFields, content => this.renderBoardConnectionFields(content, boardFields));
+            });
+          } catch { dropdown.setValue(this.plugin.settings.boardConnectionMode); new Notice(t("notice.settingsSaveFailed")); }
         }));
     const boardFields = container.createDiv({ cls: "atl-board-connection-fields" });
     this.renderBoardConnectionFields(boardFields);
@@ -902,15 +935,9 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       .addText((text) => {
         text.inputEl.type = "number";
         text.setValue(String(this.plugin.settings.agentTimeoutSeconds));
-        text.inputEl.addEventListener("blur", () => {
-          const parsed = Number.parseInt(text.getValue(), 10);
-          const next =
-            Number.isFinite(parsed) && parsed >= MIN_AGENT_TIMEOUT_SECONDS
-              ? parsed
-              : DEFAULT_SETTINGS.agentTimeoutSeconds;
-          this.plugin.settings.agentTimeoutSeconds = next;
-          text.setValue(String(next));
-          void this.plugin.persistSettings();
+        this.bindSettingInput(text.inputEl, "agentTimeoutSeconds", value => {
+          const parsed = Number.parseInt(value, 10);
+          return Number.isFinite(parsed) && parsed >= MIN_AGENT_TIMEOUT_SECONDS ? parsed : DEFAULT_SETTINGS.agentTimeoutSeconds;
         });
       });
   }
@@ -920,19 +947,24 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     this.renderEngineRoute(container, "set.boardEngine", "boardEngine", () => {
       // A different engine selects a different model setting and listener.
       this.updateSection(section, content => this.renderBoardConnectionFields(content, section), false);
-    });
+    }, () => commitSettingsInputs(section));
     const key = this.plugin.settings.boardEngine === "api" ? "boardApiModel" : "boardAgentModel";
     new Setting(container).setName(t("board.connectionModel")).setDesc(t("board.connectionModelDesc"))
-      .addText(text => text.setValue(this.plugin.settings[key]).onChange(async value => {
-        this.plugin.settings[key] = value.trim(); await this.plugin.persistSettings();
-      }));
+      .addText(text => {
+        text.setValue(this.plugin.settings[key]);
+        const engine = this.plugin.settings.boardEngine, generation = this.boardBindingGeneration;
+        this.bindSettingInput(text.inputEl, key, value => value.trim(), {
+          isCurrent: () => generation === this.boardBindingGeneration && this.plugin.settings.boardConnectionMode === "custom" && this.plugin.settings.boardEngine === engine
+        });
+      });
   }
 
   private renderEngineRoute(
     container: HTMLElement,
     i18nKey: string,
     key: "chatEngine" | "reviewEngine" | "boardEngine" | "webEngine",
-    onChanged?: () => void
+    onChanged?: () => void,
+    beforeChanged?: () => Promise<boolean>
   ): void {
     new Setting(container)
       .setName(t(i18nKey))
@@ -942,9 +974,21 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
           .addOptions({ api: t("set.engine.api"), opencode: t("set.engine.opencode") })
           .setValue(this.plugin.settings[key])
           .onChange(async (value) => {
-            this.plugin.settings[key] = value as ReviewEngine;
-            await this.plugin.persistSettings();
-            onChanged?.();
+            if (beforeChanged && !await beforeChanged()) { dropdown.setValue(this.plugin.settings[key]); return; }
+            try {
+              await this.queueOrdinarySettings(async () => {
+                const previous = this.plugin.settings[key], generation = this.boardBindingGeneration;
+                if (value === previous) return;
+                if (key === "boardEngine") this.boardBindingGeneration++;
+                this.plugin.settings[key] = value as ReviewEngine;
+                try { await this.plugin.persistSettings(); }
+                catch (error) {
+                  this.plugin.settings[key] = previous; this.boardBindingGeneration = generation;
+                  throw error;
+                }
+                onChanged?.();
+              });
+            } catch { dropdown.setValue(this.plugin.settings[key]); new Notice(t("notice.settingsSaveFailed")); }
           })
       );
   }
@@ -1031,31 +1075,42 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     let widthInput: HTMLInputElement;
     let heightInput: HTMLInputElement;
     const size = new Setting(container).setName(t("set.image.size")).setDesc(t("set.image.sizeDesc"));
-    const commitSize = () => {
-      const width = Number.parseInt(widthInput.value, 10);
-      const height = Number.parseInt(heightInput.value, 10);
-      if (!isBoardImage1KSize(width, height)) {
-        new Notice(t("set.image.sizeInvalid"));
-        widthInput.value = String(this.plugin.settings.boardImageWidth);
-        heightInput.value = String(this.plugin.settings.boardImageHeight);
-        return;
-      }
-      this.plugin.settings.boardImageWidth = width;
-      this.plugin.settings.boardImageHeight = height;
-      void this.plugin.persistSettings();
+    const bindSize = (input: HTMLInputElement, dimension: 0 | 1): void => {
+      bindCommittedInput(input, {
+        read: () => JSON.stringify([this.plugin.settings.boardImageWidth, this.plugin.settings.boardImageHeight]),
+        parse: () => {
+          const width = Number.parseInt(widthInput.value, 10), height = Number.parseInt(heightInput.value, 10);
+          if (!isBoardImage1KSize(width, height)) throw new Error(t("set.image.sizeInvalid"));
+          return JSON.stringify([width, height]);
+        },
+        format: value => String((JSON.parse(value) as [number, number])[dimension]),
+        save: value => this.queueOrdinarySettings(async () => {
+          const previous = [this.plugin.settings.boardImageWidth, this.plugin.settings.boardImageHeight];
+          const [width, height] = JSON.parse(value) as [number, number];
+          if (previous[0] === width && previous[1] === height) return;
+          this.plugin.settings.boardImageWidth = width; this.plugin.settings.boardImageHeight = height;
+          try { await this.plugin.persistSettings(); } catch (error) {
+            if (this.plugin.settings.boardImageWidth === width && this.plugin.settings.boardImageHeight === height) {
+              this.plugin.settings.boardImageWidth = previous[0]!; this.plugin.settings.boardImageHeight = previous[1]!;
+            }
+            throw error;
+          }
+        }),
+        onError: error => { new Notice(error instanceof Error ? error.message : t("notice.settingsSaveFailed")); }
+      });
     };
     size.addText((text) => {
       widthInput = text.inputEl;
       widthInput.type = "number"; widthInput.min = "1"; widthInput.step = "1";
       text.setPlaceholder("1024").setValue(String(this.plugin.settings.boardImageWidth));
       widthInput.setAttribute("aria-label", t("set.image.width"));
-      widthInput.addEventListener("blur", commitSize);
+      bindSize(widthInput, 0);
     }).addText((text) => {
       heightInput = text.inputEl;
       heightInput.type = "number"; heightInput.min = "1"; heightInput.step = "1";
       text.setPlaceholder("1024").setValue(String(this.plugin.settings.boardImageHeight));
       heightInput.setAttribute("aria-label", t("set.image.height"));
-      heightInput.addEventListener("blur", commitSize);
+      bindSize(heightInput, 1);
     });
 
     new Setting(container)
@@ -1074,10 +1129,7 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       .addTextArea((area) => {
         area.setValue(this.plugin.settings.boardImageNegativePrompt);
         area.inputEl.rows = 3;
-        area.inputEl.addEventListener("blur", () => {
-          this.plugin.settings.boardImageNegativePrompt = area.getValue().trim();
-          void this.plugin.persistSettings();
-        });
+        this.bindSettingInput(area.inputEl, "boardImageNegativePrompt", value => value.trim());
       });
     this.addImageText("set.image.seed", "boardImageSeed", t("set.image.seedPlaceholder"), container);
     new Setting(container)
@@ -1128,9 +1180,14 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
   }
 
   private renderBoardMcp(container: HTMLElement): void {
-    for(const key of ["tutorRemoteName","tutorRemoteUrl"] as const)new Setting(container).setName(t(`board.${key}`)).setDesc(key==="tutorRemoteUrl"?t("board.remoteScope"):"").addText(text=>{text.setValue(this.plugin.settings[key]).onChange(async value=>{this.plugin.settings[key]=value.trim();await this.plugin.persistSettings();});});
+    for (const key of ["tutorRemoteName", "tutorRemoteUrl"] as const) new Setting(container)
+      .setName(t(`board.${key}`)).setDesc(key === "tutorRemoteUrl" ? t("board.remoteScope") : "")
+      .addText(text => { text.setValue(this.plugin.settings[key]); this.bindSettingInput(text.inputEl, key, value => value.trim()); });
     this.addCredentialInput(container,"board.tutorRemoteToken","tutorRemoteToken");
-    new Setting(container).setName(t("board.codexCommand")).addText(text=>text.setValue(this.plugin.settings.tutorCodexCommand).onChange(async value=>{this.plugin.settings.tutorCodexCommand=value.trim()||"codex";await this.plugin.persistSettings();}));
+    new Setting(container).setName(t("board.codexCommand")).addText(text => {
+      text.setValue(this.plugin.settings.tutorCodexCommand);
+      this.bindSettingInput(text.inputEl, "tutorCodexCommand", value => value.trim() || "codex");
+    });
     new Setting(container)
       .setName(t("set.boardMcp.enabled"))
       .setDesc(t("set.boardMcp.enabledDesc"))
@@ -1192,10 +1249,7 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     new Setting(container).setName(t(i18nKey)).setDesc(t(`${i18nKey}Desc`)).addText((text) => {
       if (password) text.inputEl.type = "password";
       text.setPlaceholder(placeholder).setValue(this.plugin.settings[key]);
-      text.inputEl.addEventListener("blur", () => {
-        this.plugin.settings[key] = text.getValue().trim();
-        void this.plugin.persistSettings();
-      });
+      this.bindSettingInput(text.inputEl, key, value => value.trim());
     });
   }
 
@@ -1313,13 +1367,8 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
         text
           .setPlaceholder("read, search")
           .setValue(this.plugin.settings.alwaysAllowTools.join(", "));
-        text.inputEl.addEventListener("blur", () => {
-          this.plugin.settings.alwaysAllowTools = text
-            .getValue()
-            .split(",")
-            .map((item) => item.trim())
-            .filter((item) => item !== "");
-          void this.plugin.persistSettings();
+        this.bindSettingInput(text.inputEl, "alwaysAllowTools", value => value.split(",").map(item => item.trim()).filter(Boolean), {
+          format: value => value.join(", ")
         });
       });
   }
@@ -1341,10 +1390,7 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       .addText((text) => {
         if (password) text.inputEl.type = "password";
         text.setPlaceholder(placeholder).setValue(value);
-        text.inputEl.addEventListener("blur", () => {
-          this.plugin.settings[key] = text.getValue().trim();
-          void this.plugin.persistSettings().then(() => onCommit?.());
-        });
+        this.bindSettingInput(text.inputEl, key, value => value.trim(), { onCommit });
       });
   }
 
@@ -1426,6 +1472,44 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       );
   }
 
+  /** Include assignment and rollback in the queue, not only the disk write. */
+  private queueOrdinarySettings(operation: () => Promise<void>): Promise<void> {
+    const result = this.ordinarySettingsQueue.then(operation);
+    this.ordinarySettingsQueue = result.catch(() => {});
+    return result;
+  }
+
+  private bindSettingInput<Key extends keyof AnnotationTutorLiteSettings>(
+    input: HTMLInputElement | HTMLTextAreaElement,
+    key: Key,
+    parse: (draft: string) => AnnotationTutorLiteSettings[Key],
+    options: {
+      format?: (value: AnnotationTutorLiteSettings[Key]) => string;
+      isCurrent?: () => boolean; onCommit?: () => void;
+      prepare?: () => () => void;
+    } = {}
+  ): void {
+    bindCommittedInput(input, {
+      read: () => this.plugin.settings[key], parse, ...options,
+      equal: (left, right) => Array.isArray(left) && Array.isArray(right) ? JSON.stringify(left) === JSON.stringify(right) : Object.is(left, right),
+      save: value => this.queueOrdinarySettings(async () => {
+        if (options.isCurrent?.() === false) throw new Error("settings-binding-changed");
+        const previous = this.plugin.settings[key];
+        const equal = Array.isArray(previous) && Array.isArray(value) ? JSON.stringify(previous) === JSON.stringify(value) : Object.is(previous, value);
+        if (equal) return;
+        const rollback = options.prepare?.();
+        this.plugin.settings[key] = value;
+        try { await this.plugin.persistSettings(); options.onCommit?.(); }
+        catch (error) {
+          if (this.plugin.settings[key] === value) this.plugin.settings[key] = previous;
+          rollback?.();
+          throw error;
+        }
+      }),
+      onError: () => { new Notice(t("notice.settingsSaveFailed")); }
+    });
+  }
+
   private addText(
     container: HTMLElement,
     i18nKey: string,
@@ -1443,10 +1527,7 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       .setDesc(t(`${i18nKey}Desc`))
       .addText((text) => {
         text.setPlaceholder(placeholder).setValue(value);
-        text.inputEl.addEventListener("blur", () => {
-          this.plugin.settings[key] = text.getValue().trim();
-          void this.plugin.persistSettings();
-        });
+        this.bindSettingInput(text.inputEl, key, value => value.trim());
       });
   }
 
@@ -1475,13 +1556,20 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     this.addToggle(container, "upgrade.learningFlowEnabled", "learningFlowEnabled");
     this.addToggle(container, "upgrade.supportCheckinEnabled", "supportCheckinEnabled");
     this.addToggle(container, "upgrade.learningExpertsEnabled", "learningExpertsEnabled");
-    new Setting(container).setName(t("upgrade.supportRetentionDays")).addText(text=>text.setValue(String(this.plugin.settings.supportRetentionDays)).onChange(async value=>{
-      if(!/^\d+$/.test(value))return;this.plugin.settings.supportRetentionDays=Math.max(1,Math.min(30,Number(value)));await this.plugin.persistSettings();
-    }));
-    new Setting(container).setName(t("upgrade.dailyMinutes")).addText(text=>text.setValue(String(this.plugin.settings.learningDailyMinutes)).onChange(async value=>{
-      if(!/^\d+$/.test(value))return;
-      this.plugin.settings.learningDailyMinutes=Math.max(5,Math.min(180,Number(value)));await this.plugin.persistSettings();
-    }));
+    new Setting(container).setName(t("upgrade.supportRetentionDays")).addText(text => {
+      text.setValue(String(this.plugin.settings.supportRetentionDays)); text.inputEl.type = "number";
+      this.bindSettingInput(text.inputEl, "supportRetentionDays", value => {
+        if (!/^\d+$/.test(value)) throw new Error("invalid-retention-days");
+        return Math.max(1, Math.min(30, Number(value)));
+      });
+    });
+    new Setting(container).setName(t("upgrade.dailyMinutes")).addText(text => {
+      text.setValue(String(this.plugin.settings.learningDailyMinutes)); text.inputEl.type = "number";
+      this.bindSettingInput(text.inputEl, "learningDailyMinutes", value => {
+        if (!/^\d+$/.test(value)) throw new Error("invalid-daily-minutes");
+        return Math.max(5, Math.min(180, Number(value)));
+      });
+    });
     new Setting(container).setName(t("upgrade.teachingMode")).addDropdown(drop=>{
       for(const mode of ["auto","answer","hint","coach","check"] as const)drop.addOption(mode,t(`upgrade.mode.${mode}`));
       drop.setValue(this.plugin.settings.teachingMode).onChange(async value=>{this.plugin.settings.teachingMode=value as typeof this.plugin.settings.teachingMode;await this.plugin.persistSettings();});
@@ -1517,10 +1605,12 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       .setDesc(t("set.web.captureDirDesc"))
       .addText((text) => {
         text.setPlaceholder(this.plugin.defaultCaptureDir()).setValue(this.plugin.settings.webCaptureDir);
-        text.inputEl.addEventListener("blur", () => {
-          this.plugin.settings.webCaptureDir = text.getValue().trim();
-          this.plugin.settings.webOfficialTemplateVersion = "";
-          void this.plugin.persistSettings();
+        this.bindSettingInput(text.inputEl, "webCaptureDir", value => value.trim(), {
+          prepare: () => {
+            const previous = this.plugin.settings.webOfficialTemplateVersion;
+            this.plugin.settings.webOfficialTemplateVersion = "";
+            return () => { if (this.plugin.settings.webOfficialTemplateVersion === "") this.plugin.settings.webOfficialTemplateVersion = previous; };
+          }
         });
       })
       .addExtraButton((button) => button.setIcon("folder-open").setTooltip(t("set.web.openCaptureDir"))
@@ -1579,10 +1669,7 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.webPageTemplate);
         area.inputEl.rows = 4;
         area.inputEl.style.width = "100%";
-        area.inputEl.addEventListener("blur", () => {
-          this.plugin.settings.webPageTemplate = area.getValue();
-          void this.plugin.persistSettings();
-        });
+        this.bindSettingInput(area.inputEl, "webPageTemplate", value => value);
       });
 
     this.renderWebStats(container);
@@ -1747,7 +1834,7 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     const input = container.createEl("input", { type: "text" });
     input.placeholder = t("dash.search");
     input.value = value;
-    input.onchange = () => onChange(input.value);
+    bindSearchInput(input, onChange);
   }
 
   private selectFilter(
@@ -1756,21 +1843,29 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     selected: string,
     emptyLabel: string,
     onChange: (value: string) => void
-  ): void {
+  ): HTMLSelectElement {
     const select = container.createEl("select");
-    for (const value of values) {
-      select.createEl("option", {
-        value,
-        text: value || emptyLabel
-      });
-    }
-    select.value = selected;
+    replaceListOptions(select, values, emptyLabel, selected);
     select.onchange = () => onChange(select.value);
+    return select;
   }
 
-  private renderCurrentPage(): void {
-    this.display();
+  private tags(kind: "cells" | "scenes"): string[] {
+    if (this.tagsSnapshot !== this.plugin.librarySnapshot) {
+      this.tagsSnapshot = this.plugin.librarySnapshot;
+      for (const group of ["cells", "scenes"] as const) this.cachedTags[group] =
+        [...new Set(this.plugin.librarySnapshot[group].flatMap(record => record.tags))].sort();
+    }
+    return this.cachedTags[kind];
   }
+  private refreshTags(select: HTMLSelectElement, kind: "cells" | "scenes", selected?: string): void {
+    if (this.tagVersions.get(select) === this.plugin.librarySnapshot) return;
+    this.tagVersions.set(select, this.plugin.librarySnapshot);
+    const values = ["", ...this.tags(kind)];
+    if (selected && !values.includes(selected)) values.push(selected);
+    replaceListOptions(select, values, t("settings.allTags"), selected);
+  }
+
 }
 
 function date(value: string): string {

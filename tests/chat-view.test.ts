@@ -309,8 +309,60 @@ describe("ChatView as a shared conversation renderer", () => {
   it("settings refresh retains the shared transcript exactly once", async () => {
     const service = conversation(async () => ({ text: "answer" }));
     const { view } = await open(service);
-    await service.submit("question"); view.refresh(); await Promise.resolve();
+    await service.submit("question"); view.refreshSettings(); await Promise.resolve();
     expect(view.contentEl.querySelectorAll(".atl-chat-msg--user")).toHaveLength(1);
     expect(view.contentEl.querySelectorAll(".atl-chat-md")).toHaveLength(1);
+  });
+
+  it("preserves a thousand-turn transcript, composer, focus and scroll for ordinary settings changes", async () => {
+    const service = conversation(async () => ({ text: "answer" }));
+    const at = new Date().toISOString();
+    service.restore({ id: "large", title: "Large history", engine: "api", mode: "ask", status: "active", createdAt: at, updatedAt: at,
+      turns: Array.from({ length: 1000 }, (_, i) => ({ role: i % 2 ? "assistant" as const : "user" as const, text: `message ${i}`, at })) });
+    const { view, plugin } = await open(service);
+    const messages = view.contentEl.querySelector<HTMLElement>(".atl-chat-messages")!;
+    const children = [...messages.children];
+    const input = view.contentEl.querySelector("textarea")!;
+    input.value = "未提交的草稿"; input.focus(); input.setSelectionRange(2, 5); messages.scrollTop = 123;
+    const readContext = vi.fn(plugin.chatContext); plugin.chatContext = readContext;
+    for (let i = 0; i < 10; i++) {
+      plugin.settings.supportRetentionDays = i + 1;
+      view.refreshSettings();
+    }
+    plugin.settings.apiModel = "new-model"; view.refreshSettings();
+    expect(view.contentEl.querySelector(".atl-chat-messages")).toBe(messages);
+    expect([...messages.children]).toEqual(children);
+    expect(children).toHaveLength(1000);
+    expect(view.contentEl.querySelector("textarea")).toBe(input);
+    expect(document.activeElement).toBe(input);
+    expect([input.value, input.selectionStart, input.selectionEnd, messages.scrollTop]).toEqual(["未提交的草稿", 2, 5, 123]);
+    expect(readContext).not.toHaveBeenCalled();
+    expect(view.contentEl.querySelector(".atl-chat-badge")?.textContent).toContain("new-model");
+  });
+
+  it("retranslates after a locale change while preserving the draft and rendering each turn once", async () => {
+    const service = conversation(async () => ({ text: "answer" }));
+    const { view } = await open(service);
+    await service.submit("question");
+    const input = view.contentEl.querySelector("textarea")!; input.value = "draft";
+    setLocale("zh-cn"); view.refreshSettings();
+    expect(view.contentEl.querySelector("textarea")!.value).toBe("draft");
+    expect(view.contentEl.querySelectorAll(".atl-chat-msg--user")).toHaveLength(1);
+    expect(view.contentEl.querySelectorAll(".atl-chat-md")).toHaveLength(1);
+    expect(view.contentEl.querySelector("textarea")!.placeholder).not.toBe(input.placeholder);
+  });
+
+  it("keeps an active streamed reply attached across settings saves", async () => {
+    let input!: TutorRunnerInput, finish!: (value: { text: string }) => void;
+    const service = conversation(next => { input = next; return new Promise(resolve => { finish = resolve; }); });
+    const { view, plugin } = await open(service);
+    const turn = service.submit("hello"); input.onReply("first");
+    const messages = view.contentEl.querySelector(".atl-chat-messages");
+    plugin.settings.apiModel = "changed"; view.refreshSettings(); input.onReply(" second");
+    finish({ text: "first second" }); await turn; await Promise.resolve();
+    expect(view.contentEl.querySelector(".atl-chat-messages")).toBe(messages);
+    expect(view.contentEl.querySelectorAll(".atl-chat-msg--user")).toHaveLength(1);
+    expect(view.contentEl.querySelectorAll(".atl-chat-md")).toHaveLength(1);
+    expect(view.contentEl.querySelector(".atl-chat-md")?.textContent).toBe("first second");
   });
 });

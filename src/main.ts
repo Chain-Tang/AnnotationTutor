@@ -193,7 +193,7 @@ import { SkinLoader } from "./skin-loader.js";
 import { StartupCancelled, StartupIdleTasks, StartupLifetime, StartupTimings, type StartupDiagnostic } from "./startup.js";
 import { PAPER_TEXTURE, LEAF_TEXTURE } from "./textures.js";
 import { highlightFirst, locateInRaw } from "./reading-highlight.js";
-import { setLanguage, t } from "./i18n.js";
+import { getLocale, setLanguage, t } from "./i18n.js";
 import {
   DASHBOARD_VIEW_TYPE,
   DashboardView
@@ -2090,6 +2090,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
    * navigator.languages beats a bare moment.locale().
    */
   public applyLocale(): void {
+    const previous = getLocale();
     const detected =
       window.localStorage.getItem("language") ??
       [...(navigator.languages ?? []), navigator.language].find((code) =>
@@ -2098,6 +2099,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       navigator.language ??
       window.moment?.locale?.();
     setLanguage(this.settings.language, detected);
+    if (getLocale() !== previous && this.tutorConversation && !this.pluginUnloaded) this.refreshDashboard();
   }
 
   public async changeMemoryRoot(
@@ -4156,7 +4158,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   }
 
   private refreshChatViews():void {
-    for(const leaf of this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)) (leaf.view as ChatView).refresh?.();
+    for(const leaf of this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE)) (leaf.view as ChatView).refreshSettings();
   }
   public async learningSource(annotationId?:string):Promise<LearningEpisode["source"]>{
     const ctx=await this.chatContext();

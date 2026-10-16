@@ -23,7 +23,7 @@ import {
 import type AnnotationTutorLitePlugin from "../main.js";
 import type { EditTarget } from "../main.js";
 import type { ChatLog, ChatLogHead, IndexRecord } from "../model.js";
-import { t } from "../i18n.js";
+import { getLocale, t } from "../i18n.js";
 import { classifyIntent } from "../intent.js";
 import { localLearnerAuthority } from "../learning-control-v3.js";
 import { shouldResolveTutorAction } from "../tutor-intent.js";
@@ -60,7 +60,7 @@ export class ChatView extends ItemView {
   private get mode(): ChatMode { return this.plugin.tutorConversation.mode; }
   private set mode(mode: ChatMode) { this.plugin.tutorConversation.mode = mode; }
   private busy = false;
-  private stopLearning:(()=>void)|undefined;
+  private stopLearning:ReturnType<typeof mountLearningPanel>|undefined;
   private stopSupport:(()=>void)|undefined;
   private lastSentNotePath = ""; // so we can re-index OpenCode when the note changes
   private pinned: PinnedAnnotation | null = null;
@@ -81,6 +81,13 @@ export class ChatView extends ItemView {
   private inputEl!: HTMLTextAreaElement;
   private sendBtn!: HTMLButtonElement;
   private commandPopupEl!: HTMLElement;
+  private engineBadge?: HTMLButtonElement;
+  private renderedLocale = getLocale();
+  private supportHost?: HTMLElement;
+  private learningHost?: HTMLElement;
+  private renderedSupport?: object;
+  private renderedLearning?: object;
+  private panelSettingsKey = "";
 
   public constructor(
     leaf: WorkspaceLeaf,
@@ -134,9 +141,17 @@ export class ChatView extends ItemView {
     this.plugin.tutorConversation.setSidebarVisible(this.sidebarId, visible, this.contentEl.ownerDocument);
   }
 
-  /** Re-read settings-derived chrome (model badge) when settings change. */
   public refresh(): void {
     if (this.contentEl.isConnected) this.render();
+  }
+
+  /** Refresh settings-derived controls while preserving the conversation and draft. */
+  public refreshSettings(): void {
+    if (!this.messagesEl?.isConnected) return;
+    if (this.renderedLocale !== getLocale()) { this.render(); return; }
+    const label = this.engineLabel();
+    if (this.engineBadge && this.engineBadge.textContent !== label) this.engineBadge.textContent = label;
+    this.refreshSettingsPanels();
   }
 
   // --- layout ---------------------------------------------------------------
@@ -145,6 +160,9 @@ export class ChatView extends ItemView {
     const draft = this.inputEl?.value ?? "";
     this.stopSupport?.();
     this.stopLearning?.();
+    this.stopSupport = undefined;
+    this.stopLearning = undefined;
+    this.renderedLocale = getLocale();
     this.contentEl.empty();
     this.rendered.clear();
     this.renderedHistory = null;
@@ -156,6 +174,7 @@ export class ChatView extends ItemView {
       cls: "atl-chat-badge",
       text: this.engineLabel()
     });
+    this.engineBadge = badge;
     setTooltip(badge, t("chat.engineTip"));
     badge.onclick = () => void this.toggleEngine();
     const spacer = header.createSpan({ cls: "atl-spacer" });
@@ -183,18 +202,9 @@ export class ChatView extends ItemView {
       };
     }
 
-    if(this.plugin.support)this.stopSupport=mountSupportCheckin(root,this.plugin.support,{quiet:()=>this.plugin.supportQuiet(),open:draft=>openSupportDialog(this.app,this.plugin.support!,()=>this.plugin.settings.supportRetentionDays,draft)});
-    if(this.plugin.settings.learningFlowEnabled && this.plugin.learningCard){
-      this.stopLearning=mountLearningPanel(root,{activity:()=>this.plugin.learningActivity(),card:this.plugin.learningCard,minutes:()=>this.plugin.settings.learningDailyMinutes,
-        run:async(action,present,options)=>{
-          const selection=this.selectionContext,pinned=this.pinned?{...this.pinned}:undefined;
-          const pinnedSource=options?.newRecord&&!selection?.notePath&&pinned?await this.plugin.tutorContext(pinned.notePath,0,1):undefined;
-          const source=options?.newRecord?(selection?.notePath?{path:selection.notePath,version:selection.observation!.version}:pinned&&pinnedSource?{path:pinned.notePath,version:pinnedSource.revision,annotationId:pinned.annotationId}:undefined):undefined;
-          const sourceBinding=selection?.sourceBinding??pinnedSource?.sourceBinding;
-          return this.plugin.runLearningCard(action,present,{...options,...(source?{source}:{}),...(sourceBinding?{sourceBinding}:{})});
-        },
-        help:async(mode,text)=>{await this.plugin.learningHelp(mode,text);},draw:()=>this.plugin.learningDraw(),explain:answer=>this.plugin.checkLearningExplanation(answer),...(this.plugin.settings.learningExpertsEnabled?{expert:async(kind:import("../learning-experts.js").LearningExpertKind)=>this.plugin.openLearningExpert(kind)}:{})});
-    }
+    this.supportHost = root.createDiv(); this.supportHost.style.display = "contents";
+    this.learningHost = root.createDiv(); this.learningHost.style.display = "contents";
+    this.refreshSettingsPanels(true);
     this.messagesEl = root.createDiv({ cls: "atl-chat-messages" });
     if (this.plugin.tutorConversation.state.history.length === 0) {
       const empty = this.messagesEl.createDiv({ cls: "atl-chat-empty" });
@@ -265,6 +275,33 @@ export class ChatView extends ItemView {
       else void this.send();
     };
     this.renderConversation(this.plugin.tutorConversation.state);
+  }
+
+  private refreshSettingsPanels(force = false): void {
+    const support = this.plugin.support;
+    if (force || support !== this.renderedSupport) {
+      this.stopSupport?.(); this.stopSupport = undefined; this.renderedSupport = support;
+      if (support && this.supportHost) this.stopSupport = mountSupportCheckin(this.supportHost, support, { quiet: () => this.plugin.supportQuiet(), open: draft => openSupportDialog(this.app, support, () => this.plugin.settings.supportRetentionDays, draft) });
+    }
+    const card = this.plugin.settings.learningFlowEnabled ? this.plugin.learningCard : undefined;
+    const key = JSON.stringify([this.plugin.settings.learningExpertsEnabled, this.plugin.settings.learningDailyMinutes]);
+    if (force || card !== this.renderedLearning) {
+      this.stopLearning?.(); this.stopLearning = undefined; this.renderedLearning = card;
+      if (card && this.learningHost) this.stopLearning = this.mountLearning();
+    } else if (card && key !== this.panelSettingsKey) this.stopLearning?.refresh();
+    this.panelSettingsKey = key;
+  }
+
+  private mountLearning(): ReturnType<typeof mountLearningPanel> {
+    return mountLearningPanel(this.learningHost!,{activity:()=>this.plugin.learningActivity(),card:this.plugin.learningCard!,minutes:()=>this.plugin.settings.learningDailyMinutes,
+        run:async(action,present,options)=>{
+          const selection=this.selectionContext,pinned=this.pinned?{...this.pinned}:undefined;
+          const pinnedSource=options?.newRecord&&!selection?.notePath&&pinned?await this.plugin.tutorContext(pinned.notePath,0,1):undefined;
+          const source=options?.newRecord?(selection?.notePath?{path:selection.notePath,version:selection.observation!.version}:pinned&&pinnedSource?{path:pinned.notePath,version:pinnedSource.revision,annotationId:pinned.annotationId}:undefined):undefined;
+          const sourceBinding=selection?.sourceBinding??pinnedSource?.sourceBinding;
+          return this.plugin.runLearningCard(action,present,{...options,...(source?{source}:{}),...(sourceBinding?{sourceBinding}:{})});
+        },
+        help:async(mode,text)=>{await this.plugin.learningHelp(mode,text);},draw:()=>this.plugin.learningDraw(),explain:answer=>this.plugin.checkLearningExplanation(answer),expert:async(kind:import("../learning-experts.js").LearningExpertKind)=>this.plugin.openLearningExpert(kind),expertsEnabled:()=>this.plugin.settings.learningExpertsEnabled});
   }
 
   private async renderContext(): Promise<void> {
@@ -874,15 +911,6 @@ export class ChatView extends ItemView {
   private addNotice(text: string): void {
     this.messagesEl.createDiv({ cls: "atl-chat-msg atl-chat-notice", text });
     this.scrollToBottom();
-  }
-
-  private addThinking(): HTMLElement {
-    const el = this.messagesEl.createDiv({
-      cls: "atl-chat-msg atl-chat-msg--assistant atl-chat-thinking",
-      text: t("chat.thinking")
-    });
-    this.scrollToBottom();
-    return el;
   }
 
   private addStreamingAssistant(): {

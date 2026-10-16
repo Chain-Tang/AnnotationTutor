@@ -56,6 +56,7 @@ vi.mock("obsidian", () => {
   }
   return {
     Setting,
+    ItemView: class { contentEl = document.createElement("div"); constructor(_leaf: unknown) {} },
     PluginSettingTab: class { containerEl = document.createElement("div"); constructor(readonly app: unknown) {} },
     Modal: class {},
     Notice: class { constructor(_text: string) {} },
@@ -63,6 +64,7 @@ vi.mock("obsidian", () => {
   };
 });
 
+import { DashboardView } from "../src/views/dashboard-view.js";
 import { AnnotationTutorLiteSettingTab } from "../src/settings.js";
 import { migrateSettings } from "../src/settings-config.js";
 import { CredentialSettingsSession } from "../src/credential-session.js";
@@ -93,7 +95,8 @@ afterEach(() => { document.body.replaceChildren(); vi.restoreAllMocks(); });
 
 async function fixture(overrides: Record<string, unknown> = {}) {
   const settings = migrateSettings({ language: "en", ...overrides });
-  const session = new CredentialSettingsSession(settings, { available: () => false } as unknown as CredentialStore, { write: vi.fn(async () => {}) });
+  const write = vi.fn(async (_value: Record<string, unknown>) => {});
+  const session = new CredentialSettingsSession(settings, { available: () => false } as unknown as CredentialStore, { write });
   await session.initialize();
   const plugin = {
     settings, manifest: { id: "annotation-tutor-lite", version: "test" },
@@ -117,7 +120,7 @@ async function fixture(overrides: Record<string, unknown> = {}) {
   const tab = new AnnotationTutorLiteSettingTab({} as App, plugin as unknown as AnnotationTutorLitePlugin);
   const scroll = document.createElement("div"); scroll.append(tab.containerEl); document.body.append(scroll);
   tab.display();
-  return { tab, plugin, session, scroll };
+  return { tab, plugin, session, scroll, write };
 }
 
 function row(tab: AnnotationTutorLiteSettingTab, key: string) {
@@ -259,14 +262,14 @@ describe("settings DOM updates", () => {
     await vi.waitFor(() => expect(plugin.changeMemoryRoot).toHaveBeenCalledWith("Pending folder"));
   });
 
-  it("restores annotation filters onto the new table and keeps subsequent input connected to it", async () => {
+  it("preserves annotation filters, toolbar identity and connected handlers during snapshot refresh", async () => {
     const { tab, plugin } = await fixture(); page(tab, "annotations");
     const editor = tab.containerEl.querySelector<HTMLInputElement>(".atl-toolbar input")!;
     const status = tab.containerEl.querySelector<HTMLSelectElement>(".atl-toolbar select")!;
     draft(editor, "existing filter"); change(status, "reviewed"); editor.focus();
     tab.refresh();
     const replacement = tab.containerEl.querySelector<HTMLInputElement>(".atl-toolbar input")!;
-    expect(replacement).not.toBe(editor); expect(replacement.value).toBe("existing filter");
+    expect(replacement).toBe(editor); expect(replacement.value).toBe("existing filter");
     expect(document.activeElement).toBe(replacement);
     expect(plugin.indexTable.query).toHaveBeenLastCalledWith(expect.objectContaining({ text: "existing filter", status: "reviewed" }));
     const body = tab.containerEl.querySelector("table tbody")!;
@@ -344,5 +347,248 @@ describe("settings DOM updates", () => {
     expect(row(tab, "set.language").querySelector(".setting-item-name")?.textContent).toBe("语言");
     expect(input(tab, "set.memoryFolder")).not.toBe(editor);
     expect(Array.from(tab.containerEl.querySelectorAll("[role=tab]")).some(button => button.textContent === "General")).toBe(false);
+  });
+});
+
+describe("bounded settings lists and drafts", () => {
+  function records(count: number) {
+    return Array.from({ length: count }, (_, index) => ({
+      id: `ID-${String(index).padStart(5, "0")}`, concept: index === count - 1 ? "中文目标" : `Concept ${index}`,
+      title: index === count - 1 ? "中文目标" : `Scene ${index}`, type: "topic", status: "active", summary: "summary",
+      tags: ["shared"], sourceAnnotations: [], sceneIds: [], cells: [], path: `Memory/${index}.md`,
+      updatedAt: "2026-10-16T00:00:00Z", createdAt: "2026-10-16T00:00:00Z"
+    }));
+  }
+  async function library(kind: "annotations" | "cells" | "scenes", count: number) {
+    const result = await fixture();
+    const items = records(count);
+    result.plugin.librarySnapshot = { ...result.plugin.librarySnapshot, [kind]: items } as typeof result.plugin.librarySnapshot;
+    if (kind === "annotations") {
+      const { IndexTable } = await import("../src/index-table.js");
+      const annotationRows = items.map(item => ({
+        annotationId: item.id, memoryFile: item.path, sourceFile: "Source.md", anchor: "^id", anchorOrigin: "generated",
+        selectedText: item.title, status: "reviewed", concepts: [item.concept], relatedMemoryCells: [],
+        updatedAt: item.updatedAt, createdAt: item.createdAt
+      }));
+      const table = new IndexTable(annotationRows as never[]);
+      (result.plugin as unknown as { indexTable: typeof table }).indexTable = table;
+    }
+    page(result.tab, kind);
+    return { ...result, items };
+  }
+  function next(tab: AnnotationTutorLiteSettingTab) { tab.containerEl.querySelector<HTMLButtonElement>(".atl-pagination-next")!.click(); }
+  function previous(tab: AnnotationTutorLiteSettingTab) { return tab.containerEl.querySelector<HTMLButtonElement>(".atl-pagination-previous")!; }
+  function groups(tab: AnnotationTutorLiteSettingTab, kind: string) {
+    return tab.containerEl.querySelectorAll(kind === "annotations" ? "tbody.atl-rec" : "table tbody tr");
+  }
+
+  // Count/identity assertions are the performance gate. Large DOM construction
+  // gets a bounded CI budget for coverage instrumentation and Windows runners.
+  it.each(["annotations", "cells", "scenes"] as const)("renders at most 100 %s record groups from ten thousand and searches the complete list with IME", async kind => {
+    const { tab, plugin, scroll } = await library(kind, 10000);
+    expect(groups(tab, kind)).toHaveLength(100);
+    expect(tab.containerEl.querySelector(".atl-pagination-count")!.textContent).toContain("10000");
+    next(tab); expect(groups(tab, kind)).toHaveLength(100); expect(previous(tab).disabled).toBe(false);
+    const toolbar = tab.containerEl.querySelector(".atl-toolbar")!;
+    const search = toolbar.querySelector<HTMLInputElement>("input")!;
+    search.focus(); search.setSelectionRange(0, 0); tab.containerEl.scrollTop = 155; scroll.scrollTop = 455;
+    search.dispatchEvent(new CompositionEvent("compositionstart")); draft(search, "中文目标");
+    expect(groups(tab, kind)).toHaveLength(100);
+    tab.refresh();
+    expect(tab.containerEl.querySelector(".atl-toolbar")).toBe(toolbar); expect(document.activeElement).toBe(search);
+    expect(search.value).toBe("中文目标"); expect([tab.containerEl.scrollTop, scroll.scrollTop]).toEqual([155, 455]);
+    search.dispatchEvent(new CompositionEvent("compositionend")); search.dispatchEvent(new Event("input"));
+    expect(groups(tab, kind)).toHaveLength(1);
+    expect(groups(tab, kind)[0]!.textContent).toContain("ID-09999");
+    expect(previous(tab).disabled).toBe(true);
+    // Each list retains its own filter/page through tab navigation.
+    page(tab, "feedback"); page(tab, kind);
+    expect(tab.containerEl.querySelector<HTMLInputElement>(".atl-toolbar input")!.value).toBe("中文目标");
+    expect(groups(tab, kind)).toHaveLength(1);
+    expect(plugin.persistSettings).not.toHaveBeenCalled();
+  }, 20000);
+
+  it.each(["annotations", "cells", "scenes"] as const)("clamps %s after the final page is removed or archived", async kind => {
+    const { tab, plugin, items } = await library(kind, 101);
+    if (kind === "scenes") {
+      const status = tab.containerEl.querySelectorAll<HTMLSelectElement>(".atl-toolbar select")[1]!;
+      change(status, "active");
+    }
+    next(tab); expect(groups(tab, kind)).toHaveLength(1);
+    if (kind === "annotations") {
+      (plugin.indexTable as unknown as { remove: (id: string) => void }).remove(items.at(-1)!.id);
+      plugin.librarySnapshot = { ...plugin.librarySnapshot };
+    } else if (kind === "scenes") {
+      plugin.librarySnapshot = { ...plugin.librarySnapshot, scenes: items.map((item, index) => ({ ...item, status: index === 100 ? "archived" : "active" })) as never[] };
+    } else plugin.librarySnapshot = { ...plugin.librarySnapshot, cells: items.slice(0, 100) as never[] };
+    const toolbar = tab.containerEl.querySelector(".atl-toolbar"); tab.refresh();
+    expect(groups(tab, kind)).toHaveLength(100); expect(previous(tab).disabled).toBe(true);
+    expect(tab.containerEl.querySelector(".atl-toolbar")).toBe(toolbar);
+  });
+
+  it("retains failed ordinary drafts through background refresh and retries without an input event", async () => {
+    const { tab, plugin } = await fixture();
+    const model = input(tab, "set.apiModel"); model.focus(); draft(model, "draft-model");
+    plugin.persistSettings.mockRejectedValueOnce(new Error("disk busy")); model.blur();
+    await vi.waitFor(() => expect(model.getAttribute("aria-invalid")).toBe("true"));
+    expect(plugin.settings.apiModel).not.toBe("draft-model"); tab.refresh();
+    expect(input(tab, "set.apiModel")).toBe(model); expect(model.value).toBe("draft-model");
+    model.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    await vi.waitFor(() => expect(plugin.settings.apiModel).toBe("draft-model"));
+    await vi.waitFor(() => expect(model.hasAttribute("aria-invalid")).toBe(false));
+    expect(plugin.persistSettings).toHaveBeenCalledTimes(2);
+  });
+
+  it("commits ordinary model, command and numeric fields once, while unchanged blur saves nothing", async () => {
+    const { tab, plugin } = await fixture();
+    const model = input(tab, "set.apiModel"), command = input(tab, "board.codexCommand");
+    model.dispatchEvent(new FocusEvent("blur")); command.dispatchEvent(new FocusEvent("blur"));
+    expect(plugin.persistSettings).not.toHaveBeenCalled();
+    for (let count = 1; count <= 20; count++) draft(command, "c".repeat(count));
+    expect(plugin.persistSettings).not.toHaveBeenCalled();
+    command.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" })); command.dispatchEvent(new FocusEvent("blur"));
+    await vi.waitFor(() => expect(plugin.persistSettings).toHaveBeenCalledTimes(1));
+    expect(plugin.settings.tutorCodexCommand).toBe("c".repeat(20));
+    page(tab, "feedback"); const duration = input(tab, "upgrade.dailyMinutes");
+    draft(duration, "120"); expect(plugin.persistSettings).toHaveBeenCalledTimes(1);
+    duration.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" })); duration.dispatchEvent(new FocusEvent("blur"));
+    await vi.waitFor(() => expect(plugin.persistSettings).toHaveBeenCalledTimes(2));
+    expect(plugin.settings.learningDailyMinutes).toBe(120);
+  });
+
+  it("rejects events from a model control whose engine binding has been replaced", async () => {
+    const { tab, plugin } = await fixture({ boardConnectionMode: "custom", boardEngine: "api", boardApiModel: "first" });
+    const obsolete = input(tab, "board.connectionModel"); draft(obsolete, "saved-before-switch");
+    change(select(tab, "set.boardEngine"), "opencode");
+    await vi.waitFor(() => expect(select(tab, "set.boardEngine").value).toBe("opencode"));
+    await vi.waitFor(() => expect(input(tab, "board.connectionModel")).not.toBe(obsolete));
+    change(select(tab, "set.boardEngine"), "api");
+    await vi.waitFor(() => expect(input(tab, "board.connectionModel").value).toBe("saved-before-switch"));
+    const calls = plugin.persistSettings.mock.calls.length;
+    draft(obsolete, "late-stale-model"); obsolete.dispatchEvent(new FocusEvent("blur")); await Promise.resolve();
+    expect(plugin.settings.boardApiModel).toBe("saved-before-switch"); expect(plugin.persistSettings).toHaveBeenCalledTimes(calls);
+  });
+});
+
+
+it("applies the new locale before persistence refreshes dependent views", async () => {
+  const { tab, plugin } = await fixture();
+  const order: string[] = [];
+  const apply = plugin.applyLocale;
+  plugin.applyLocale = () => { order.push("locale"); apply(); };
+  plugin.persistSettings.mockImplementation(async () => { order.push("persist"); expect(t("list.next")).toBe("下一页"); });
+  change(select(tab, "set.language"), "zh-cn");
+  await vi.waitFor(() => expect(order).toEqual(["locale", "persist"]));
+  expect(tab.containerEl.querySelector("h2")!.textContent).toBe(t("settings.title"));
+});
+
+
+it("preserves dashboard paging and filters on snapshot refresh and retranslation", async () => {
+  const { plugin } = await fixture();
+  const { IndexTable } = await import("../src/index-table.js");
+  const records = Array.from({ length: 250 }, (_, index) => ({ annotationId: `ANN-${index}`, memoryFile: `${index}.md`,
+    sourceFile: "Source.md", anchor: "^id", selectedText: "Text", status: "reviewed", concepts: ["Shared"],
+    relatedMemoryCells: [], updatedAt: "2026-10-16T00:00:00Z", createdAt: "2026-10-16T00:00:00Z" }));
+  const table = new IndexTable(records as never[]);
+  (plugin as unknown as { indexTable: typeof table }).indexTable = table;
+  (plugin as unknown as { maybeShowWebInstallPrompt: () => void }).maybeShowWebInstallPrompt = () => {};
+  const dashboard = new DashboardView({} as never, plugin as unknown as AnnotationTutorLitePlugin);
+  document.body.append(dashboard.contentEl); await dashboard.onOpen();
+  dashboard.contentEl.querySelector<HTMLButtonElement>(".atl-pagination-next")!.click();
+  const search = dashboard.contentEl.querySelector<HTMLInputElement>(".atl-toolbar input")!;
+  const status = dashboard.contentEl.querySelector<HTMLSelectElement>(".atl-toolbar select")!;
+  const first = dashboard.contentEl.querySelector("tbody.atl-rec")!.textContent;
+  search.focus(); dashboard.refresh();
+  expect(dashboard.contentEl.querySelector(".atl-toolbar input")).toBe(search);
+  expect(dashboard.contentEl.querySelector("tbody.atl-rec")!.textContent).toBe(first);
+  change(status, "reviewed"); dashboard.contentEl.querySelector<HTMLButtonElement>(".atl-pagination-next")!.click();
+  setLocale("zh-cn"); dashboard.refresh();
+  expect(dashboard.contentEl.querySelector(".atl-pagination-next")!.textContent).toBe("下一页");
+  expect(dashboard.contentEl.querySelector<HTMLSelectElement>(".atl-toolbar select")!.value).toBe("reviewed");
+  expect(dashboard.contentEl.querySelector(".atl-pagination-count")!.textContent).toContain("2 / 3");
+  await dashboard.onClose(); expect(dashboard.contentEl.children).toHaveLength(0);
+});
+
+it("caches tag catalogs for one snapshot and refreshes them on replacement", async () => {
+  const { tab, plugin } = await fixture();
+  const cells = [{ id: "C-1", concept: "Concept", summary: "Summary", tags: ["old"], sourceAnnotations: [], sceneIds: [],
+    type: "understanding", status: "active", path: "cell.md", updatedAt: "2026-10-16" }] as never[];
+  plugin.librarySnapshot = { ...plugin.librarySnapshot, cells };
+  const scans = vi.spyOn(cells, "flatMap");
+  page(tab, "cells"); const initial = scans.mock.calls.length;
+  const search = tab.containerEl.querySelector<HTMLInputElement>(".atl-toolbar input")!;
+  draft(search, "Concept"); tab.refresh(); tab.refresh();
+  expect(scans).toHaveBeenCalledTimes(initial);
+  plugin.librarySnapshot = { ...plugin.librarySnapshot, cells: [{ ...(cells[0] as unknown as Record<string, unknown>), tags: ["new"] }] as never[] };
+  tab.refresh();
+  const tags = tab.containerEl.querySelectorAll<HTMLSelectElement>(".atl-toolbar select")[1]!;
+  expect(tags.querySelector('option[value="new"]')).not.toBeNull();
+  expect(tags.querySelector('option[value="old"]')).toBeNull();
+  expect(tab.containerEl.querySelector(".atl-toolbar input")).toBe(search);
+});
+
+
+describe("ordinary settings transaction ordering", () => {
+  it("serializes independent blurs through real credential-backed writes including rollback", async () => {
+    const { tab, plugin, write } = await fixture({ apiModel: "oldA", agentModel: "oldB" });
+    const payloads: Array<{ apiModel: unknown; agentModel: unknown }> = [];
+    write.mockImplementation(async payload => {
+      payloads.push({ apiModel: payload.apiModel, agentModel: payload.agentModel });
+      if (payloads.length === 1) throw new Error("disk busy");
+    });
+    const api = input(tab, "set.apiModel"), agent = input(tab, "set.agentModel");
+    draft(api, "newA"); draft(agent, "newB");
+    api.dispatchEvent(new FocusEvent("blur")); agent.dispatchEvent(new FocusEvent("blur"));
+    await vi.waitFor(() => expect(payloads).toHaveLength(2));
+    await vi.waitFor(() => expect(api.getAttribute("aria-invalid")).toBe("true"));
+    expect(payloads).toEqual([{ apiModel: "newA", agentModel: "oldB" }, { apiModel: "oldA", agentModel: "newB" }]);
+    expect({ apiModel: plugin.settings.apiModel, agentModel: plugin.settings.agentModel }).toEqual(payloads.at(-1));
+    expect(api.value).toBe("newA"); expect(agent.value).toBe("newB");
+    api.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    await vi.waitFor(() => expect(payloads).toHaveLength(3));
+    expect(payloads.at(-1)).toEqual({ apiModel: "newA", agentModel: "newB" });
+  });
+
+  it("stops a multi-field flush at the first failed real writer and leaves later drafts untouched", async () => {
+    const { commitSettingsInputs } = await import("../src/committed-input.js");
+    const { tab, plugin, write } = await fixture({ apiModel: "oldA", agentModel: "oldB" });
+    write.mockRejectedValueOnce(new Error("disk busy"));
+    const api = input(tab, "set.apiModel"), agent = input(tab, "set.agentModel");
+    draft(api, "newA"); draft(agent, "newB");
+    expect(await commitSettingsInputs(tab.containerEl)).toBe(false);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(plugin.settings.apiModel).toBe("oldA"); expect(plugin.settings.agentModel).toBe("oldB");
+    expect(api.value).toBe("newA"); expect(agent.value).toBe("newB");
+    expect(await commitSettingsInputs(tab.containerEl)).toBe(true);
+    expect(write).toHaveBeenCalledTimes(3);
+    expect(write.mock.calls.at(-1)![0]).toMatchObject({ apiModel: "newA", agentModel: "newB" });
+  });
+
+  it("restores the visible board mode when a model draft fails to flush", async () => {
+    const { tab, plugin, write } = await fixture({ boardConnectionMode: "custom", boardEngine: "api", boardApiModel: "old" });
+    const model = input(tab, "board.connectionModel"), mode = select(tab, "board.connectionMode");
+    draft(model, "new"); write.mockRejectedValueOnce(new Error("disk busy")); change(mode, "inherit");
+    await vi.waitFor(() => expect(model.getAttribute("aria-invalid")).toBe("true"));
+    await vi.waitFor(() => expect(mode.value).toBe("custom"));
+    expect(plugin.settings.boardConnectionMode).toBe("custom"); expect(model.value).toBe("new");
+    expect(input(tab, "board.connectionModel")).toBe(model);
+    model.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    await vi.waitFor(() => expect(plugin.settings.boardApiModel).toBe("new"));
+    await vi.waitFor(() => expect(model.hasAttribute("aria-invalid")).toBe(false));
+    change(mode, "inherit"); await vi.waitFor(() => expect(plugin.settings.boardConnectionMode).toBe("inherit"));
+  });
+
+  it.each(["engine", "mode"] as const)("restores the previous board %s binding after its own persistence fails", async kind => {
+    const { tab, plugin, write } = await fixture({ boardConnectionMode: "custom", boardEngine: "api", boardApiModel: "old" });
+    const model = input(tab, "board.connectionModel");
+    const route = select(tab, kind === "engine" ? "set.boardEngine" : "board.connectionMode");
+    write.mockRejectedValueOnce(new Error("disk busy")); change(route, kind === "engine" ? "opencode" : "inherit");
+    await vi.waitFor(() => expect(write).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(route.value).toBe(kind === "engine" ? "api" : "custom"));
+    expect(plugin.settings.boardEngine).toBe("api"); expect(plugin.settings.boardConnectionMode).toBe("custom");
+    expect(input(tab, "board.connectionModel")).toBe(model);
+    draft(model, "retry-model"); model.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    await vi.waitFor(() => expect(plugin.settings.boardApiModel).toBe("retry-model"));
+    expect(write).toHaveBeenCalledTimes(2);
   });
 });

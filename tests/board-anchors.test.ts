@@ -122,3 +122,36 @@ describe("shared Markdown board anchors", () => {
     expect(saved).toEqual(copy);
   });
 });
+
+
+describe("board anchor observation indexes", () => {
+  it("finds one candidate without walking a ten-thousand-block registry", () => {
+    const registry = new BoardAnchorRegistry(Array.from({ length: 10000 }, (_, index) => `Paragraph ${index}.`).join("\n\n"));
+    const target = registry.entries[5000]!, originalFrom = target.from;
+    registry.entriesIntersecting(target.from, target.to);
+    const internal = registry as unknown as Record<"located" | "locatedEnds", unknown[]>;
+    let reads = 0;
+    for (const property of ["located", "locatedEnds"] as const) internal[property] = new Proxy(internal[property], {
+      get(array, key, receiver) {
+        if (typeof key === "string" && /^\d+$/.test(key)) reads++;
+        return Reflect.get(array, key, receiver);
+      }
+    }) as typeof internal[typeof property];
+    expect(registry.entriesIntersecting(target.from, target.to).map(entry => entry.id)).toEqual([target.id]);
+    expect(reads).toBeLessThan(25);
+    const before = registry.readonlySnapshot();
+    expect(registry.readonlySnapshot()).toBe(before);
+    expect(registry.anchor(target).sourceLine).toBe(10000);
+    registry.reconcile("New.\n\n" + Array.from({ length: 10000 }, (_, index) => `Paragraph ${index}.`).join("\n\n"));
+    expect(registry.readonlySnapshot()).not.toBe(before);
+    const moved = registry.resolve(target.id)!;
+    expect(moved.from).toBe(originalFrom + 6);
+    expect(registry.anchor(moved).sourceLine).toBe(10002);
+  });
+
+  it("deduplicates legacy aliases added earlier in the same constructor", () => {
+    const legacy = { kind: "markdown" as const, key: "legacy", quote: "Missing.", sourceLine: 0 };
+    const registry = new BoardAnchorRegistry("Present.", undefined, [legacy, legacy]);
+    expect(registry.entries.filter(entry => entry.aliases.includes("legacy"))).toHaveLength(1);
+  });
+});

@@ -4,6 +4,10 @@ import { cloneBoardValue as clone } from "./board-clone.js";
 
 export type MarkdownBoardBlock = { from: number; to: number; quote: string; blockId?: string; legacyKey: string };
 const CONTEXT = 120;
+export type ReadonlyBoardMarkdownAnchorState = {
+  readonly textVersion: string;
+  readonly entries: readonly (Readonly<Omit<BoardMarkdownAnchorRecord, "aliases">> & { readonly aliases: readonly string[] })[];
+};
 
 export function boardTextVersion(text: string): string {
   return `md:${text.length}:${boardTextFingerprint(text)}`;
@@ -87,11 +91,18 @@ export class BoardAnchorRegistry {
   // allow its former IDs to survive that replacement without fuzzy matching.
   private readonly priorStates = new Map<string, {text:string; entries:BoardMarkdownAnchorRecord[]; size:number}>();
   private priorStateSize = 0;
+  private revision = 0;
+  private indexedRevision = -1;
+  private readonly byKey = new Map<string, BoardMarkdownAnchorRecord>();
+  private located: BoardMarkdownAnchorRecord[] = [];
+  private locatedEnds: number[] = [];
+  private lineStarts: number[] = [];
+  private sharedSnapshot: ReadonlyBoardMarkdownAnchorState | undefined;
   public constructor(text: string, saved?: BoardMarkdownAnchorState, legacy: readonly BoardAnchor[] = []) {
     this.state = saved ? clone(saved) : { textVersion: "", entries: [] };
     this.rebuild(text);
     for (const anchor of legacy) {
-      if (anchor.kind !== "markdown" || this.resolve(anchor)) continue;
+      if (anchor.kind !== "markdown" || this.state.entries.some(entry => entry.id === anchor.key || entry.aliases.includes(anchor.key))) continue;
       const candidates = this.state.entries.filter((entry) => entry.status === "located" && entry.quote === anchor.quote);
       let match = candidates.length === 1 ? candidates[0] : undefined;
       if (!match && anchor.sourceLine !== undefined) {
@@ -101,6 +112,7 @@ export class BoardAnchorRegistry {
       if (match) match.aliases = [...new Set([...match.aliases, anchor.key])];
       else this.state.entries.push({ id: this.newId(), from: 0, to: 0, quote: anchor.quote.slice(0, 20000), before: "", after: "", aliases: [anchor.key], status: "missing" });
     }
+    this.invalidateIndexes();
   }
   public get entries(): readonly BoardMarkdownAnchorRecord[] { return this.state.entries; }
   public get version(): string { return this.state.textVersion; }
@@ -113,10 +125,56 @@ export class BoardAnchorRegistry {
       && !this.state.entries.some(entry => entry.status === "located" && entry.from < end && entry.to > end);
   }
   public snapshot(): BoardMarkdownAnchorState { return clone(this.state); }
+  /** Immutable observation snapshot. Persistence callers keep using snapshot(). */
+  public readonlySnapshot(): ReadonlyBoardMarkdownAnchorState {
+    if (!this.sharedSnapshot) {
+      const snapshot = this.snapshot();
+      for (const entry of snapshot.entries) { Object.freeze(entry.aliases); Object.freeze(entry); }
+      Object.freeze(snapshot.entries);
+      this.sharedSnapshot = Object.freeze(snapshot);
+    }
+    return this.sharedSnapshot;
+  }
+  private invalidateIndexes(): void {
+    this.revision++;
+    this.sharedSnapshot = undefined;
+  }
+  private index(): void {
+    if (this.indexedRevision === this.revision) return;
+    this.byKey.clear();
+    // An actual ID takes precedence over a legacy alias with the same name.
+    for (const entry of this.state.entries) if (!this.byKey.has(entry.id)) this.byKey.set(entry.id, entry);
+    for (const entry of this.state.entries) for (const alias of entry.aliases) {
+      if (!this.byKey.has(alias)) this.byKey.set(alias, entry);
+    }
+    this.located = this.state.entries.filter(entry => entry.status === "located" && entry.from < entry.to)
+      .sort((a, b) => a.from - b.from || a.to - b.to);
+    let end = -1;
+    this.locatedEnds = this.located.map(entry => end = Math.max(end, entry.to));
+    this.lineStarts = [0];
+    for (let offset = 0; offset < this.text.length; offset++) if (this.text.charCodeAt(offset) === 10) this.lineStarts.push(offset + 1);
+    this.indexedRevision = this.revision;
+  }
+  /** Ordered source candidates, including blocks intersecting range boundaries. */
+  public entriesIntersecting(from: number, to: number): readonly BoardMarkdownAnchorRecord[] {
+    this.index();
+    let low = 0, high = this.located.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (this.locatedEnds[middle]! < from) low = middle + 1; else high = middle;
+    }
+    const result: BoardMarkdownAnchorRecord[] = [];
+    for (let index = low; index < this.located.length; index++) {
+      const entry = this.located[index]!;
+      if (entry.from > to) break;
+      if (entry.to >= from) result.push(entry);
+    }
+    return result;
+  }
   public resolve(anchor: BoardAnchor | string): BoardMarkdownAnchorRecord | undefined {
     const key = typeof anchor === "string" ? anchor : anchor.kind === "markdown" ? anchor.key : "";
-    return this.state.entries.find((entry) => entry.id === key)
-      ?? this.state.entries.find((entry) => entry.aliases.includes(key));
+    this.index();
+    return this.byKey.get(key);
   }
   public anchorForRange(from: number, to: number): Extract<BoardAnchor, { kind: "markdown" }> | undefined {
     const found = this.state.entries.find((entry) => entry.status === "located" && entry.from <= from && entry.to >= to)
@@ -124,7 +182,13 @@ export class BoardAnchorRegistry {
     return found ? this.anchor(found) : undefined;
   }
   public anchor(entry: BoardMarkdownAnchorRecord): Extract<BoardAnchor, { kind: "markdown" }> {
-    return { kind: "markdown", key: entry.id, quote: entry.quote, sourceLine: this.text.slice(0, entry.from).split("\n").length - 1 };
+    this.index();
+    let low = 0, high = this.lineStarts.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (this.lineStarts[middle]! <= entry.from) low = middle + 1; else high = middle;
+    }
+    return { kind: "markdown", key: entry.id, quote: entry.quote, sourceLine: Math.max(0, low - 1) };
   }
   public reconcile(text: string): boolean {
     if (boardTextVersion(text) === this.state.textVersion) return false;
@@ -243,6 +307,7 @@ export class BoardAnchorRegistry {
     }
     this.text = text;
     this.state.textVersion = boardTextVersion(text);
+    this.invalidateIndexes();
     this.seenVersions.add(this.state.textVersion);
     if (this.seenVersions.size > 256) this.seenVersions.delete(this.seenVersions.values().next().value!);
   }

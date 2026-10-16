@@ -1,10 +1,10 @@
-// Pure decoration planning, deliberately free of any runtime imports (only
-// erased `import type`s), so it can be unit-tested without an Obsidian or
-// CodeMirror runtime. `decorations.ts` turns these plans into real CM6 ranges.
+// Pure decoration planning, independent of the Obsidian and CodeMirror view
+// runtimes, so source locations can be tested without an editor DOM. `decorations.ts` turns these plans into real CM6 ranges.
 
 import type { Text } from "@codemirror/state";
 import type { DialogueTurn } from "./model.js";
 import type { HighlightStyle } from "./settings.js";
+import { findTableInLines } from "./editor.js";
 
 export type AnchorMark = {
   id: string;
@@ -58,6 +58,53 @@ export function styleClass(style: HighlightStyle): string | null {
   return style === "none" ? null : STYLE_CLASS[style];
 }
 
+export type AnnotationLocationPlan = {
+  readonly spanById: ReadonlyMap<string, { readonly from: number; readonly to: number }>;
+  readonly blockEndById: ReadonlyMap<string, number>;
+  readonly tableIds: ReadonlySet<string>;
+  readonly plans: readonly DecoPlan[];
+};
+
+// Text is immutable. Weak keys let closed or replaced editor buffers be collected;
+// one marks version per buffer prevents card edits accumulating cached plans.
+const locationCache = new WeakMap<Text, { key: string; plan: AnnotationLocationPlan }>();
+const emptyLocationPlan: AnnotationLocationPlan = {
+  spanById: new Map(), blockEndById: new Map(), tableIds: new Set(), plans: []
+};
+
+/** Shared source locations, independent of style, card expansion or viewport. */
+export function annotationLocations(doc: Text, marks: readonly AnchorMark[]): AnnotationLocationPlan {
+  if (marks.length === 0) return emptyLocationPlan;
+  // Card note/review/dialogue changes do not affect source positions. Preserve
+  // ordering because duplicate selections resolve in annotation reading order.
+  const key = JSON.stringify(marks.map(mark => [mark.id, mark.blockId, mark.selectedText]));
+  const cached = locationCache.get(doc);
+  if (cached?.key === key) return cached.plan;
+  const blockEndById = new Map<string, number>();
+  const plans = buildLocationPlans(doc, marks, blockEndById);
+  const spanById = new Map<string, { from: number; to: number }>();
+  for (const plan of plans) if (plan.kind === "style" && plan.id && !spanById.has(plan.id)) {
+    spanById.set(plan.id, { from: plan.from, to: plan.to });
+  }
+  const tableIds = new Set<string>();
+  // Table membership is source work too. Compute it once with the locations,
+  // rather than rebuilding the entire string on every scroll/selection event.
+  const lines = Array.from({ length: doc.lines }, (_, index) => doc.line(index + 1).text);
+  const tableByLine = new Map<number, boolean>();
+  for (const [id, span] of spanById) {
+    const line = doc.lineAt(span.from).number - 1;
+    let table = tableByLine.get(line);
+    if (table === undefined) {
+      table = findTableInLines(lines, line) !== null;
+      tableByLine.set(line, table);
+    }
+    if (table) tableIds.add(id);
+  }
+  const plan = { spanById, blockEndById, tableIds, plans };
+  locationCache.set(doc, { key, plan });
+  return plan;
+}
+
 /**
  * Decide which decorations a document needs, as plain descriptors:
  * an inline style hugging each annotated span, a "hide" descriptor that removes
@@ -67,9 +114,26 @@ export function styleClass(style: HighlightStyle): string | null {
  */
 export function planDecorations(
   doc: Text,
-  marks: AnchorMark[],
+  marks: readonly AnchorMark[],
   style: HighlightStyle,
   showMarker: boolean
+): DecoPlan[] {
+  const className = styleClass(style);
+  const plans: DecoPlan[] = [];
+  for (const plan of annotationLocations(doc, marks).plans) {
+    if (plan.kind === "style") {
+      if (className) plans.push({ ...plan, className });
+    } else if (plan.kind === "hide") {
+      if (showMarker) plans.push({ ...plan });
+    } else if (showMarker && style === "none") plans.push({ ...plan });
+  }
+  return plans;
+}
+
+function buildLocationPlans(
+  doc: Text,
+  marks: readonly AnchorMark[],
+  blockEndById: Map<string, number>
 ): DecoPlan[] {
   // A paragraph can carry several annotations that share one block id, so group
   // them: each annotation underlines its own selected span.
@@ -79,10 +143,8 @@ export function planDecorations(
     if (list) list.push(mark);
     else byBlockId.set(mark.blockId, [mark]);
   }
-  const className = styleClass(style);
-  // The marker glyph is only an affordance for when there is no highlight to
-  // click; with a style on, the highlighted span itself toggles the comment.
-  const showGlyph = showMarker && style === "none";
+  // Cache both highlight and glyph positions; presentation chooses which to use.
+  const className = STYLE_CLASS.background;
   const plans: DecoPlan[] = [];
   const anchored = new Set<string>();
 
@@ -93,7 +155,10 @@ export function planDecorations(
     const blockMarks = byBlockId.get(match[1] ?? "");
     const first = blockMarks?.[0];
     if (!blockMarks || !first) continue;
-    for (const mark of blockMarks) anchored.add(mark.id);
+    for (const mark of blockMarks) {
+      anchored.add(mark.id);
+      blockEndById.set(mark.id, line.to);
+    }
     const suffixStart = line.from + match.index;
 
     // The block id sits on the last line of a (possibly multi-line) block, but a
@@ -124,10 +189,8 @@ export function planDecorations(
       const span = locateSpan(doc, start.line, start.ch, lineNumber, mark.selectedText);
       if (!span) continue;
       cursor.set(mark.selectedText, { line: span.endLine, ch: span.endCh });
-      if (className) {
-        plans.push({ kind: "style", from: span.from, to: span.to, className, id: mark.id });
-      }
-      if (showGlyph) {
+      plans.push({ kind: "style", from: span.from, to: span.to, className, id: mark.id });
+      {
         // Sit the marker right after the span. When it abuts the trailing ` ^id`
         // (e.g. a whole-sentence selection), clamp to the id's start and order it
         // before the hidden token (side -1).
@@ -142,18 +205,14 @@ export function planDecorations(
       // formatting): underline the block-id line up to the id and tag it with the
       // annotation id so it stays the clickable toggle; add a glyph only when
       // there is no highlight to click.
-      if (className && suffixStart > line.from) {
+      if (suffixStart > line.from) {
         plans.push({ kind: "style", from: line.from, to: suffixStart, className, id: first.id });
       }
-      if (showGlyph) {
-        plans.push({ kind: "marker", pos: suffixStart, id: first.id, side: -1 });
-      }
+      plans.push({ kind: "marker", pos: suffixStart, id: first.id, side: -1 });
     }
 
-    if (showMarker) {
-      // Hide the raw ` ^id` token; the highlight (or glyph) takes over its role.
-      plans.push({ kind: "hide", from: suffixStart, to: line.to });
-    }
+    // Hide the raw ` ^id` token; the highlight (or glyph) takes over its role.
+    plans.push({ kind: "hide", from: suffixStart, to: line.to });
   }
 
   // Table annotations deliberately keep their logical id out of the source.
@@ -165,8 +224,8 @@ export function planDecorations(
     const span = locateSpan(doc, start.line, start.ch, doc.lines, mark.selectedText);
     if (!span) continue;
     cursors.set(mark.selectedText, { line: span.endLine, ch: span.endCh });
-    if (className) plans.push({ kind: "style", from: span.from, to: span.to, className, id: mark.id });
-    if (showGlyph) plans.push({ kind: "marker", pos: span.to, id: mark.id, side: 1 });
+    plans.push({ kind: "style", from: span.from, to: span.to, className, id: mark.id });
+    plans.push({ kind: "marker", pos: span.to, id: mark.id, side: 1 });
   }
   plans.sort((a, b) => planStart(a) - planStart(b));
   return plans;

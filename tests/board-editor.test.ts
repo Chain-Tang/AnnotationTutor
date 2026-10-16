@@ -252,3 +252,52 @@ describe('C60 temporary CodeMirror drawing blocks',()=>{
   f.view.dispatch({effects:unfoldEffect.of({from:9,to:24})});expect(f.view.dom.querySelector('[data-board-slot="SLOT-fold"]')).not.toBeNull();
  });
 });
+
+
+describe("board editor hot-path boundaries", () => {
+  it("does not clone anchors for repeated readiness reads or unchanged layout notifications", () => {
+    const { view, container, bridge, registryMap, events } = fixture("First.\n\nSecond.");
+    const registry = registryMap.get("Physics.md")!;
+    const snapshots = vi.spyOn(registry, "snapshot");
+    measure(view);
+    const shared = events.at(-1)!.state.anchors;
+    expect(shared).toBeDefined();
+    expect(Object.isFrozen(shared!.entries[0])).toBe(true);
+    snapshots.mockClear();
+    for (let update = 0; update < 100; update++) {
+      expect(bridge.getStatus(container)!.ready).toBe(true);
+      view.scrollDOM.dispatchEvent(new Event("scroll"));
+      measure(view);
+      expect(events.at(-1)!.state.anchors).toBe(shared);
+    }
+    expect(snapshots).not.toHaveBeenCalled();
+    const saved = bridge.get(container)!;
+    expect(snapshots).toHaveBeenCalledTimes(1);
+    saved.anchors!.entries[0]!.quote = "caller mutation";
+    expect(registry.entries[0]!.quote).toBe("First.");
+    view.dispatch({ changes: { from: 0, insert: "New.\n\n" } });
+    expect(events.at(-1)!.state.anchors).not.toBe(shared);
+    expect(shared!.entries[0]!.quote).toBe("First.");
+  });
+
+  it("queries only source intervals on screen in a ten-thousand-block document", () => {
+    const text = Array.from({ length: 10000 }, (_, index) => `Paragraph ${index}.`).join("\n\n");
+    const { view, registryMap } = fixture(text);
+    const registry = registryMap.get("Physics.md")!;
+    const visible = registry.entries[5000]!;
+    // Warm the source index; geometry should never iterate all anchors again.
+    registry.entriesIntersecting(visible.from, visible.to);
+    const entries = vi.spyOn(registry, "entries", "get");
+    const queried = vi.spyOn(registry, "entriesIntersecting");
+    const block = { from: visible.from, to: visible.to, top: 0, bottom: 24, height: 24, type: 0 };
+    vi.spyOn(view, "viewportLineBlocks", "get").mockReturnValue([block] as EditorView["viewportLineBlocks"]);
+    vi.mocked(view.lineBlockAt).mockReturnValue(block as ReturnType<EditorView["lineBlockAt"]>);
+    for (let scroll = 0; scroll < 10; scroll++) {
+      expect(measureBoardEditorGeometry(view, registry).map(item => item.entryId)).toEqual([visible.id]);
+    }
+    expect(entries).not.toHaveBeenCalled();
+    expect(queried).toHaveBeenCalledTimes(10);
+    expect(queried.mock.results.every(result => result.value.length === 1)).toBe(true);
+    expect(view.lineBlockAt).toHaveBeenCalledTimes(20);
+  });
+});

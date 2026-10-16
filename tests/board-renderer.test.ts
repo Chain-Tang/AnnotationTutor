@@ -9,12 +9,13 @@ import {
   materialRasterBudget,
   materialRasterScale,
   normalizedBoardPoints,
+  prepareBoardCanvas,
   renderBoardCanvas,
   renderBoardSvg,
 } from "../src/board-renderer.js";
 import { defaultBoardBrush } from "../src/board-brushes.js";
 import { configureBoardFonts, ensureBoardFonts } from "../src/board-fonts.js";
-import type { BoardObject, TutorCharacterProfile } from "../src/board-types.js";
+import type { BoardMatrix, BoardObject, TutorCharacterProfile } from "../src/board-types.js";
 
 it("matches textured raster resolution to device zoom without overfilling the cache", () => {
   expect(materialRasterScale({ a: .82, b: 0, c: 0, d: .82 })).toBe(1);
@@ -54,6 +55,38 @@ const defaults = {
 };
 
 describe("portable board rendering", () => {
+  it("reuses renderer lookup tables across interleaved surfaces and preserves wrapper output order", () => {
+    const layers = [{ id: "front", name: "Front", order: 1, visible: true, locked: false, opacity: 0.4, blendMode: "multiply" as const },
+      { id: "hidden", name: "Hidden", order: 0, visible: false, locked: false, opacity: 1, blendMode: "normal" as const }];
+    const iterations = vi.fn(layers.map.bind(layers));
+    const observed = new Proxy(layers, { get(target, key, receiver) { return key === "map" ? iterations : Reflect.get(target, key, receiver); } });
+    const objects = [object({ id: "first", color: "#110000", layerId: "front" }), object({ id: "second", color: "#220000" }),
+      object({ id: "hidden", layerId: "hidden" }), object({ id: "third", color: "#330000", layerId: "front" })];
+    const record = () => {
+      const calls: unknown[] = [];
+      const context = new Proxy({ canvas: document.createElement("canvas"), globalAlpha: 1 } as unknown as CanvasRenderingContext2D, {
+        get(target, key, receiver) { return Reflect.get(target, key, receiver) ?? ((...args: unknown[]) => calls.push([key, ...args])); },
+        set(target, key, value) { calls.push([key, value]); return Reflect.set(target, key, value); },
+      });
+      return { context, calls };
+    };
+    const baseline = record(), prepared = record();
+    const options = { ...defaults, layers: observed };
+    const draw = prepareBoardCanvas(prepared.context, options);
+    expect(iterations).toHaveBeenCalledOnce();
+    const transforms: BoardMatrix[] = [[1, 0, 0, 1, 20, 40], [0, 2, -2, 0, 300, 50]];
+    objects.forEach((item, index) => {
+      const matrix = transforms[index % 2]!;
+      prepared.context.transform(...matrix); draw([item]);
+    });
+    expect(iterations).toHaveBeenCalledOnce();
+    objects.forEach((item, index) => {
+      baseline.context.transform(...transforms[index % 2]!); renderBoardCanvas(baseline.context, [item], options);
+    });
+    expect(prepared.calls).toEqual(baseline.calls);
+    expect(prepared.calls.filter(call => Array.isArray(call) && call[0] === "strokeStyle").map(call => (call as unknown[])[1]))
+      .toEqual(["#110000", "#220000", "#330000"]);
+  });
   it("renders solid fill as a colour, without allocating a paper/grain pattern",()=>{
     const fillStyles:string[]=[];
     const createPattern=vi.fn();

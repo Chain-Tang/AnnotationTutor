@@ -1,6 +1,6 @@
 import { Text } from "@codemirror/state";
-import { describe, expect, it } from "vitest";
-import { planDecorations, type AnchorMark } from "../src/decorations-plan.js";
+import { describe, expect, it, vi } from "vitest";
+import { annotationLocations, planDecorations, type AnchorMark } from "../src/decorations-plan.js";
 
 const LINE = "Multi-head attention is useful. ^ann-20260606-001";
 
@@ -324,5 +324,42 @@ describe("planDecorations", () => {
     // Disabling the marker in no-highlight mode leaves nothing clickable inline.
     const hidden = planDecorations(doc(), [mark], "none", false);
     expect(hidden.some((p) => p.kind === "marker")).toBe(false);
+  });
+});
+
+
+describe("shared annotation source locations", () => {
+  it("reuses a ten-thousand-line plan across viewport, card and style updates", () => {
+    const document = Text.of(Array.from({ length: 10000 }, (_, index) =>
+      index === 5000 ? "A selected paragraph. ^target" : `Line ${index}`));
+    const marks = [{ id: "ANN-large", blockId: "target", selectedText: "selected paragraph" }];
+    const lineReads = vi.spyOn(document, "line");
+    const located = annotationLocations(document, marks);
+    expect(lineReads.mock.calls.length).toBeGreaterThanOrEqual(10000);
+    lineReads.mockClear();
+    for (let scroll = 0; scroll < 100; scroll++) {
+      const editedCard = marks.map(mark => ({ ...mark, note: `note ${scroll}`, status: "reviewed" }));
+      expect(annotationLocations(document, editedCard)).toBe(located);
+      planDecorations(document, editedCard, scroll % 2 ? "bold" : "background", scroll % 3 === 0);
+    }
+    expect(lineReads).not.toHaveBeenCalled();
+    expect(located.spanById.get("ANN-large")).toMatchObject({ to: located.spanById.get("ANN-large")!.from + "selected paragraph".length });
+    lineReads.mockRestore();
+  });
+
+  it("invalidates only source-location inputs and shares table membership", () => {
+    const document = Text.of(["| Name | Value |", "| --- | --- |", "| Alpha | Beta |", "^table"]);
+    const marks = [{ id: "ANN-table", blockId: "table", selectedText: "Beta" }];
+    const first = annotationLocations(document, marks);
+    expect(first.tableIds.has("ANN-table")).toBe(true);
+    expect(first.blockEndById.get("ANN-table")).toBe(document.length);
+    const changed = annotationLocations(document, [{ ...marks[0]!, selectedText: "Alpha" }]);
+    expect(changed).not.toBe(first);
+    expect(changed.spanById.get("ANN-table")!.from).toBeLessThan(first.spanById.get("ANN-table")!.from);
+    expect(annotationLocations(Text.of(["New content."]), marks)).not.toBe(first);
+    const lineReads = vi.spyOn(document, "line");
+    expect(annotationLocations(document, [])).toMatchObject({ plans: [] });
+    expect(lineReads).not.toHaveBeenCalled();
+    lineReads.mockRestore();
   });
 });

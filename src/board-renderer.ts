@@ -184,6 +184,21 @@ function objectMatrix(object: BoardObject): BoardMatrix {
 }
 
 type TextLayouter = (object: BoardObject) => BoardTextLayout;
+type RenderLookup = {
+  layers: ReadonlyMap<string, BoardLayer>;
+  characters: ReadonlyMap<string, TutorCharacterProfile>;
+  vectors: ReadonlyMap<string, BoardVectorAsset>;
+};
+function firstByKey<T>(values: readonly T[], key: (value: T) => string): ReadonlyMap<string, T> {
+  const result = new Map<string, T>();
+  for (const value of values) { const id = key(value); if (!result.has(id)) result.set(id, value); }
+  return result;
+}
+function renderLookup(options: BoardRenderOptions): RenderLookup {
+  return { layers: new Map(options.layers?.map(layer => [layer.id, layer]) ?? []),
+    characters: firstByKey(options.characters, profile => `${profile.id}:${profile.version}`),
+    vectors: firstByKey(options.vectorAssets ?? [], asset => `${asset.id}:${asset.version}`) };
+}
 const canvasTextLayouts = new WeakMap<CanvasRenderingContext2D, TextLayouter>();
 function canvasTextLayout(context: CanvasRenderingContext2D): TextLayouter {
   const existing = canvasTextLayouts.get(context);
@@ -236,11 +251,11 @@ function drawObjects(
   options: BoardRenderOptions & { layoutText?: TextLayouter },
   seen = new Set<string>(),
   inkLayers: readonly BoardInk[] = [options.ink],
+  lookup = renderLookup(options),
 ): void {
-  const layerMap = new Map(options.layers?.map(layer => [layer.id, layer]) ?? []);
   for (const object of objects) {
     const brush = object.brush;
-    const layer = object.layerId ? layerMap.get(object.layerId) : undefined;
+    const layer = object.layerId ? lookup.layers.get(object.layerId) : undefined;
     if (layer && !layer.visible) continue;
     const opacity = (object.opacity ?? brush?.opacity ?? 1) * (layer?.opacity ?? 1);
     const blendMode = object.blendMode ?? layer?.blendMode ?? (brush ? brushComposite(brush.kind) : "normal");
@@ -379,10 +394,8 @@ function drawObjects(
           object.kind === "sticker"
             ? object.assetVersion
             : object.characterVersion;
-        const profile = options.characters.find(
-          (item) => item.id === id && item.version === version,
-        );
         const key = `${id}:${version}`;
+        const profile = lookup.characters.get(key);
         const missing = (): void => {
           target.rect(
             1,
@@ -487,15 +500,14 @@ function drawObjects(
             {...options,vectorAssets:[...(profile.vectorAssets??[]),...(options.vectorAssets??[])]},
             new Set([...seen, key]),
             profile.ink ? [profile.ink, ...inkLayers] : inkLayers,
+            { ...lookup, vectors: firstByKey([...(profile.vectorAssets ?? []), ...(options.vectorAssets ?? [])], asset => `${asset.id}:${asset.version}`) },
           );
           target.pop();
         }
         break;
       }
       case "vector": {
-        const asset = options.vectorAssets?.find(
-          item => item.id === object.vectorAssetId && item.version === object.vectorAssetVersion,
-        );
+        const asset = lookup.vectors.get(`${object.vectorAssetId}:${object.vectorAssetVersion}`);
         if (asset) target.vector(asset, object.width, object.height);
         else target.rect(1, 1, Math.max(1, object.width - 2), Math.max(1, object.height - 2), {
           stroke: "#958d9e", width: 1,
@@ -755,6 +767,16 @@ export function renderBoardCanvas(
   objects: readonly BoardObject[],
   options: BoardRenderOptions,
 ): void {
+  prepareBoardCanvas(context, options)(objects);
+}
+
+/** A single frame can paint interleaved surfaces with one target and lookup set.
+ * The caller still owns transforms/clipping and the original document z-order. */
+export function prepareBoardCanvas(
+  context: CanvasRenderingContext2D,
+  options: BoardRenderOptions,
+): (objects: readonly BoardObject[]) => void {
+  const lookup = renderLookup(options);
   const finish = (paint: Paint): void => {
     const alpha = context.globalAlpha;
     if (paint.fill && paint.fill !== "none") {
@@ -886,17 +908,17 @@ export function renderBoardCanvas(
       renderVectorAssetCanvas(context, asset, width, height);
     },
   };
-  context.save();
-  try {
-    drawObjects(target, objects, {
+  const prepared = {
       ...options,
       // Custom measurers can depend on external mutable state, so keep their
       // original uncached behavior. Native canvas layouts use our font epoch.
       layoutText: options.measureText ? undefined : canvasTextLayout(context),
-    });
-  } finally {
-    context.restore();
-  }
+  };
+  return objects => {
+    context.save();
+    try { drawObjects(target, objects, prepared, undefined, undefined, lookup); }
+    finally { context.restore(); }
+  };
 }
 
 function escapeXml(value: string): string {

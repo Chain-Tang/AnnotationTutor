@@ -131,7 +131,7 @@ export class TableHighlighter {
 
   public render(): void {
     this.overlay.replaceChildren();
-    if (this.style === "none" && !this.showMarker) return;
+    if (this.marks.length === 0 || (this.style === "none" && !this.showMarker)) return;
     const origin = this.host.getBoundingClientRect();
     const sx = this.host.offsetWidth ? origin.width / this.host.offsetWidth : 1;
     const sy = this.host.offsetHeight ? origin.height / this.host.offsetHeight : 1;

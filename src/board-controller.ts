@@ -1,5 +1,6 @@
 import { BoardLayoutState, layoutObjectDigest, type BoardSlotSpec } from "./board-layout.js";
-import { BoardSlotViews, projectBoardSlot, freezeBoardProjection, type BoardProjection } from "./board-projection.js";
+import { BoardSlotViews, projectBoardSlot, captureBoardSurface, projectCapturedBoardSlot, freezeBoardProjection, type BoardProjection } from "./board-projection.js";
+import { createBoardSnapIndex, snapBoardObject, type BoardSnapIndex } from "./board-snap.js";
 import {boardObjectBounds} from "./board-spatial.js";
 import {findDrawingRect, mapRect, objectClientBounds, placeDrawingGroup, rectUnion, safeDrawingRect, overlaps, type DrawingSpace} from "./board-placement.js";
 import {invertBoardMatrix, multiplyBoardMatrices} from "./board-surfaces.js";
@@ -60,7 +61,7 @@ import { portableBoardObjects } from "./board-portable-layout.js";
 import {
   BoardEditorBridge,
   type BoardEditorEvent,
-  type BoardEditorState,
+  type BoardEditorStatus,
 } from "./board-editor.js";
 import {
   ensureBoardFonts,
@@ -76,7 +77,7 @@ import {
   captureBoardSnapshot,
   boardSurfaceLayoutRevision,
 } from "./board-capture.js";
-import { normalizedBoardPoints, renderBoardCanvas, renderBoardSvg } from "./board-renderer.js";
+import { normalizedBoardPoints, prepareBoardCanvas, renderBoardCanvas, renderBoardSvg } from "./board-renderer.js";
 import { BoardSpatialIndex } from "./board-spatial.js";
 import { BOARD_BRUSHES, defaultBoardBrush } from "./board-brushes.js";
 import { classifyBoardStroke, shouldMergeSemanticStrokes } from "./board-semantics.js";
@@ -794,8 +795,11 @@ type Gesture = {
   resize: boolean;
   box: boolean;
   groupBounds?: BoardRect;
+  snapIndex?: BoardSnapIndex;
   seed: number;
 };
+type ObjectSurfaces = ((object: BoardObject) => BoardSurface | undefined) & { capture(surface: BoardSurface): BoardSurface };
+type SourceSurfaces = { exact: ReadonlyMap<string, BoardSurface>; compatible: ReadonlyMap<string, BoardSurface>; quotes: ReadonlyMap<string, BoardSurface | undefined> };
 class BoardLayer {
   public readonly conversationId = uid("BOARDVIEW");
   public sourceFile: string;
@@ -875,6 +879,8 @@ class BoardLayer {
   };
   private drawingStyle: "clean" | "sketch" = "sketch";
   private renderSnapshot: BoardBundle["document"] | null = null;
+  private renderObjects = new Map<string, BoardObject>();
+  private renderLayers = new Map<string, NonNullable<BoardDocument["layers"]>[number]>();
   private penPreviewDirty = false;
   private paintScene: HTMLCanvasElement | null = null;
   private paintSceneKey = "";
@@ -889,7 +895,6 @@ class BoardLayer {
   private readonly fontSizeInput: HTMLInputElement;
   private readonly styleSelect: HTMLSelectElement;
   private readonly colorInput: HTMLInputElement;
-  private readonly widthInput: HTMLInputElement;
   private readonly sizeControl: BrushSizeControl;
   private readonly brushPalette: HTMLDivElement;
   private readonly brushPreviewCanvases = new Map<BoardBrushKind, HTMLCanvasElement>();
@@ -915,9 +920,6 @@ class BoardLayer {
   private generation = 0;
   private sessionId = uid("SESSION");
   private raf = 0;
-  private animationTimer = 0;
-  private animationIds: Set<string> | null = null;
-  private shownCount = 0;
   private disposed = false;
   private sourceMoving = false;
   private readonly cleanup: Array<() => void> = [];
@@ -1165,7 +1167,6 @@ class BoardLayer {
       onInput: value => { this.width = value; this.brushWidths.set(this.brush.kind, value); this.schedule(); },
       onCommit: value => { this.width = value; this.brushWidths.set(this.brush.kind, value); this.applySelectionStyle("width"); },
     });
-    this.widthInput = this.sizeControl.range;
     const brushRow = this.root.ownerDocument.createElement("label");
     brushRow.className = "atl-board-property-control";
     const brushLabel = this.root.ownerDocument.createElement("span");
@@ -1360,7 +1361,7 @@ class BoardLayer {
   public toolSurface(): TutorBoardSurface {
     if (this.surfaceInstance) return this.surfaceInstance;
     const source = this.sourceFile;
-    return this.surfaceInstance = new TutorBoardSurface(this.history.document.id, "document", {
+    return this.surfaceInstance = new TutorBoardSurface(this.history.renderDocument.id, "document", {
       version:()=>this.sourceRevision(),assets:()=>this.profiles,history: () => this.history, ink: () => this.ink, alive: () => this.sourceIsCurrent() && this.sourceFile === source,
       selection: () => [...this.selection],
       validateDraft: (objects) => {
@@ -1378,11 +1379,12 @@ class BoardLayer {
         const exclude = new Set(current.filter(object => !nextIds.has(object.id)).map(object => object.id));
         for (const object of changed) exclude.add(object.id);
         const spaces = new Map<string, DrawingSpace>();
+        const surfaces = this.objectSurfaces();
         for (const object of changed) {
-          const surface = this.objectSurface(object);
+          const surface = surfaces(object);
           if (!surface) throw new Error(t("upgrade.drawingSpaceChanged"));
           let space = spaces.get(surface.id);
-          if (!space) { space = this.drawingSpace(surface, exclude); spaces.set(surface.id, space); }
+          if (!space) { space = this.drawingSpace(surface, exclude, false, "placement", surfaces); spaces.set(surface.id, space); }
           if (!safeDrawingRect(space, objectClientBounds(object, surface.toClient()))) throw new Error(t("upgrade.drawingSpaceChanged"));
         }
         for (const object of changed) if (!previous.has(object.id)) object.groupId = `LAYOUT-${object.groupId}`;
@@ -1400,7 +1402,7 @@ class BoardLayer {
           return snapshot;
         } finally { for (const id of selected) this.selection.add(id); this.schedule(); }
       },
-      preview: async (objects,assets) => this.preview(objects ? {...this.bundle(), document: {...this.history.document, objects, vectorAssets:assets??this.history.document.vectorAssets}} : this.bundle()),
+      preview: async (objects,assets) => this.preview(objects ? {...this.bundle(), document: {...this.history.document, objects, vectorAssets:assets??this.history.renderDocument.vectorAssets}} : this.bundle()),
       changed: () => this.changed("tutor",false), save: async () => {
         let pending=this.save();
         // A human edit may coalesce this save into a newer queued snapshot.
@@ -1435,7 +1437,7 @@ class BoardLayer {
     this.cleanup.push(conversation.registerBoard({
       id: this.conversationId,
       sourcePath: this.sourceFile,
-      target: () => ({id:this.history.document.id,source:this.sourceFile,revision:String(this.history.revision),surface:"document"}),
+      target: () => ({id:this.history.renderDocument.id,source:this.sourceFile,revision:String(this.history.revision),surface:"document"}),
       connection: () => resolveBoardConnection(this.host.settings()),
       canAuto: () => this.together && !this.conflict,
       isAvailable: () => this.sourceIsCurrent(),
@@ -1516,7 +1518,7 @@ class BoardLayer {
     this.replyOverlay.showInput();
   }
   private drawSelectedText(): void {
-    const text = this.history.document.objects.filter(o => this.selection.has(o.id) && o.kind === "text")
+    const text = this.history.renderDocument.objects.filter(o => this.selection.has(o.id) && o.kind === "text")
       .map(o => o.text ?? "").join("\n").trim() || this.sourceSelectionText();
     if (!text) { new Notice(t("board.selectDrawingText")); return; }
     void this.submitLayerTurn(requestsDrawing(text) ? text : `${t("board.drawSelection")}: ${text}`);
@@ -1564,7 +1566,7 @@ class BoardLayer {
   }
   private async paintFromReference(instruction: string, onReply: (delta: string) => void, signal: AbortSignal, savedReference?:string, imageBrief = instruction, paintStyle: ReferencePaintStyle = referencePaintPresets.illustration, commit=this.drawingCommitContext([...this.selection],signal)): Promise<{text:string}> {
     // Reject before paying for image generation, not after downloading pixels.
-    const strokeBudget = Math.min(MAX_PREPARED_DRAWING_CHANGES, 20000 - this.history.document.objects.length);
+    const strokeBudget = Math.min(MAX_PREPARED_DRAWING_CHANGES, 20000 - this.history.renderDocument.objects.length);
     if (strokeBudget < 32) throw new Error(t("board.referenceCapacity"));
     const provider = savedReference ? null : this.host.createImageProvider?.();
     if (!savedReference) {
@@ -1785,10 +1787,10 @@ class BoardLayer {
     this.setTool("select");
     this.changed();
   }
-  private editorState(): BoardEditorState | undefined {
+  private editorState(): BoardEditorStatus | undefined {
     return this.view.getMode?.() === "preview"
       ? undefined
-      : this.integration.editors.get(this.view.containerEl, this.sourceFile);
+      : this.integration.editors.getStatus(this.view.containerEl, this.sourceFile);
   }
   private syncAnchors(): boolean {
     const state = this.integration.registry?.snapshot();
@@ -1860,7 +1862,7 @@ class BoardLayer {
     await this.loadProfiles();
     this.syncAnchors();
     // Only load fonts used by this board. An empty board is immediately drawable.
-    await ensureBoardFonts(this.ownerDocument, boardHandwrittenText(this.history.document.objects, this.profiles));
+    await ensureBoardFonts(this.ownerDocument, boardHandwrittenText(this.history.renderDocument.objects, this.profiles));
     if (this.disposed) return;
     this.listen(this.canvas, "pointerdown", (event) =>
       this.down(event as PointerEvent),
@@ -2119,7 +2121,7 @@ class BoardLayer {
     return select;
   }
   private updateProperties(): void {
-    const selected = this.history.document.objects.filter((o) =>
+    const selected = this.history.renderDocument.objects.filter((o) =>
       this.selection.has(o.id),
     );
     const text = selected.find((o) => o.kind === "text");
@@ -2132,7 +2134,7 @@ class BoardLayer {
         ))
     );
     if (text) {
-      this.textStyle = resolvedBoardTextStyle(text);
+      this.textStyle = { ...resolvedBoardTextStyle(text) };
       this.fontSelect.value = this.textStyle.font;
       this.fontSizeInput.value = String(this.textStyle.size);
     }
@@ -2174,7 +2176,6 @@ class BoardLayer {
   ): void {
     if (!this.selection.size) return;
     this.invalidate();
-    this.stopAnimation();
     const measure = boardTextMeasurer(this.ownerDocument);
     this.history.transact((doc) => {
       for (const object of doc.objects) {
@@ -2219,7 +2220,7 @@ class BoardLayer {
     const list = modal.contentEl.createDiv({ cls: "atl-board-layer-list" });
     const render = () => {
       list.replaceChildren();
-      const layers = [...(this.history.document.layers ?? [])].sort(
+      const layers = [...(this.history.renderDocument.layers ?? [])].sort(
         (a, b) => a.order - b.order,
       );
       for (const [index, layer] of layers.entries()) {
@@ -2327,7 +2328,7 @@ class BoardLayer {
       "dots",
       "paper",
     ]);
-    backgroundSelect.value = this.history.document.background?.kind ?? "plain";
+    backgroundSelect.value = this.history.renderDocument.background?.kind ?? "plain";
     backgroundSelect.onchange = () => {
       this.history.transact((doc) => {
         const kind = backgroundSelect.value as NonNullable<BoardDocument["background"]>["kind"];
@@ -2421,13 +2422,13 @@ class BoardLayer {
         blendMode: "normal",
         brush: object.brush ? { ...object.brush, opacity: 1 } : undefined,
       })),
-      { ink: this.ink, characters: [], layers: this.history.document.layers, vectorAssets: this.history.document.vectorAssets },
+      { ink: this.ink, characters: [], layers: this.history.renderDocument.layers, vectorAssets: this.history.renderDocument.vectorAssets },
     );
     const url = canvas.toDataURL("image/png");
     return { imageBase64: url.slice(url.indexOf(",") + 1), width, height };
   }
   private async recognizeSelection(): Promise<void> {
-    const selected = this.history.document.objects.filter(
+    const selected = this.history.renderDocument.objects.filter(
       (object) => this.selection.has(object.id) && object.kind === "ink" && object.inkId,
     );
     if (!selected.length) {
@@ -2437,7 +2438,7 @@ class BoardLayer {
     const anchor = anchorKey(selected[0]!.anchor);
     const objects = selected.filter((object) => anchorKey(object.anchor) === anchor);
     const ids=objects.map(object=>object.id),fingerprint=inkSelectionFingerprint(objects,this.ink);
-    const current=()=>this.sourceIsCurrent()&&isCurrentInkSelection(ids,fingerprint,this.history.document.objects,this.ink);
+    const current=()=>this.sourceIsCurrent()&&isCurrentInkSelection(ids,fingerprint,this.history.renderDocument.objects,this.ink);
     const crop = this.recognitionImage(objects);
     if (!crop || !(await this.confirmCloudRecognition())) return;
     const provider = this.host.createRecognitionProvider?.();
@@ -2508,14 +2509,14 @@ class BoardLayer {
     }
   }
   public revealInk(ids:readonly string[]):void{
-    this.selection.clear();for(const object of this.history.document.objects)if(ids.includes(object.id))this.selection.add(object.id);
+    this.selection.clear();for(const object of this.history.renderDocument.objects)if(ids.includes(object.id))this.selection.add(object.id);
     this.setTool("select");this.updateProperties();this.schedule();
-    const object=this.history.document.objects.find(object=>this.selection.has(object.id)),surface=object?this.objectSurface(object):undefined;
+    const object=this.history.renderDocument.objects.find(object=>this.selection.has(object.id)),surface=object?this.objectSurface(object):undefined;
     surface?.element?.scrollIntoView?.({block:"center"});
   }
   private showTranscripts():void{
     const modal=new Modal(this.host.app);modal.titleEl.textContent=t("board.transcripts");
-    for(const group of this.history.document.semanticGroups??[]){if(!group.recognition)continue;
+    for(const group of this.history.renderDocument.semanticGroups??[]){if(!group.recognition)continue;
       const row=modal.contentEl.createDiv();row.createEl("p",{text:group.recognition.text});
       this.button(row,"locateInk",()=>{this.revealInk(group.objectIds);modal.close();});
       this.button(row,"send",()=>{void this.submitLayerTurn(group.recognition!.text,{route:"chat",resolveIntent:false},"conversation");modal.close();});
@@ -2525,7 +2526,7 @@ class BoardLayer {
     const modal=new Modal(this.host.app);modal.titleEl.textContent=t("board.characterParts");
     modal.contentEl.createEl("p",{text:t("board.partHelp")});
     const parts=new Map<string,{name:string;ids:string[]}>();
-    for(const object of this.history.document.objects){
+    for(const object of this.history.renderDocument.objects){
       const part=object.characterPart;if(!part)continue;
       const entry=parts.get(part.id)??{name:part.name,ids:[]};entry.ids.push(object.id);parts.set(part.id,entry);
     }
@@ -2539,7 +2540,7 @@ class BoardLayer {
       this.button(modal.contentEl,"save",()=>{
         if(!name.value.trim()){name.focus();return;}
         const part={id:uid("PART"),name:name.value.trim().slice(0,80)};
-        this.invalidate();this.stopAnimation();
+        this.invalidate();
         this.history.transact(doc=>{for(const object of doc.objects)if(selected.has(object.id)){
           object.characterPart=part;object.selectionGroupId=part.id;
         }},"human");
@@ -2552,7 +2553,6 @@ class BoardLayer {
     if (this.selection.size < (ungroup ? 1 : 2)) return;
     const id = uid("SELECTION");
     this.invalidate();
-    this.stopAnimation();
     this.history.transact((doc) => {
       for (const object of doc.objects)
         if (this.selection.has(object.id)) {
@@ -2565,18 +2565,19 @@ class BoardLayer {
   private selectObject(object: BoardObject, individual = false): void {
     this.selection.add(object.id);
     if (object.selectionGroupId && !individual)
-      for (const other of this.history.document.objects)
+      for (const other of this.history.renderDocument.objects)
         if (other.selectionGroupId === object.selectionGroupId)
           this.selection.add(other.id);
     this.updateProperties();
   }
   private selectionBounds(
     objects: readonly BoardObject[],
+    surfaces = this.objectSurfaces(),
   ): BoardRect | undefined {
     const corners = objects
       .filter((o) => this.selection.has(o.id))
       .flatMap((o) => {
-        const surface = this.objectSurface(o);
+        const surface = surfaces(o);
         if (!surface) return [];
         const box = clientBounds(o, surface);
         return [
@@ -2589,8 +2590,9 @@ class BoardLayer {
   private updateSelectionBar(
     objects: readonly BoardObject[],
     rootRect: DOMRect,
+    surfaces = this.objectSurfaces(),
   ): void {
-    const box = this.tool === "select" ? this.selectionBounds(objects) : undefined;
+    const box = this.tool === "select" ? this.selectionBounds(objects, surfaces) : undefined;
     if (!box || !this.selection.size) {
       this.selectionBar.hidden = true;
       return;
@@ -2622,7 +2624,6 @@ class BoardLayer {
   private beginText(object: BoardObject, existing: boolean): void {
     this.finishText(true);
     this.invalidate();
-    this.stopAnimation();
     const surface = this.objectSurface(object);
     if (!surface) return;
     const textarea = this.ownerDocument.createElement("textarea");
@@ -2640,7 +2641,7 @@ class BoardLayer {
     const angle = object.rotation ?? 0,
       c = Math.cos(angle),
       s = Math.sin(angle),
-      [a, b, d, e, x, y] = surface.toClient();
+      [a, b, d, e] = surface.toClient();
     const origin = surface.project({ x: object.x, y: object.y }),
       root = this.root.getBoundingClientRect();
     textarea.style.left = `${origin.x - root.left}px`;
@@ -2805,17 +2806,66 @@ class BoardLayer {
     if(object.id==="OBJ-draft"&&this.gesture&&"projectionId" in this.gesture.surface)return this.gesture.surface;
     return this.sourceSurfaceFor(object.anchor);
   }
-  private syncSlots(editing:boolean):void {
-    if(this.history.renderDocument.sourceType!=="markdown")return;
-    const state=this.integration.layout;state.reconcile(this.history.renderDocument,false,new Set(this.integration.registry?.entries.filter(e=>e.status==="located").map(e=>e.id)??[]));
-    if(state.needsLegacyNotice(this.history.renderDocument.objects)){state.markNotice();this.status.textContent=t("board.layoutLegacyNotice");}
+  /** Resolve each source/slot geometry once for this synchronous paint or hit. */
+  private objectSurfaces(): ObjectSurfaces {
+    const sourceIndex = this.sourceSurfaceIndex();
+    const slotElements = this.slotViews.captureElements();
+    const sources = new Map<string, BoardSurface | undefined>();
+    const slots = new Map<string, BoardProjection | undefined>();
+    const bindings = new Map<string, BoardProjection>();
+    const captured = new Map<BoardSurface, BoardSurface>();
+    const capture = (surface: BoardSurface): BoardSurface => {
+      let geometry = captured.get(surface);
+      if (!geometry) { geometry = captureBoardSurface(surface); captured.set(surface, geometry); }
+      return geometry;
+    };
+    const source = (anchor: BoardAnchor): BoardSurface | undefined => {
+      const key = anchorKey(anchor);
+      if (!sources.has(key)) { const surface = this.sourceSurfaceFor(anchor, sourceIndex); sources.set(key, surface && capture(surface)); }
+      return sources.get(key);
+    };
+    const resolve = (object: BoardObject): BoardSurface | undefined => {
+      const binding = this.integration.layout.binding(object.id) ?? this.pendingBindings.get(object.id);
+      if (!binding) return object.id === "OBJ-draft" && this.gesture && "projectionId" in this.gesture.surface
+        ? this.gesture.surface : source(object.anchor);
+      const slotId = "slot" in binding ? binding.slot.id : binding.slotId;
+      if (!slots.has(slotId)) {
+        const projection = this.projections.get(slotId), element = slotElements.get(slotId);
+        slots.set(slotId, projection && element?.isConnected && source(projection.anchor)
+          ? capture(projection) as BoardProjection : undefined);
+      }
+      const slot = slots.get(slotId);
+      if (!slot) return;
+      const key = `${slotId}:${binding.matrix.join(",")}`;
+      let projected = bindings.get(key);
+      if (!projected) { projected = projectCapturedBoardSlot(slot, binding.matrix); bindings.set(key, projected); }
+      return projected;
+    };
+    return Object.assign(resolve, { capture });
+  }
+  private readDocument(): Readonly<BoardDocument> {
+    const document = this.history.renderDocument;
+    if (!this.renderSnapshot || this.renderSnapshot.revision !== document.revision) {
+      this.renderSnapshot = document;
+      this.renderObjects = new Map(document.objects.map(object => [object.id, object]));
+      this.renderLayers = new Map(document.layers?.map(layer => [layer.id, layer]) ?? []);
+    }
+    return this.renderSnapshot;
+  }
+  private syncSlots(editing:boolean,document=this.readDocument()):void {
+    if(document.sourceType!=="markdown")return;
+    const state=this.integration.layout;state.reconcile(document,false,new Set(this.integration.registry?.entries.filter(e=>e.status==="located").map(e=>e.id)??[]));
+    if(state.needsLegacyNotice(document.objects)){state.markNotice();this.status.textContent=t("board.layoutLegacyNotice");}
     const key=`${this.history.revision}:${state.revision}`;
-    if(key!==this.slotSpecKey&&!this.gesture){this.slotSpecs=state.specs(this.history.renderDocument.objects);this.slotSpecKey=key;}
+    if(key!==this.slotSpecKey&&!this.gesture){this.slotSpecs=state.specs(document.objects);this.slotSpecKey=key;}
     const specs=[...this.slotSpecs,...(this.pendingSlot&&!this.slotSpecs.some(s=>s.id===this.pendingSlot!.spec.id)?[this.pendingSlot.spec]:[])];
     this.slotViews.sync(this.surfaces,specs,editing);
     this.integration.editors.setSlots(this.view.containerEl,editing?specs:[]);
     this.projections.clear();
-    for(const spec of specs){const base=this.surfaces.find(s=>s.anchor.kind==="markdown"&&s.anchor.key===spec.anchorKey),el=this.slotViews.get(spec.id);if(base&&el?.isConnected)this.projections.set(spec.id,projectBoardSlot(base,el,[1,0,0,1,0,0],state.revision));}
+    const sources=new Map<string,BoardSurface>();
+    for(const surface of this.surfaces)if(surface.anchor.kind==="markdown"&&!sources.has(surface.anchor.key))sources.set(surface.anchor.key,surface);
+    const elements=this.slotViews.captureElements();
+    for(const spec of specs){const base=sources.get(spec.anchorKey),el=elements.get(spec.id);if(base&&el?.isConnected)this.projections.set(spec.id,projectBoardSlot(base,el,[1,0,0,1,0,0],state.revision));}
   }
   private async prepareDrawingSlot(signal?:AbortSignal):Promise<void>{
     if(this.history.renderDocument.sourceType!=="markdown")return;
@@ -2827,29 +2877,31 @@ class BoardLayer {
     for(let i=0;i<100;i++){if(signal?.aborted||!this.sourceIsCurrent())throw new DOMException("Cancelled","AbortError");this.draw();const projected=this.projections.get(spec.id);if(projected&&this.editorState()?.ready!==false){this.active=projected;return;}await new Promise<void>(resolve=>this.win.setTimeout(resolve,32));}
     throw Error(t("board.unavailable"));
   }
-  private sourceSurfaceFor(anchor: BoardAnchor): BoardSurface | undefined {
+  private sourceSurfaceIndex(): SourceSurfaces {
+    const exact = new Map<string, BoardSurface>(), compatible = new Map<string, BoardSurface>(), quotes = new Map<string, BoardSurface | undefined>();
+    for (const surface of this.surfaces) {
+      const key = anchorKey(surface.anchor);
+      if (!exact.has(key)) exact.set(key, surface);
+      if (!compatible.has(key)) compatible.set(key, surface);
+      if (surface.kind === "markdown") for (const alias of surface.anchorAliases ?? [])
+        if (!compatible.has(`md:${alias}`)) compatible.set(`md:${alias}`, surface);
+      if (surface.anchor.kind === "markdown") {
+        const quote = surface.anchor.quote;
+        quotes.set(quote, quotes.has(quote) ? undefined : surface);
+      }
+    }
+    return { exact, compatible, quotes };
+  }
+  private sourceSurfaceFor(anchor: BoardAnchor, surfaces = this.sourceSurfaceIndex()): BoardSurface | undefined {
     if (anchor.kind === "markdown" && this.integration.registry) {
       const resolved = this.integration.registry.resolve(anchor);
       if (!resolved || resolved.status !== "located") return;
-      return this.surfaces.find(
-        (s) => s.anchor.kind === "markdown" && s.anchor.key === resolved.id,
-      );
+      return surfaces.exact.get(`md:${resolved.id}`);
     }
-    const exact = this.surfaces.find(
-      (s) =>
-        anchorKey(s.anchor) === anchorKey(anchor) ||
-        (anchor.kind === "markdown" &&
-          s.kind === "markdown" &&
-          (s.anchorAliases?.includes(anchor.key) ||
-            this.integration.registry?.resolve(anchor)?.id ===
-              (s.anchor as Extract<BoardAnchor, { kind: "markdown" }>).key)),
-    );
+    const exact = surfaces.compatible.get(anchorKey(anchor));
     if (exact) return exact;
     if (anchor.kind === "markdown") {
-      const candidates = this.surfaces.filter(
-        (s) => s.anchor.kind === "markdown" && s.anchor.quote === anchor.quote,
-      );
-      if (candidates.length === 1) return candidates[0];
+      return surfaces.quotes.get(anchor.quote);
     }
     return undefined;
   }
@@ -2942,6 +2994,7 @@ class BoardLayer {
     if (this.disposed) return;
     this.updateResizeTargets();
     this.refreshSurfaces();
+    const surfaces = this.objectSurfaces();
     const rootRect = this.root.getBoundingClientRect(),
       ratio = this.win.devicePixelRatio || 1,
       w = Math.max(1, Math.round(rootRect.width * ratio)),
@@ -2978,19 +3031,19 @@ class BoardLayer {
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     ctx.clearRect(0, 0, rootRect.width, rootRect.height);
     if(this.penPreviewDirty){this.penPreviewDirty=false;if(this.gesture&&this.tool==="pen")this.penPreview();}
-    const document = this.renderSnapshot?.revision === this.history.revision
-      ? this.renderSnapshot : (this.renderSnapshot = this.history.document);
-    this.guardReflow(document.objects);
+    const document = this.readDocument();
+    this.guardReflow(document.objects, surfaces);
     if(this.tutorPreview.length){
       const additions=this.tutorPreview.flatMap(op=>op.type==="add"?[op.object]:[]);
-      const surface=additions[0]&&this.objectSurface(additions[0]);
+      const surface=additions[0]&&surfaces(additions[0]);
       if(surface&&!safeDrawingRect(this.drawingSpace(surface,new Set(),this.annotationTurn),rectUnion(additions.map(o=>objectClientBounds(o,surface.toClient())))))this.tutorPreview=[];
     }
     let objects = this.draft ?? document.objects;
     if (!this.draft && !this.tutorPreview.length) {
       this.spatial.rebuild(document.objects, String(document.revision), this.ink);
       const visible = new Set<string>();
-      for (const surface of [...this.surfaces,...this.projections.values()]) {
+      for (const raw of [...this.surfaces,...this.projections.values()]) {
+        const surface = surfaces.capture(raw);
         // Objects are allowed to extend beyond their Markdown paragraph or PDF
         // page anchor. Cull against the board canvas itself, not the anchor or
         // document column, or margin objects disappear between active strokes.
@@ -3021,12 +3074,11 @@ class BoardLayer {
     }
     const ink = { ...this.ink, ...this.draftInk };
     objects=objects.filter(object=>!this.hiddenLayoutObjects.has(object.id));
-    let aiIndex = 0;
     // During a pen gesture the committed scene is unchanged. Reuse its pixels
     // instead of repainting every translucent dab for every pointer frame.
     const cacheScene=!!this.gesture&&this.tool==="pen"&&!this.draft&&!this.tutorPreview.length&&!this.textEditor;
     const sceneKey=cacheScene?JSON.stringify([document.revision,this.gesture!.seed,w,h,rootRect.left,rootRect.top,
-      this.layoutGuardKey,this.surfaces.map(surface=>[surface.anchor,surface.toClient()])]):"";
+      this.layoutGuardKey,this.surfaces.map(surface=>[surface.anchor,surfaces.capture(surface).toClient()])]):"";
     const cachedScene=cacheScene&&this.paintSceneKey===sceneKey&&!!this.paintScene;
     if(cachedScene){ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(this.paintScene!,0,0);ctx.restore();}
     if(!cacheScene){this.paintScene=null;this.paintSceneKey="";}
@@ -3037,6 +3089,9 @@ class BoardLayer {
           yield draft;
         })(baseObjects, this.draftObject)
       : baseObjects;
+    const render = prepareBoardCanvas(ctx, { ink, characters: this.profiles, layers: document.layers,
+      vectorAssets: document.vectorAssets, resolveAsset: path => this.assets.get(path),
+      requestRender: () => { this.paintSceneKey = ""; this.schedule(); } });
     for (const object of rendered) {
       if(cacheScene&&!cachedScene&&object===this.draftObject){
         this.paintScene??=this.ownerDocument.createElement("canvas");
@@ -3045,23 +3100,14 @@ class BoardLayer {
         if(backing){backing.drawImage(this.canvas,0,0);this.paintSceneKey=sceneKey;}
       }
       if (this.textEditor?.object.id === object.id) continue;
-      if (this.animationIds?.has(object.id) && aiIndex++ >= this.shownCount)
-        continue;
-      const surface = this.objectSurface(object);
+      const surface = surfaces(object);
       if (!surface) continue;
       const m = surface.toClient();
       ctx.save();
       if("clipRect" in surface){const clip=(surface as BoardProjection).clipRect();ctx.beginPath();ctx.rect(clip.x-rootRect.x,clip.y-rootRect.y,clip.width,clip.height);ctx.clip();}
       ctx.translate(-rootRect.left, -rootRect.top);
       ctx.transform(...m);
-      if(!(object===this.draftObject&&this.gesture&&object.brush&&this.livePainter.render(ctx,this.gesture.points,object.brush,object.strokeWidth,object.color)))renderBoardCanvas(ctx, [object], {
-        ink,
-        characters: this.profiles,
-        layers: document.layers,
-        vectorAssets: document.vectorAssets,
-        resolveAsset: (path) => this.assets.get(path),
-        requestRender: () => {this.paintSceneKey="";this.schedule();},
-      });
+      if(!(object===this.draftObject&&this.gesture&&object.brush&&this.livePainter.render(ctx,this.gesture.points,object.brush,object.strokeWidth,object.color)))render([object]);
       ctx.restore();
       if (this.selection.has(object.id) && this.selection.size === 1) {
         const box = clientBounds(object, surface);
@@ -3086,7 +3132,7 @@ class BoardLayer {
       }
     }
     if (this.selection.size > 1) {
-      const box = this.selectionBounds(objects);
+      const box = this.selectionBounds(objects, surfaces);
       if (box) {
         ctx.save();
         ctx.strokeStyle = "#7663bd";
@@ -3108,7 +3154,7 @@ class BoardLayer {
         ctx.restore();
       }
     }
-    this.updateSelectionBar(this.draft ?? document.objects, rootRect);
+    this.updateSelectionBar(this.draft ?? document.objects, rootRect, surfaces);
     if (this.gesture?.box) {
       const r = bounds([this.gesture.start, this.gesture.last]);
       ctx.strokeStyle = "#7663bd";
@@ -3138,8 +3184,7 @@ class BoardLayer {
       ctx.restore();
     }
   }
-  private hit(point: BoardPoint, includeLocked = false): BoardObject | undefined {
-    const document = this.history.renderDocument;
+  private hit(point: BoardPoint, includeLocked = false, document = this.readDocument(), surfaces = this.objectSurfaces()): BoardObject | undefined {
     const key=`${document.revision}:${this.integration.layout.revision}`;
     if(key!==this.hitMappingKey){
       this.spatial.rebuild(document.objects,key,this.ink);
@@ -3155,36 +3200,36 @@ class BoardLayer {
     // Geometry/scroll changes resolve the current surface without rebuilding ink.
     const hits = new Map<string,BoardObject>();
     for (const [mapping,object] of this.hitMappings) {
-      const surface=this.objectSurface(object);if(!surface)continue;
+      const surface=surfaces(object);if(!surface)continue;
       if("projectionId" in surface&&!rectContains((surface as BoardProjection).clipRect(),point))continue;
       for(const candidate of this.spatial.hit(object.anchor,surface.unproject(point),6))
         if(this.hitObjectMappings.get(candidate.id)===mapping)hits.set(candidate.id,candidate);
     }
     const candidates=[...hits.values()].sort((a,b)=>this.hitObjectOrder.get(b.id)!-this.hitObjectOrder.get(a.id)!);
     for (const object of candidates) {
-      const actual=this.objectSurface(object);
+      const actual=surfaces(object);
       if (!actual) continue;
       if("projectionId" in actual&&!rectContains((actual as BoardProjection).clipRect(),point))continue;
       const layer = object.layerId
-        ? document.layers?.find(candidate => candidate.id === object.layerId)
+        ? this.renderLayers.get(object.layerId)
         : undefined;
       if (!this.hiddenLayoutObjects.has(object.id) &&
         (!layer || (layer.visible && layer.opacity > 0 && (includeLocked || !layer.locked)))) return object;
     }
     return undefined;
   }
-  private annotationSurfaceAt(point: BoardPoint): BoardSurface | undefined {
+  private annotationSurfaceAt(point: BoardPoint, document = this.readDocument(), surfaces = this.objectSurfaces()): BoardSurface | undefined {
     // A locked reference still accepts annotations on another unlocked layer;
     // adopting its anchor does not edit or group the reference itself.
-    const area=[...this.projections.values()].find(p=>rectContains(p.getClientRect(),point));
+    const area=[...this.projections.values()].find(p=>rectContains(surfaces.capture(p).getClientRect(),point));
     if(area)return area;
-    const target = this.hit(point, true);
-    if (target) return this.objectSurface(target);
+    const target = this.hit(point, true, document, surfaces);
+    if (target) return surfaces(target);
     const groups = new Map<string, { surface: BoardSurface; bounds: BoardRect; count: number; order: number }>();
-    this.history.document.objects.forEach((object, order) => {
-      const layer = this.history.document.layers?.find(candidate => candidate.id === object.layerId);
+    document.objects.forEach((object, order) => {
+      const layer = object.layerId ? this.renderLayers.get(object.layerId) : undefined;
       if (this.hiddenLayoutObjects.has(object.id) || layer?.visible === false || layer?.opacity === 0) return;
-      const surface = this.objectSurface(object);
+      const surface = surfaces(object);
       if (!surface) return;
       // Include blank space inside a composed diagram, but do not bridge
       // unrelated source anchors just because objects share a selection group.
@@ -3209,17 +3254,18 @@ class BoardLayer {
     if (event.button !== 0 || event.pointerType === "touch" || this.gesture)
       return;
     this.draw();
-    const point = { x: event.clientX, y: event.clientY }, hit = this.hit(point),
+    const document = this.readDocument(), surfaces = this.objectSurfaces();
+    const point = { x: event.clientX, y: event.clientY }, hit = this.hit(point, false, document, surfaces),
       sourceSurface = (["pen", "text", "line", "arrow", "rect", "ellipse", "diamond", "connector"].includes(this.tool)
-        ? this.annotationSurfaceAt(point)
-        : this.tool === "partialErase" && hit?.kind === "ink" ? this.objectSurface(hit) : undefined)
+        ? this.annotationSurfaceAt(point, document, surfaces)
+        : this.tool === "partialErase" && hit?.kind === "ink" ? surfaces(hit) : undefined)
         ?? this.surfaceAt(point);
     const surface=sourceSurface&&freezeBoardProjection(sourceSurface);
     if (!surface) {
       this.status.textContent = t("board.unavailable");
       return;
     }
-    const activeLayer = this.history.document.layers?.find((layer) => layer.id === this.activeLayerId);
+    const activeLayer = this.renderLayers.get(this.activeLayerId);
     if (activeLayer?.locked && !["select", "erase", "partialErase"].includes(this.tool)) {
       new Notice(t("board.layerLocked"));
       return;
@@ -3230,8 +3276,7 @@ class BoardLayer {
     this.active = surface;
     if (this.together) this.integration.claim(this);
     this.invalidate();
-    this.stopAnimation();
-    const selectedBounds = this.selectionBounds(this.history.document.objects);
+    const selectedBounds = this.selectionBounds(document.objects, surfaces);
     const onGroupHandle =
       this.tool === "select" &&
       selectedBounds &&
@@ -3248,14 +3293,12 @@ class BoardLayer {
       point.y <= selectedBounds.y + selectedBounds.height + 4;
     const selectedTarget =
       onGroupHandle || inSelectedBounds
-        ? this.history.document.objects.find((object) =>
-            this.selection.has(object.id),
-          )
+        ? document.objects.find(object => this.selection.has(object.id))
         : undefined;
     const target =
         hit ?? selectedTarget,
       before = ["select", "partialErase", "line", "arrow", "rect", "ellipse", "diamond", "connector"].includes(this.tool)
-        ? copy(this.history.document.objects)
+        ? copy(document.objects)
         : [];
     if (this.tool === "text") {
       if (target?.kind === "text") {
@@ -3316,8 +3359,8 @@ class BoardLayer {
         this.status.textContent = `${t("board.selected", {
           count: this.selection.size,
         })} · ${t("board.dragSelection")}`;
-        const s = this.objectSurface(target)!;
-        const b = this.selectionBounds(before) ?? clientBounds(target, s);
+        const s = surfaces(target)!;
+        const b = this.selectionBounds(before, surfaces) ?? clientBounds(target, s);
         resize =
           Math.hypot(point.x - b.x - b.width, point.y - b.y - b.height) < 14;
       } else {
@@ -3343,7 +3386,8 @@ class BoardLayer {
       before,
       resize,
       box,
-      groupBounds: this.selectionBounds(before),
+      groupBounds: this.selectionBounds(before, surfaces),
+      snapIndex: this.tool === "select" && !box ? createBoardSnapIndex(before, this.selection, object => surfaces(object)?.id) : undefined,
       seed: this.nextSeed(),
     };
     if (this.tool === "partialErase") this.partialErasePreview(point);
@@ -3381,9 +3425,21 @@ class BoardLayer {
     } else if (["line", "arrow", "rect", "ellipse", "diamond", "connector"].includes(this.tool)) {
       this.shapePreview();
     } else if (!gesture.box) {
+      const surfaces = this.objectSurfaces();
+      gesture.snapIndex ??= createBoardSnapIndex(gesture.before, this.selection, object => surfaces(object)?.id);
+      // Selection-wide limits are invariant for this pointer event, rather than
+      // being re-filtered for each of its selected objects.
+      let scaleLimit = 10;
+      if (gesture.resize) for (const object of gesture.before)
+        if (this.selection.has(object.id) && object.textStyle) scaleLimit = Math.min(scaleLimit, 512 / object.textStyle.size);
+      const box = gesture.groupBounds;
+      const diagonalX = Math.max(20, box?.width ?? 20), diagonalY = Math.max(20, box?.height ?? 20);
+      const dx = gesture.last.x - gesture.start.x, dy = gesture.last.y - gesture.start.y;
+      const groupFactor = Math.max(0.1, Math.min(scaleLimit, 1 + (dx * diagonalX + dy * diagonalY) /
+        (diagonalX * diagonalX + diagonalY * diagonalY)));
       this.draft = gesture.before.map((object) => {
         if (!this.selection.has(object.id)) return object;
-        const surface = this.objectSurface(object);
+        const surface = surfaces(object);
         if (!surface) return object;
         const start = surface.unproject(gesture.start),
           last = surface.unproject(gesture.last);
@@ -3391,23 +3447,10 @@ class BoardLayer {
           // The handle is the screen-space lower-right corner, even when the
           // PDF viewport or the object itself is rotated. Project the drag onto
           // that diagonal and keep the opposite screen-space corner fixed.
-          const box = gesture.groupBounds ?? clientBounds(object, surface),
-            diagonalX = Math.max(20, box.width),
-            diagonalY = Math.max(20, box.height);
-          const dx = gesture.last.x - gesture.start.x,
-            dy = gesture.last.y - gesture.start.y;
-          const factor = Math.max(
-            0.1,
-            Math.min(
-              10,
-              ...gesture.before
-                .filter((item) => this.selection.has(item.id) && item.textStyle)
-                .map((item) => 512 / item.textStyle!.size),
-              1 +
-                (dx * diagonalX + dy * diagonalY) /
-                  (diagonalX * diagonalX + diagonalY * diagonalY),
-            ),
-          );
+          const box = gesture.groupBounds ?? clientBounds(object, surface);
+          const factor = gesture.groupBounds ? groupFactor : Math.max(0.1, Math.min(scaleLimit,
+            1 + (dx * Math.max(20, box.width) + dy * Math.max(20, box.height)) /
+              (Math.max(20, box.width) ** 2 + Math.max(20, box.height) ** 2)));
           const origin = surface.project({ x: object.x, y: object.y });
           const fixedOrigin = surface.unproject({
             x: box.x + (origin.x - box.x) * factor,
@@ -3433,35 +3476,12 @@ class BoardLayer {
           x: object.x + last.x - start.x,
           y: object.y + last.y - start.y,
         };
-        return this.snapObject(moved, gesture.before);
+        const snapped = snapBoardObject(moved, gesture.snapIndex!, surface.id);
+        this.guides = snapped.guides;
+        return snapped.object;
       });
     }
     this.schedule();
-  }
-  private snapObject(object: BoardObject, all: readonly BoardObject[]): BoardObject {
-    const candidates = all.filter((other) =>
-      !this.selection.has(other.id) && this.objectSurface(other)?.id === this.objectSurface(object)?.id,
-    );
-    const xs = [object.x, object.x + object.width / 2, object.x + object.width];
-    const ys = [object.y, object.y + object.height / 2, object.y + object.height];
-    let bestX: { delta: number; guide: number } | undefined;
-    let bestY: { delta: number; guide: number } | undefined;
-    for (const other of candidates) {
-      for (const target of [other.x, other.x + other.width / 2, other.x + other.width])
-        for (const value of xs) {
-          const delta = target - value;
-          if (Math.abs(delta) <= 5 && (!bestX || Math.abs(delta) < Math.abs(bestX.delta)))
-            bestX = { delta, guide: target };
-        }
-      for (const target of [other.y, other.y + other.height / 2, other.y + other.height])
-        for (const value of ys) {
-          const delta = target - value;
-          if (Math.abs(delta) <= 5 && (!bestY || Math.abs(delta) < Math.abs(bestY.delta)))
-            bestY = { delta, guide: target };
-        }
-    }
-    this.guides = { x: bestX?.guide, y: bestY?.guide };
-    return { ...object, x: object.x + (bestX?.delta ?? 0), y: object.y + (bestY?.delta ?? 0) };
   }
   private partialErasePreview(client: BoardPoint): void {
     const gesture = this.gesture;
@@ -3476,10 +3496,12 @@ class BoardLayer {
       { x: local.x - radius, y: local.y - radius, width: radius * 2, height: radius * 2 },
     );
     this.draft ??= copy(gesture.before);
+    this.readDocument();
+    const surfaces = this.objectSurfaces();
     for (const candidate of candidates) {
-      if (candidate.kind !== "ink" || !candidate.inkId || this.objectSurface(candidate)?.id!==gesture.surface.id) continue;
+      if (candidate.kind !== "ink" || !candidate.inkId || surfaces(candidate)?.id!==gesture.surface.id) continue;
       const layer = candidate.layerId
-        ? this.history.document.layers?.find((item) => item.id === candidate.layerId)
+        ? this.renderLayers.get(candidate.layerId)
         : undefined;
       if (layer?.locked || layer?.visible === false) continue;
       const stroke = this.ink[candidate.inkId];
@@ -3687,7 +3709,7 @@ class BoardLayer {
         brushKind: object.brush?.kind,
       }).then((derived) => {
         if (this.disposed) return;
-        const group = this.history.document.semanticGroups?.find((candidate) => candidate.objectIds.includes(object.id));
+        const group = this.history.renderDocument.semanticGroups?.find((candidate) => candidate.objectIds.includes(object.id));
         if (!group || derived.confidence <= group.confidence + 0.04) return;
         this.history.transact((doc) => {
           const target = doc.semanticGroups?.find((candidate) => candidate.id === group.id);
@@ -3710,7 +3732,7 @@ class BoardLayer {
       }
     } else if (g.box) {
       const r = bounds([g.start, g.last]);
-      for (const o of this.history.document.objects) {
+      for (const o of this.history.renderDocument.objects) {
         const s = this.objectSurface(o);
         if (s) {
           const b = clientBounds(o, s);
@@ -3745,7 +3767,6 @@ class BoardLayer {
     this.finishText(true);
     this.finishGesture();
     this.invalidate();
-    this.stopAnimation();
     const before=this.artworkSignature();
     if (this.history.undo()) this.changed("human",true,before!==this.artworkSignature());
   }
@@ -3753,7 +3774,6 @@ class BoardLayer {
     this.finishText(true);
     this.finishGesture();
     this.invalidate();
-    this.stopAnimation();
     const before=this.artworkSignature();
     if (this.history.redo()) this.changed("human",true,before!==this.artworkSignature());
   }
@@ -3764,7 +3784,6 @@ class BoardLayer {
   private remove(): void {
     if (!this.selection.size) return;
     this.invalidate();
-    this.stopAnimation();
     this.history.transact((doc) => {
       doc.objects = doc.objects.filter((o) => !this.selection.has(o.id));
     }, "human");
@@ -3773,7 +3792,7 @@ class BoardLayer {
     this.changed();
   }
   private copySelection(paste = false): void {
-    const selected = this.history.document.objects.filter((object) => this.selection.has(object.id));
+    const selected = this.history.renderDocument.objects.filter((object) => this.selection.has(object.id));
     if (selected.length) this.clipboard = selected.map((object) => copy(object));
     if (paste) this.pasteSelection();
   }
@@ -3889,7 +3908,7 @@ class BoardLayer {
     this.schedule();
     void ensureBoardFonts(
       this.ownerDocument,
-      boardHandwrittenText(this.history.document.objects, this.profiles),
+      boardHandwrittenText(this.history.renderDocument.objects, this.profiles),
     )
       .then(() => this.schedule())
       .catch((error) => {
@@ -4194,7 +4213,7 @@ class BoardLayer {
   }
   private boardTextRequest(): BoardObject | undefined {
     const viewport = this.root.getBoundingClientRect();
-    return [...this.history.document.objects].reverse().sort((a,b) =>
+    return [...this.history.renderDocument.objects].reverse().sort((a,b) =>
       this.integration.coordination.textPriority(b.id) - this.integration.coordination.textPriority(a.id)).find(object => {
       if (object.kind !== "text" || object.createdBy !== "human" || object.editedBy !== "human" ||
         !requestsBoardTextDrawing(object.text ?? "")) return false;
@@ -4228,22 +4247,22 @@ class BoardLayer {
     }
     await this.performAgent({ instruction: instruction || this.prompt.value.trim(), history: [], onReply: () => {} });
   }
-  private guardReflow(objects:readonly BoardObject[]):void {
+  private guardReflow(objects:readonly BoardObject[],surfaces=this.objectSurfaces()):void {
     const groups=new Map<string,BoardObject[]>();
     for(const o of objects)if(o.groupId.startsWith("LAYOUT-")){const list=groups.get(o.groupId)??[];list.push(o);groups.set(o.groupId,list);}
     if(!groups.size){this.hiddenLayoutObjects.clear();this.layoutNotice.hidden=true;return;}
-    const key=JSON.stringify([this.history.revision,this.root.getBoundingClientRect().toJSON(),this.surfaces.map(s=>[s.anchor,s.toClient(),s.getClientRect()])]);
+    const key=JSON.stringify([this.history.revision,this.root.getBoundingClientRect().toJSON(),this.surfaces.map(s=>{const captured=surfaces.capture(s);return [s.anchor,captured.toClient(),captured.getClientRect()];})]);
     if(key===this.layoutGuardKey)return;
     this.layoutGuardKey=key;this.hiddenLayoutObjects.clear();
     for(const group of groups.values()){
       // A student deliberately moving a drawing takes ownership of its layout.
       if(group.some(o=>o.editedBy==="human"))continue;
       if(group.every(o=>this.integration.layout.binding(o.id)))continue;
-      const surface=this.surfaceFor(group[0]!.anchor);if(!surface)continue;
+      const raw=this.surfaceFor(group[0]!.anchor);if(!raw)continue;const surface=surfaces.capture(raw);
       const bounds=rectUnion(group.map(o=>objectClientBounds(o,surface.toClient())));
       // Once placed, a drawing is a surface the learner can annotate. Later
       // ink/text/shapes must not evict it; only document reflow protects prose.
-      const space=this.drawingSpace(surface,new Set(group.map(o=>o.id)),false,"reflow");
+      const space=this.drawingSpace(surface,new Set(group.map(o=>o.id)),false,"reflow",surfaces);
       // Scrolling out of view is not a collision and never changes saved geometry.
       if(overlaps(bounds,space.viewport)&&space.protected.some(r=>overlaps(r,bounds)))for(const o of group)this.hiddenLayoutObjects.add(o.id);
     }
@@ -4279,7 +4298,7 @@ class BoardLayer {
     modal.open();
   }
   /** CSS viewport geometry is the common currency for text, rotated pages and every object anchor. */
-  private drawingSpace(surface:BoardSurface,exclude=new Set<string>(),allowText=false,purpose:"placement"|"reflow"="placement"):DrawingSpace {
+  private drawingSpace(surface:BoardSurface,exclude=new Set<string>(),allowText=false,purpose:"placement"|"reflow"="placement",surfaces=this.objectSurfaces()):DrawingSpace {
     if("projectionId" in surface){const p=surface as BoardProjection,inner=this.slotViews.get(p.projectionId)?.firstElementChild?.getBoundingClientRect();if(inner)return {viewport:{x:inner.x+12,y:inner.y+12,width:Math.max(0,inner.width-24),height:Math.max(0,inner.height-24)},protected:[]};}
     const r=this.root.getBoundingClientRect();
     const captured=boardCaptureClientRect(surface,{x:r.x,y:r.y,width:r.width,height:r.height});
@@ -4295,7 +4314,7 @@ class BoardLayer {
       // Without reliable content geometry, never mistake that page for empty space.
       if(surface.kind==="pdf")protect(surface.getClientRect(),prosePadding);
       else {
-        for(const item of this.surfaces)protect(item.getClientRect(),prosePadding);
+        for(const item of this.surfaces)protect(surfaces.capture(item).getClientRect(),prosePadding);
         const content=this.view.containerEl;
         // Supplement CM's measured logical blocks with widgets and document chrome.
         for(const el of content.querySelectorAll<HTMLElement>(".cm-line,.cm-content .cm-embed-block,.cm-content img,.cm-content table,.cm-content .math,.markdown-preview-section > div,.inline-title,.metadata-container")){
@@ -4319,7 +4338,7 @@ class BoardLayer {
     const groups=new Map<string,BoardRect[]>();
     for(const object of this.history.renderDocument.objects){
       if(exclude.has(object.id))continue;
-      const origin=this.objectSurface(object);if(!origin)continue;
+      const origin=surfaces(object);if(!origin)continue;
       const key=object.selectionGroupId??object.groupId??object.id;
       const list=groups.get(key)??[];list.push(objectClientBounds(object,origin.toClient()));groups.set(key,list);
     }
@@ -4333,11 +4352,12 @@ class BoardLayer {
     try{return findDrawingRect(this.drawingSpace(surface));}catch{return undefined;}
   }
   private placeOperations(operations:BoardOperation[],surface:BoardSurface,annotation=false):BoardOperation[]{
+    this.readDocument();
     const additions=operations.filter((op):op is Extract<BoardOperation,{type:"add"}>=>op.type==="add");
     // Updates never silently move or shrink someone else's existing composition.
     for(const op of operations){
       if(op.type!=="update")continue;
-      const old=this.history.document.objects.find(o=>o.id===op.objectId);if(!old)continue;
+      const old=this.renderObjects.get(op.objectId);if(!old)continue;
       const matrix=this.objectSurface(old)?.toClient();if(!matrix)throw new Error(t("upgrade.drawingSpaceChanged"));
       const before=objectClientBounds(old,matrix),after=objectClientBounds(op.object,matrix);
       if(JSON.stringify(before)!==JSON.stringify(after) && !safeDrawingRect(this.drawingSpace(surface,new Set([old.id]),annotation),after))
@@ -4398,7 +4418,7 @@ class BoardLayer {
       this.draw();
       await ensureBoardFonts(
         this.ownerDocument,
-        boardHandwrittenText(this.history.document.objects, this.profiles),
+        boardHandwrittenText(this.history.renderDocument.objects, this.profiles),
       );
       if (!this.sourceIsCurrent() || turn.signal?.aborted || generation !== this.generation) return unavailable("board.unavailable",true);
       const readyAt = Date.now();
@@ -4485,14 +4505,15 @@ class BoardLayer {
     const requestId = uid("REQUEST");
     const capturedLayoutRevision=this.integration.layout.revision;
     const projectionCurrent=()=>!("projectionId" in surface!) || (capturedLayoutRevision===this.integration.layout.revision&&layout===boardSurfaceLayoutRevision(this.projections.get((surface as BoardProjection).projectionId)??surface!));
-    const requestObjects = this.history.document.objects.filter(o => this.objectSurface(o)?.id === surface.id);
+    const requestSurfaces = this.objectSurfaces();
+    const requestObjects = this.history.renderDocument.objects.filter(o => requestSurfaces(o)?.id === surface.id);
     const objectToImage = Object.fromEntries(requestObjects.map(object => {
-      const origin = this.objectSurface(object);
+      const origin = requestSurfaces(object);
       if (!origin) throw new Error(t("upgrade.drawingSpaceChanged"));
       return [object.id, multiplyBoardMatrices(imageFromClient, origin.toClient())];
     }));
     const result = await requestBoardWithRepair(this.agent, {
-      boardId: this.history.document.id,
+      boardId: this.history.renderDocument.id,
       sessionId: this.sessionId,
       requestId,
       baseRevision: revision,
@@ -4632,33 +4653,14 @@ class BoardLayer {
     const file = this.view.file;
     return file?.path === this.sourceFile
       ? `${file.stat.mtime}:${file.stat.size}`
-      : this.history.document.sourceRevision;
-  }
-  private animate(ids: string[]): void {
-    this.stopAnimation();
-    this.animationIds = new Set(ids);
-    this.shownCount = 0;
-    const step = () => {
-      if (this.disposed) return;
-      this.shownCount++;
-      this.schedule();
-      if (this.shownCount < ids.length)
-        this.animationTimer = this.win.setTimeout(step, 100);
-      else this.animationIds = null;
-    };
-    step();
-  }
-  private stopAnimation(): void {
-    if (this.animationTimer) this.win.clearTimeout(this.animationTimer);
-    this.animationTimer = 0;
-    this.animationIds = null;
+      : this.history.renderDocument.sourceRevision;
   }
   private currentCharacter(): TutorCharacterProfile | null {
     return (
       this.profiles.find(
         (p) =>
-          p.id === this.history.document.characterId &&
-          p.version === this.history.document.characterVersion,
+          p.id === this.history.renderDocument.characterId &&
+          p.version === this.history.renderDocument.characterVersion,
       ) ??
       this.profiles[0] ??
       null
@@ -4945,7 +4947,7 @@ class BoardLayer {
   private async options(): Promise<void> {
     const missing = new Set<string>();
     if (this.integration.registry) {
-      for (const object of this.history.document.objects) {
+      for (const object of this.history.renderDocument.objects) {
         if (
           object.anchor.kind === "markdown" &&
           this.integration.registry.resolve(object.anchor)?.status !== "located"
@@ -4957,7 +4959,7 @@ class BoardLayer {
         const source = (await this.host.app.vault.cachedRead(this.view.file))
           .replace(/\s+/g, " ")
           .trim();
-        for (const object of this.history.document.objects) {
+        for (const object of this.history.renderDocument.objects) {
           const anchor = object.anchor;
           if (anchor.kind !== "markdown" || this.surfaceFor(anchor)) continue;
           const block = anchor.key.startsWith("block:")
@@ -4976,7 +4978,7 @@ class BoardLayer {
     const modal = new Modal(this.host.app);
     modal.titleEl.textContent = t("board.settings");
     modal.contentEl.createEl("p", { text: t(resolveBoardConnection(this.host.settings()).mode === "inherit" ? "board.sharedConnection" : "board.customConnection",{model:resolveBoardConnection(this.host.settings()).model}) });
-    const selected=this.history.document.objects.filter(o=>this.selection.has(o.id));
+    const selected=this.history.renderDocument.objects.filter(o=>this.selection.has(o.id));
     const slotIds=new Set(selected.flatMap(o=>{const b=this.integration.layout.binding(o.id);return b?[b.slot.id]:[];}));
     const notes=selected.filter(o=>o.createdBy==="human"&&!this.integration.layout.binding(o.id));
     if(slotIds.size===1&&notes.length)this.button(modal.contentEl,"attachAnnotations",()=>{
@@ -5005,7 +5007,7 @@ class BoardLayer {
     reattach.disabled = missing.size === 0;
     this.button(modal.contentEl, "export", () => {
       modal.close();
-      void (this.integration.openSaved ? this.integration.openSaved(this) : this.save().then(() => this.host.app.workspace.openLinkText(`${this.repository.memoryRoot}/boards/${this.history.document.id}.md`, "", true)))
+      void (this.integration.openSaved ? this.integration.openSaved(this) : this.save().then(() => this.host.app.workspace.openLinkText(`${this.repository.memoryRoot}/boards/${this.history.renderDocument.id}.md`, "", true)))
         .catch(error => new Notice(t("board.error", { detail: String(error) })));
     });
     this.button(modal.contentEl, "exportPng", () => { modal.close(); void this.exportBoard("png"); });
@@ -5232,7 +5234,7 @@ class BoardLayer {
     usage: "character" | "sticker" = "character",
   ): void {
     const objects = copy(
-      this.history.document.objects.filter((o) => this.selection.has(o.id)),
+      this.history.renderDocument.objects.filter((o) => this.selection.has(o.id)),
     );
     if (!objects.length) return;
     const modal = new Modal(this.host.app);
@@ -5341,7 +5343,7 @@ class BoardLayer {
       prepare: async (forceSaved = requireSaved) => {
         if (this.disposed || this.sourceMoving) throw new Error("board-source-move-view-unavailable");
         frozen = true; inert = this.root.inert; this.root.inert = true; this.sourceMoving = true;
-        this.invalidate(); this.recognitionAbort?.abort(); this.stopAnimation();
+        this.invalidate(); this.recognitionAbort?.abort();
         this.finishText(true); this.finishGesture(); this.pause();
         // A failed primary save is exactly why the verified recovery handoff is
         // needed. Retain live text and ink; the repository must back them up.
@@ -5351,7 +5353,7 @@ class BoardLayer {
       },
       accept: (bundle, receipt) => {
         if (this.disposed) return;
-        if (!frozen || receipt.from !== this.sourceFile || receipt.to !== bundle.document.sourceFile || receipt.boardId !== this.history.document.id)
+        if (!frozen || receipt.from !== this.sourceFile || receipt.to !== bundle.document.sourceFile || receipt.boardId !== this.history.renderDocument.id)
           throw new Error("board-source-move-target-changed");
         this.history.receiveSourceMove(bundle.document);
         this.sourceFile = receipt.to; this.ink = copy(bundle.ink); this.surfaceInstance = undefined;
@@ -5388,7 +5390,6 @@ class BoardLayer {
     this.compute.dispose();
     this.agent?.dispose();
     this.localDrawingTasks?.dispose();
-    this.stopAnimation();
     if (this.raf) this.win.cancelAnimationFrame(this.raf);
     for (const fn of this.cleanup) fn();
     this.slotViews.clear();this.integration.editors.setSlots(this.view.containerEl,[]);

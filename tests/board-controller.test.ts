@@ -63,6 +63,7 @@ import type { BoardEditorState } from "../src/board-editor.js";
 import { boardSurfaceLayoutRevision, BoardCaptureError } from "../src/board-capture.js";
 import { createBoardDocument, type BoardHistory } from "../src/board-model.js";
 import { overlaps } from "../src/board-placement.js";
+import { createBoardSnapIndex } from "../src/board-snap.js";
 import type { DrawingSpace } from "../src/board-placement.js";
 import type { TutorBoardSurface, BoardSurfaceOperation } from "../src/tutor-board-surface.js";
 import type { ChangeSet } from "../src/tutor-surface.js";
@@ -742,6 +743,48 @@ describe("inspiration board controller", () => {
     expect(layer.renderSnapshot!.objects).toHaveLength(0);
     button(target,"redo").click();await settle();layer.draw();
     expect(layer.renderSnapshot!.objects).toHaveLength(1);
+  });
+  it("adopts blank diagram space with 1,000 objects without cloning a document and measures each source once", async () => {
+    const s=setup(),target=s.views[0]!;await s.manager.toggle(target);await settle();
+    const layer=boardLayer(s.manager,target) as any,anchor=layer.surfaces[0].anchor;
+    const object:BoardObject={id:"OBJ-hot-0",kind:"rect",anchor,x:20,y:180,width:20,height:20,color:"#000000",strokeWidth:2,
+      createdBy:"human",editedBy:"human",revision:1,groupId:"composition"};
+    layer.history.transact((document:BoardDocument)=>{
+      document.objects.push(object,{...object,id:"OBJ-hot-1",x:220});
+      for(let i=2;i<1000;i++)document.objects.push({...object,id:`OBJ-hot-${i}`,groupId:`separate-${i}`,x:1000+i*30,y:1000});
+    },"human");
+    layer.draw();
+    const source=layer.surfaces[0],point=source.project({x:140,y:190});
+    const copies=vi.spyOn(layer.history,"document","get"),matrix=vi.spyOn(source,"toClient"),rect=vi.spyOn(source,"getClientRect");
+    const sourceLookups=vi.spyOn(layer,"sourceSurfaceFor");
+    expect(layer.annotationSurfaceAt(point)?.anchor).toEqual(anchor);
+    expect(copies).not.toHaveBeenCalled(); expect(sourceLookups).toHaveBeenCalledOnce();
+    expect(matrix).toHaveBeenCalledOnce(); expect(rect).toHaveBeenCalledOnce();
+    const snapshot=layer.bundle();snapshot.document.objects[0]!.x=-999;
+    expect(layer.history.renderDocument.objects[0].x).toBe(20);
+    layer.draw();expect(copies).not.toHaveBeenCalled();
+  });
+  it("moves 100 selected objects among 5,000 with one geometry read and computes resize limits once", async () => {
+    const s=setup(),target=s.views[0]!;await s.manager.toggle(target);await settle();
+    const layer=boardLayer(s.manager,target) as any,source=layer.surfaces[0];
+    const before:BoardObject[]=Array.from({length:5000},(_,index)=>({id:`OBJ-capacity-${index}`,kind:"rect",anchor:source.anchor,
+      x:index*40,y:index*25,width:20,height:12,color:"#000000",strokeWidth:2,createdBy:"human",editedBy:"human",revision:1,groupId:`g-${index}`}));
+    layer.selection=new Set(before.slice(0,100).map(object=>object.id));
+    const snapIndex=createBoardSnapIndex(before,layer.selection,()=>source.id);
+    layer.gesture={pointerId:1,surface:source,start:{x:0,y:0},last:{x:0,y:0},points:[],before,resize:false,box:false,
+      groupBounds:{x:0,y:0,width:4000,height:2500},seed:1,snapIndex};
+    const lookup=vi.spyOn(layer,"sourceSurfaceFor"),matrix=vi.spyOn(source,"toClient"),rect=vi.spyOn(source,"getClientRect");
+    layer.move(new PointerEvent("pointermove",{pointerId:1,clientX:4001,clientY:2501}));
+    expect(lookup).toHaveBeenCalledOnce();expect(matrix).toHaveBeenCalledOnce();expect(rect).toHaveBeenCalledOnce();
+    expect(layer.draft).toHaveLength(5000);expect(layer.draft[100]).toBe(before[100]);
+    let fontSizeReads=0;
+    for(const object of before.slice(0,100))object.textStyle={font:"sans",align:"left",get size(){fontSizeReads++;return 256;}};
+    layer.gesture.resize=true;
+    layer.move(new PointerEvent("pointermove",{pointerId:1,clientX:8000,clientY:5000}));
+    expect(fontSizeReads).toBe(300);
+    expect(layer.draft.slice(0,100).every((object:BoardObject)=>object.textStyle?.size===512)).toBe(true);
+    expect(lookup).toHaveBeenCalledTimes(2);expect(matrix).toHaveBeenCalledTimes(2);expect(rect).toHaveBeenCalledTimes(2);
+    layer.gesture=null;layer.draft=null;
   });
   it("opens a hidden board idempotently after a resolved intent and never opens on pre-cancellation",async()=>{
     const s=setup(),target=s.views[0]!;

@@ -12,8 +12,7 @@ import {
   markerConfigField,
   toggleMarginCard
 } from "./decorations.js";
-import { BLOCK_ID_SUFFIX, planDecorations } from "./decorations-plan.js";
-import { findTableInLines } from "./editor.js";
+import { annotationLocations } from "./decorations-plan.js";
 import { TableHighlighter } from "./table-highlighter.js";
 import { CardPool } from "./card-pool.js";
 import {
@@ -76,7 +75,8 @@ class MarginRail {
       configChanged ||
       expandedChanged
     ) {
-      this.refreshTables();
+      if (update.docChanged || configChanged) this.refreshTables();
+      else this.tables.schedule();
       this.schedule();
     }
   }
@@ -112,11 +112,7 @@ class MarginRail {
     if (!config.marginComments || expanded.size === 0) return;
 
     const doc = this.view.state.doc;
-    const lineByBlock = new Map<string, number>();
-    for (let i = 1; i <= doc.lines; i += 1) {
-      const match = BLOCK_ID_SUFFIX.exec(doc.line(i).text);
-      if (match?.[1]) lineByBlock.set(match[1], i);
-    }
+    const locations = annotationLocations(doc, config.marks);
 
     const editorRect = this.view.dom.getBoundingClientRect();
     this.svg.setAttribute("width", `${editorRect.width}`);
@@ -124,12 +120,9 @@ class MarginRail {
     const railWidth = this.cardsEl.clientWidth;
 
     const placed: PlacedCard[] = [];
-    const plans = planDecorations(doc, config.marks, "background", true);
     for (const mark of config.marks) {
       if (!expanded.has(mark.id)) continue;
-      const lineNumber = lineByBlock.get(mark.blockId);
-      const span = plans.find(p => p.kind === "style" && p.id === mark.id);
-      const end = span?.kind === "style" ? span.to : lineNumber ? doc.line(lineNumber).to : null;
+      const end = locations.spanById.get(mark.id)?.to ?? locations.blockEndById.get(mark.id) ?? null;
       const anchor = this.anchorFor(mark.id, end, editorRect);
       if (!anchor) continue; // off-screen — no card
 
@@ -208,11 +201,8 @@ class MarginRail {
   private refreshTables(): void {
     const config = this.view.state.field(markerConfigField);
     const doc = this.view.state.doc;
-    const lines = doc.toString().split("\n");
-    const plans = planDecorations(doc, config.marks, "background", true);
-    const ids = new Set(plans.flatMap(p => p.kind === "style" && p.id &&
-      findTableInLines(lines, doc.lineAt(p.from).number - 1) ? [p.id] : []));
-    this.tables.setMarks(config.marks.filter(m => ids.has(m.id)), config.style, config.showMarker);
+    const ids = annotationLocations(doc, config.marks).tableIds;
+    this.tables.setMarks(config.marks.filter(mark => ids.has(mark.id)), config.style, config.showMarker);
   }
 }
 

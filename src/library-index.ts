@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type {
+  Annotation,
   IndexRecord,
   LearnerProfile,
   MemoryCell,
@@ -62,6 +63,50 @@ export type LibraryFiles = {
   profiles: LibraryFile[];
   proposals: LibraryFile[];
 };
+
+type ParsedLibraryKinds = {
+  annotation: Annotation;
+  "memory-cell": MemoryCell;
+  scene: Scene;
+  profile: LearnerProfile;
+  proposal: MemoryProposal;
+};
+type ParsedLibraryFile<Kind extends LibraryDiagnosticKind> = {
+  raw: string;
+  hash: string;
+  value: ParsedLibraryKinds[Kind] | null;
+  diagnostic?: LibraryDiagnostic;
+};
+
+/** Raw versions are separate from last-valid snapshots. An incomplete editor
+ * version must stay cached as invalid, rather than being retried on every read. */
+export class LibraryParseCache {
+  private readonly entries = new Map<string, ParsedLibraryFile<LibraryDiagnosticKind>>();
+
+  read<Kind extends LibraryDiagnosticKind>(kind: Kind, file: LibraryFile): ParsedLibraryFile<Kind> {
+    const key = `${kind}\n${file.path}`;
+    const cached = this.entries.get(key);
+    if (cached?.raw === file.content) return cached as ParsedLibraryFile<Kind>;
+    const parsers = {
+      annotation: parseAnnotationFile, "memory-cell": parseMemoryCellFile,
+      scene: parseSceneFile, profile: parseProfileFile, proposal: parseProposalFile
+    };
+    const value = parsers[kind](file.content) as ParsedLibraryKinds[Kind] | null;
+    const entry: ParsedLibraryFile<Kind> = {
+      raw: file.content, hash: sha256(file.content), value,
+      ...(value ? {} : { diagnostic: invalid(file.path, kind) })
+    };
+    this.entries.set(key, entry);
+    return entry;
+  }
+
+  retain(files: LibraryFiles): void {
+    const paths = new Set(Object.values(files).flatMap(group => group.map(file => file.path)));
+    for (const key of this.entries.keys()) if (!paths.has(key.slice(key.indexOf("\n") + 1))) this.entries.delete(key);
+  }
+
+  clear(): void { this.entries.clear(); }
+}
 
 export function emptyLibrarySnapshot(): LibrarySnapshot {
   return {
@@ -129,36 +174,38 @@ const libraryCacheSchema = z.object({
 
 export function buildLibrarySnapshot(
   files: LibraryFiles,
-  previous?: LibrarySnapshot
+  previous?: LibrarySnapshot,
+  cache = new LibraryParseCache()
 ): LibrarySnapshot {
   const diagnostics: LibraryDiagnostic[] = [];
   const fileHashes: Record<string, string> = {};
-  for (const group of Object.values(files)) {
-    for (const file of group) fileHashes[file.path] = sha256(file.content);
+  const kinds = { annotations: "annotation", cells: "memory-cell", scenes: "scene", profiles: "profile", proposals: "proposal" } as const;
+  for (const group of Object.keys(files) as Array<keyof LibraryFiles>) {
+    for (const file of files[group]) fileHashes[file.path] = cache.read(kinds[group], file).hash;
   }
 
   const annotations = files.annotations.flatMap((file) => {
-    const annotation = parseAnnotationFile(file.content);
+    const parsed = cache.read("annotation", file), annotation = parsed.value;
     if (!annotation) {
-      diagnostics.push(invalid(file.path, "annotation"));
+      diagnostics.push({ ...parsed.diagnostic! });
       return [];
     }
     return [recordFromAnnotation(annotation, file.path)];
   });
 
   const parsedCells = files.cells.flatMap((file) => {
-    const cell = parseMemoryCellFile(file.content);
+    const parsed = cache.read("memory-cell", file), cell = parsed.value;
     if (!cell) {
-      diagnostics.push(invalid(file.path, "memory-cell"));
+      diagnostics.push({ ...parsed.diagnostic! });
       return [];
     }
     return [{ cell, path: file.path }];
   });
 
   const parsedScenes = files.scenes.flatMap((file) => {
-    const scene = parseSceneFile(file.content);
+    const parsed = cache.read("scene", file), scene = parsed.value;
     if (!scene) {
-      diagnostics.push(invalid(file.path, "scene"));
+      diagnostics.push({ ...parsed.diagnostic! });
       return [];
     }
     return [{ scene, path: file.path }];
@@ -195,9 +242,9 @@ export function buildLibrarySnapshot(
     ...scenes.map((scene) => scene.id)
   ]);
   const profiles = files.profiles.flatMap((file) => {
-    const profile = parseProfileFile(file.content);
+    const parsed = cache.read("profile", file), profile = parsed.value;
     if (!profile) {
-      diagnostics.push(invalid(file.path, "profile"));
+      diagnostics.push({ ...parsed.diagnostic! });
       return [];
     }
     // Keep the profile but drop only the claims whose evidence has gone missing.
@@ -220,9 +267,9 @@ export function buildLibrarySnapshot(
   });
 
   const proposals = files.proposals.flatMap((file) => {
-    const proposal = parseProposalFile(file.content);
+    const parsed = cache.read("proposal", file), proposal = parsed.value;
     if (!proposal) {
-      diagnostics.push(invalid(file.path, "proposal"));
+      diagnostics.push({ ...parsed.diagnostic! });
       return [];
     }
     return [proposal];
@@ -238,7 +285,9 @@ export function buildLibrarySnapshot(
     diagnostics,
     files: fileHashes
   };
-  return previous ? retainLastValid(snapshot, previous) : snapshot;
+  // Published records may be used by mutable host UI adapters. Keep that
+  // boundary isolated from parsed raw versions, just as a fresh parse was.
+  return structuredClone(previous ? retainLastValid(snapshot, previous) : snapshot);
 }
 
 export function serializeLibraryCache(snapshot: LibrarySnapshot): string {

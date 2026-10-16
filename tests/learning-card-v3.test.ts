@@ -34,6 +34,40 @@ async function rig(start = true) {
 }
 
 describe("local learning card v3 facade", () => {
+  it("coalesces display loads, then rereads once for changes received during a running load", async () => {
+    const r = await rig(false), b = barrier(), original = r.store.readEffectiveResult.bind(r.store);
+    const read = vi.spyOn(r.store, "readEffectiveResult").mockImplementationOnce(async () => { await b.wait(); return original(); });
+    const first = r.card.load(); await b.entered;
+    const pending = Array.from({ length: 10 }, () => r.card.load());
+    expect(read).toHaveBeenCalledOnce(); b.release();
+    await Promise.all([first, ...pending]); expect(read).toHaveBeenCalledTimes(2);
+    read.mockClear();
+    await Promise.all(Array.from({ length: 10 }, () => r.card.load())); expect(read).toHaveBeenCalledOnce();
+  });
+
+  it("does not publish a late display load or start its dirty follow-up after disposal", async () => {
+    const r = await rig(false), b = barrier(), original = r.store.readEffectiveResult.bind(r.store);
+    const read = vi.spyOn(r.store, "readEffectiveResult").mockImplementationOnce(async () => { await b.wait(); return original(); });
+    const first = r.card.load(); await b.entered;
+    const next = r.card.load(); r.card.dispose();
+    const listener = vi.fn(); r.card.subscribe(listener); b.release();
+    await Promise.all([first, next]); expect(read).toHaveBeenCalledOnce(); expect(listener).not.toHaveBeenCalled();
+    await r.card.load(); expect(read).toHaveBeenCalledOnce();
+  });
+
+  it("does not lose a refresh arriving in the completion microtask window", async () => {
+    const r = await rig(false), read = vi.spyOn(r.store, "readEffectiveResult");
+    let subsequent: Promise<unknown> | undefined;
+    const stop = r.card.subscribe(() => {
+      stop();
+      queueMicrotask(() => queueMicrotask(() => { subsequent = r.card.load(); }));
+    });
+    await r.card.load();
+    for (let i = 0; i < 4; i++) await Promise.resolve();
+    await subsequent;
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
   it("loads v1/v2 history read-only and starts only v3 after the explicit click", async () => {
     const r = await rig(false), original = structuredClone(r.legacy);
     expect(r.files.size).toBe(0); expect(r.card.snapshot.selected).toBeUndefined();

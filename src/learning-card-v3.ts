@@ -7,6 +7,7 @@ import type { RecordCompleteness, RecordReadResult } from "./learning-record-rea
 import { runLearningTurnV3, type LearningRunResultV3 } from "./learning-runner-v3.js";
 import type { LegacyLearningRecord } from "./learning-safe-projection.js";
 import { renderQuestionV3, type EffectiveV3ReadResult, type EpisodeV3 } from "./learning-v3.js";
+import { GenerationRefreshQueue } from "./refresh-queue.js";
 
 /** Created by the local card adapter for one explicit click. The live source
  * and foreign-write lease remain host responsibilities, just as in chat. */
@@ -60,6 +61,10 @@ export class LearningCardV3 {
   private listeners = new Set<() => void>();
   private generation = 0;
   private loadGeneration = 0;
+  private readonly loads = new GenerationRefreshQueue<undefined, LearningCardSnapshot>(
+    () => undefined,
+    async () => { if (!this.disposed) await this.loadOnce(); return this.snapshot; }
+  );
   private pending?: Pending;
   private disposed = false;
   constructor(readonly commands: LearningCommandsV3, private options: Options = {}) {
@@ -84,17 +89,21 @@ export class LearningCardV3 {
   }
   subscribe(listener: () => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   private emit(): void { for (const listener of this.listeners) { try { listener(); } catch { /* Observers cannot change durable command outcomes. */ } } }
-  async load(): Promise<LearningCardSnapshot> {
+  load(): Promise<LearningCardSnapshot> {
+    if (this.disposed) return Promise.resolve(this.snapshot);
+    return this.loads.request(undefined);
+  }
+  private async loadOnce(): Promise<void> {
     const generation = ++this.loadGeneration;
     const [current, legacy] = await Promise.allSettled([
       Promise.resolve().then(() => this.commands.store.readEffectiveResult()),
       Promise.resolve().then(() => this.options.readLegacy?.()),
     ]);
-    if (generation !== this.loadGeneration || this.disposed) return this.snapshot;
+    if (generation !== this.loadGeneration || this.disposed) return;
     this.read = current.status === "fulfilled" ? current.value : undefined;
     this.legacy = legacy.status === "fulfilled" ? legacy.value : undefined;
     // Loading never starts/resumes a record or silently chooses a different one.
-    this.emit(); return this.snapshot;
+    this.emit();
   }
   select(key: string | undefined): void {
     if (key !== undefined && !this.snapshot.entries.some(entry => entry.key === key)) throw new Error("learning-card-selection-unavailable");

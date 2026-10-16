@@ -110,8 +110,9 @@ export class LearningRecordReader<T extends StoredRecord> {
     let paths: string[];
     try { paths = await this.io.list(this.root); }
     catch { return this.result(records, [this.issue(this.root, undefined, "directory-unreadable")], "unavailable"); }
-    const candidates = [...new Set(paths)].map(path => this.recordPath(path)).filter((entry): entry is { path: string; id: string } => !!entry)
-      .filter(entry => paths.includes(entry.path));
+    const pathSet = new Set(paths);
+    const candidates = [...pathSet].map(path => this.recordPath(path)).filter((entry): entry is { path: string; id: string } => !!entry)
+      .filter(entry => pathSet.has(entry.path));
     const unique = [...new Map(candidates.map(entry => [entry.path, entry])).values()];
     const counts = new Map<string, number>();
     for (const { id } of unique) counts.set(id, (counts.get(id) ?? 0) + 1);

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildLibrarySnapshot,
+  LibraryParseCache,
   parseLibraryCache,
   serializeLibraryCache
 } from "../src/library-index.js";
@@ -70,6 +71,19 @@ const profile: LearnerProfile = {
 };
 
 describe("memory library index", () => {
+  it("reuses raw parsing without sharing mutable snapshot records with the cache", () => {
+    const files = { annotations: [{ path: `memory/${annotation.id}.md`, content: serializeAnnotation(annotation) }],
+      cells: [{ path: `memory/${cell.id}.md`, content: serializeMemoryCell(cell) }], scenes: [], profiles: [], proposals: [] };
+    const cache = new LibraryParseCache();
+    const first = buildLibrarySnapshot(files, undefined, cache);
+    first.annotations[0]!.concepts.push("mutated"); first.cells[0]!.sourceAnnotations.push("external");
+    first.cells[0]!.tags.push("external");
+    const next = buildLibrarySnapshot(files, undefined, cache);
+    expect(next.annotations[0]?.concepts).toEqual(annotation.concepts);
+    expect(next.cells[0]?.sourceAnnotations).toEqual(cell.sourceAnnotations);
+    expect(next.cells[0]?.tags).toEqual(cell.tags);
+  });
+
   it("builds all library records and derives scene source annotations", () => {
     const snapshot = buildLibrarySnapshot({
       annotations: [
@@ -157,6 +171,8 @@ describe("memory library index", () => {
     expect(reconciled.files[`Agent Memory/memory-cells/${cell.id}.md`]).toBe(
       valid.files[`Agent Memory/memory-cells/${cell.id}.md`]
     );
+    reconciled.cells[0]!.tags.push("changed in current UI");
+    expect(valid.cells[0]?.tags).toEqual(cell.tags);
   });
 
   it("round-trips a V2 cache and ignores corrupted cache input", () => {

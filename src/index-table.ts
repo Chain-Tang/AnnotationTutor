@@ -79,6 +79,7 @@ function hasReview(status: AnnotationStatus): boolean {
 
 export class IndexTable {
   private readonly records = new Map<string, IndexRecord>();
+  private readonly generatedBySource = new Map<string, Map<string, string>>();
 
   public constructor(records: IndexRecord[] = []) {
     this.replaceAll(records);
@@ -112,16 +113,33 @@ export class IndexTable {
   }
 
   public upsert(record: IndexRecord): void {
+    this.remove(record.annotationId);
     this.records.set(record.annotationId, record);
+    if (record.anchorOrigin === "generated") {
+      const anchors = this.generatedBySource.get(record.sourceFile) ?? new Map<string, string>();
+      anchors.set(record.annotationId, record.anchor);
+      this.generatedBySource.set(record.sourceFile, anchors);
+    }
   }
 
   public remove(annotationId: string): void {
+    const previous = this.records.get(annotationId);
+    if (previous) {
+      const anchors = this.generatedBySource.get(previous.sourceFile);
+      anchors?.delete(annotationId);
+      if (!anchors?.size) this.generatedBySource.delete(previous.sourceFile);
+    }
     this.records.delete(annotationId);
   }
 
   public replaceAll(records: IndexRecord[]): void {
     this.records.clear();
-    for (const record of records) this.records.set(record.annotationId, record);
+    this.generatedBySource.clear();
+    for (const record of records) this.upsert(record);
+  }
+
+  public generatedAnchors(sourceFile: string): string[] {
+    return [...new Set(this.generatedBySource.get(sourceFile)?.values() ?? [])];
   }
 
   public sources(): string[] {

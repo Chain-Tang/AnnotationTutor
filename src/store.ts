@@ -51,6 +51,7 @@ import {
 import type { TaskStatus } from "./model.js";
 import {
   buildLibrarySnapshot,
+  LibraryParseCache,
   parseLibraryCache,
   serializeLibraryCache,
   type LibraryFile,
@@ -72,6 +73,7 @@ import {
 import { deriveScenes } from "./memory-derive.js";
 import { getLocale } from "./i18n.js";
 import { sha256 } from "./markdown/proposal-file.js";
+import { GenerationRefreshQueue } from "./refresh-queue.js";
 
 type LibraryGroup = keyof LibraryFiles;
 type LibraryRead = {
@@ -96,6 +98,16 @@ export class VaultStore {
   private libraryRoot = "";
   private lastLibrarySnapshot: LibrarySnapshot | undefined;
   private libraryRefresh: Promise<unknown> = Promise.resolve();
+  private readonly parsedLibrary = new LibraryParseCache();
+  private parsedLibraryRoot = "";
+  private readonly refreshQueue = new GenerationRefreshQueue<
+    { previous?: LibrarySnapshot; full: boolean }, LibrarySnapshot
+  >((left, right) => ({ previous: right.previous ?? left.previous, full: left.full || right.full }),
+    request => this.queueLibraryOperation(() => this.reconcileLibrary(request.previous, request.full)));
+  private readonly sceneRefreshQueue = new GenerationRefreshQueue<boolean, void>(
+    (left, right) => left || right,
+    full => this.queueLibraryOperation(() => this.reconcileScenes(full))
+  );
 
   public constructor(
     private readonly app: App,
@@ -458,13 +470,13 @@ export class VaultStore {
    * left untouched; stale auto scenes are removed.
    */
   public async syncScenesFromCells(full = false): Promise<void> {
-    return this.queueLibraryOperation(() => this.reconcileScenes(full));
+    return this.sceneRefreshQueue.request(full);
   }
 
   private async reconcileScenes(full: boolean): Promise<void> {
     const source = await this.readLibrarySources(["cells", "scenes"], full);
     if (this.memoryRoot() !== source.root) return this.reconcileScenes(full);
-    const cells = source.files.cells.map(file => parseMemoryCellFile(file.content));
+    const cells = source.files.cells.map(file => this.parsedLibrary.read("memory-cell", file).value);
     // An editor can temporarily leave a cell incomplete. Deriving from that
     // partial set would overwrite/delete valid scenes and lose their evidence.
     if (cells.some(cell => cell === null)) {
@@ -476,14 +488,14 @@ export class VaultStore {
     const wanted = new Set(scenes.map(scene => scene.id));
     const existing = new Map(source.files.scenes.map(file => [file.path, file]));
     const handAuthored = new Set(source.files.scenes.flatMap(file => {
-      const scene = parseSceneFile(file.content);
+      const scene = this.parsedLibrary.read("scene", file).value;
       return scene && !scene.tags.includes("auto") ? [scene.id] : [];
     }));
     for (const scene of scenes) {
       if (this.memoryRoot() !== source.root) return this.reconcileScenes(full);
       const path = `${source.root}/scenes/${scene.id}.md`;
       const current = existing.get(path);
-      const previous = current ? parseSceneFile(current.content) : null;
+      const previous = current ? this.parsedLibrary.read("scene", current).value : null;
       if (handAuthored.has(scene.id) || (current && (!previous || !previous.tags.includes("auto")))) continue;
       if (previous && sameDerivedScene(previous, scene)) continue;
       const next = { ...scene, createdAt: previous?.createdAt ?? scene.createdAt };
@@ -502,7 +514,7 @@ export class VaultStore {
     }
     for (const file of source.files.scenes) {
       if (this.memoryRoot() !== source.root) return this.reconcileScenes(full);
-      const scene = parseSceneFile(file.content);
+      const scene = this.parsedLibrary.read("scene", file).value;
       if (!scene || !scene.tags.includes("auto") || wanted.has(scene.id)) continue;
       // Recheck a deletion target rather than trusting a cached ownership tag.
       const latest = await this.readVaultFile(file.path);
@@ -669,7 +681,7 @@ export class VaultStore {
   }
 
   private queueLibraryRefresh(previous?: LibrarySnapshot, paths?: string[]): Promise<LibrarySnapshot> {
-    return this.queueLibraryOperation(() => this.reconcileLibrary(previous, paths === undefined));
+    return this.refreshQueue.request({ previous, full: paths === undefined });
   }
 
   private queueLibraryOperation<T>(operation: () => Promise<T>): Promise<T> {
@@ -680,6 +692,10 @@ export class VaultStore {
 
   private async readLibrarySources(groups: LibraryGroup[], full: boolean): Promise<LibraryRead> {
     const root = this.memoryRoot();
+    if (this.parsedLibraryRoot !== root) {
+      this.parsedLibrary.clear();
+      this.parsedLibraryRoot = root;
+    }
     const dirty = new Map(this.dirtyLibraryPaths);
     const directories = this.libraryDirectories(root);
     const cached = this.libraryRoot === root ? this.libraryFiles : undefined;
@@ -722,6 +738,7 @@ export class VaultStore {
       }
     }
     this.libraryFiles = source.files;
+    this.parsedLibrary.retain(source.files);
     this.libraryRoot = source.root;
     this.cachedLibraryGroups.clear();
     for (const group of source.groups) this.cachedLibraryGroups.add(group);
@@ -733,7 +750,7 @@ export class VaultStore {
   private async reconcileLibrary(previous: LibrarySnapshot | undefined, full: boolean): Promise<LibrarySnapshot> {
     const source = await this.readLibrarySources(["annotations", "cells", "scenes", "profiles", "proposals"], full);
     const { root, files } = source;
-    const snapshot = buildLibrarySnapshot(files, this.libraryRoot === root ? this.lastLibrarySnapshot ?? previous : previous);
+    const snapshot = buildLibrarySnapshot(files, this.libraryRoot === root ? this.lastLibrarySnapshot ?? previous : previous, this.parsedLibrary);
     // Await every output even on error, so the next refresh cannot race old writes.
     await settleWrites([
       this.writeLibraryCache(snapshot, full),
@@ -741,7 +758,9 @@ export class VaultStore {
     ]);
     if (this.memoryRoot() !== root) return this.reconcileLibrary(undefined, false);
     this.publishLibrarySources(source);
-    this.lastLibrarySnapshot = snapshot;
+    // UI consumers own the returned projection; last-valid fallback must keep
+    // the persisted version even when a view mutates one of its records.
+    this.lastLibrarySnapshot = structuredClone(snapshot);
     return snapshot;
   }
 

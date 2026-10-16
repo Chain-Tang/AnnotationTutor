@@ -103,6 +103,7 @@ import {
   lineTextWithoutBlockId
 } from "./editor.js";
 import { IndexTable, recordFromAnnotation } from "./index-table.js";
+import { GenerationRefreshQueue } from "./refresh-queue.js";
 import {
   emptyLibrarySnapshot,
   type LibrarySnapshot
@@ -328,6 +329,9 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   private readonly runningAgents = new Set<string>();
   private readonly requestingAgents = new Set<string>();
   private indexRefresh: Promise<void> = Promise.resolve();
+  private indexRefreshQueue?: GenerationRefreshQueue<{
+    notify: boolean; paths?: string[]; repairScenes: boolean;
+  }, void>;
   // Models discovered from the agent CLI (`opencode models`), for the picker.
   public availableModels: string[] = [];
   // True once a discovery attempt has completed (success or not), so the UI
@@ -2736,9 +2740,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   /** Remove old generated table ids, never touch user ids or PDF bytes. */
   private async migrateTableAnchors(file: TFile): Promise<void> {
     if (file.extension !== "md" || this.migratingTables.has(file.path)) return;
-    const ids = new Set(this.indexTable.all().filter(record =>
-      record.sourceFile === file.path && record.anchorOrigin === "generated"
-    ).map(record => bareBlockId(record.anchor)));
+    const ids = new Set(this.indexTable.generatedAnchors(file.path).map(anchor => bareBlockId(anchor)));
     if (!ids.size) return;
     this.migratingTables.add(file.path);
     try {
@@ -3880,17 +3882,29 @@ export default class AnnotationTutorLitePlugin extends Plugin {
 
   public async rebuildIndex(notify: boolean): Promise<void> {
     if (this.pluginUnloaded) return;
-    if (notify) await this.store.syncScenesFromCells(true);
-    return this.refreshIndex(notify);
+    return this.refreshIndex(notify, undefined, notify);
   }
 
-  private async refreshIndex(notify: boolean, paths?: string[]): Promise<void> {
-    const refresh = this.indexRefresh.then(() => this.refreshIndexNow(notify, paths));
+  private async refreshIndex(notify: boolean, paths?: string[], repairScenes = false): Promise<void> {
+    if (!this.indexRefreshQueue) {
+      const barrier = this.indexRefresh;
+      this.indexRefreshQueue = new GenerationRefreshQueue((left, right) => ({
+        notify: left.notify || right.notify,
+        repairScenes: left.repairScenes || right.repairScenes,
+        paths: left.paths === undefined || right.paths === undefined ? undefined : [...new Set([...left.paths, ...right.paths])]
+      }), async request => {
+        await barrier;
+        await this.refreshIndexNow(request.notify, request.paths, request.repairScenes);
+      });
+    }
+    const refresh = this.indexRefreshQueue.request({ notify, paths, repairScenes });
     this.indexRefresh = refresh.catch(() => {});
     return refresh;
   }
 
-  private async refreshIndexNow(notify: boolean, paths?: string[]): Promise<void> {
+  private async refreshIndexNow(notify: boolean, paths?: string[], repairScenes = false): Promise<void> {
+    if (this.pluginUnloaded) return;
+    if (repairScenes) await this.store.syncScenesFromCells(true);
     if (this.pluginUnloaded) return;
     const snapshot = paths === undefined
       ? await this.store.rebuildLibrary(this.librarySnapshot)

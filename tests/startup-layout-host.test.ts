@@ -3,6 +3,7 @@ import { transformSync } from "esbuild";
 import { describe, expect, it, vi } from "vitest";
 import { StartupCancelled, StartupLifetime } from "../src/startup.js";
 import { emptyLibrarySnapshot, type LibrarySnapshot } from "../src/library-index.js";
+import { GenerationRefreshQueue } from "../src/refresh-queue.js";
 
 const source = readFileSync(new URL("../src/main.ts", import.meta.url), "utf8").replace(/\r\n?/g, "\n");
 function method(startMarker: string, endMarker: string) {
@@ -17,6 +18,7 @@ const code = transformSync(`class Host {${methods}};module.exports=Host;`, { loa
 type Host = {
   initialize(startup?: StartupLifetime): Promise<void>;
   rebuildIndex(notify: boolean): Promise<void>;
+  refreshIndex(notify: boolean, paths?: string[]): Promise<void>;
   commit(): Promise<void>;
   refreshAvailableModels(): Promise<unknown>;
   pluginUnloaded: boolean;
@@ -42,7 +44,7 @@ function fixture() {
   const replaceIndex = vi.fn(), persistSettings = vi.fn(async () => {}), chooseModel = vi.fn(() => "provider/new-model");
   const module = { exports: {} };
   const deps = { resolveBoardConnection: () => ({ engine: "api" }), listModels: warmModels, pickDefaultModel: chooseModel,
-    Notice: class {}, t: (key: string) => key };
+    Notice: class {}, t: (key: string) => key, GenerationRefreshQueue };
   new Function("module", ...Object.keys(deps), code)(module, ...Object.values(deps));
   const Host = module.exports as { new(): Host }, host = new Host();
   Object.assign(host, {
@@ -98,7 +100,7 @@ describe("manual scene and index repair", () => {
     r.store.syncScenesFromCells.mockImplementationOnce(async () => { events.push("scenes"); await scene.promise; });
     r.store.rebuildLibrary.mockImplementation(async () => { events.push("index"); return r.next; });
     const repairing = r.host.rebuildIndex(true);
-    expect(r.store.syncScenesFromCells).toHaveBeenCalledWith(true); expect(r.store.rebuildLibrary).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(r.store.syncScenesFromCells).toHaveBeenCalledWith(true)); expect(r.store.rebuildLibrary).not.toHaveBeenCalled();
     scene.resolve(); await repairing;
     expect(events).toEqual(["scenes", "index"]);
     await r.host.rebuildIndex(false); await r.host.commit();
@@ -106,5 +108,39 @@ describe("manual scene and index repair", () => {
     expect(r.store.refreshLibrary).toHaveBeenCalledWith(r.next, []);
     r.unload(); await r.host.rebuildIndex(true);
     expect(r.store.syncScenesFromCells).toHaveBeenCalledOnce();
+  });
+
+  it("publishes a same-tick batch once, promoting manual scene repair and the full index read", async () => {
+    const r = fixture(); r.store.rebuildLibrary.mockResolvedValue(r.next);
+    const pending = Array.from({ length: 9 }, () => r.host.commit());
+    pending.push(r.host.rebuildIndex(true));
+    await Promise.all(pending);
+    expect(r.store.syncScenesFromCells).toHaveBeenCalledOnce();
+    expect(r.store.rebuildLibrary).toHaveBeenCalledOnce(); expect(r.store.refreshLibrary).not.toHaveBeenCalled();
+    expect(r.refreshDashboard).toHaveBeenCalledOnce(); expect(r.refreshSettings).toHaveBeenCalledOnce();
+    expect(r.refreshDecorations).toHaveBeenCalledOnce(); expect(r.replaceIndex).toHaveBeenCalledOnce();
+  });
+
+  it("unions incremental paths into one later round and keeps the completion barrier pending", async () => {
+    const r = fixture(), first = deferred<LibrarySnapshot>();
+    r.store.refreshLibrary.mockImplementationOnce(() => first.promise);
+    const initial = r.host.commit();
+    await vi.waitFor(() => expect(r.store.refreshLibrary).toHaveBeenCalledOnce());
+    const pending = Array.from({ length: 10 }, (_, i) => r.host.refreshIndex(false, [`file-${i}.md`]));
+    let complete = false;
+    void Promise.all(pending).then(() => { complete = true; });
+    first.resolve(r.next); await initial;
+    await Promise.all(pending);
+    expect(complete).toBe(true); expect(r.store.refreshLibrary).toHaveBeenCalledTimes(2);
+    expect(r.store.refreshLibrary).toHaveBeenLastCalledWith(r.next, Array.from({ length: 10 }, (_, i) => `file-${i}.md`));
+    expect(r.refreshDashboard).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns a failed generation to every caller and permits the next refresh", async () => {
+    const r = fixture(); r.store.refreshLibrary.mockRejectedValueOnce(new Error("disk failed"));
+    const results = await Promise.allSettled(Array.from({ length: 10 }, () => r.host.commit()));
+    expect(results.every(result => result.status === "rejected")).toBe(true);
+    expect(r.refreshDashboard).not.toHaveBeenCalled();
+    await r.host.commit(); expect(r.refreshDashboard).toHaveBeenCalledOnce();
   });
 });

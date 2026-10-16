@@ -53,6 +53,7 @@ function fixture(options: { holdSettings?: boolean } = {}) {
   const settingRefresh = vi.fn(), displayRefresh = vi.fn(), registeredViews: string[] = [], layouts: Array<() => void> = [];
   const initialize = vi.fn(async () => {}), syncBoards = vi.fn(async () => {}), disposeBoards = vi.fn(async () => {});
   const noOp = () => {}, ready = async () => {}, notice = vi.fn();
+  const translationDispose = vi.fn();
   class Stub {}
   class Adapter {
     getFullPath(path: string) { return `/synthetic-vault/${path}`; }
@@ -97,7 +98,7 @@ function fixture(options: { holdSettings?: boolean } = {}) {
     configureBoardFonts: noOp, normalizePath: (path: string) => path,
     annotationDecorations: {}, marginRailExtension: {}, setMarkerClickHandler: noOp, setMarginCardHandlers: noOp, setCardGeomStore: noOp,
     DASHBOARD_VIEW_TYPE: "dashboard", CHAT_VIEW_TYPE: "chat", BOARD_VIEW_TYPE: "studio",
-    DefaultBoardToolRuntime: Stub, TranslationController: Stub, NotebookController: Stub, ReviewController: Stub,
+    DefaultBoardToolRuntime: Stub, TranslationController: class { dispose = translationDispose; }, NotebookController: Stub, ReviewController: Stub,
     PAPER_TEXTURE: "synthetic-paper", LEAF_TEXTURE: "synthetic-leaf",
     boardConnectionKey: () => "connection", MarkdownView: Stub,
   };
@@ -125,12 +126,17 @@ function fixture(options: { holdSettings?: boolean } = {}) {
   return { host, credentials, journal, learning, results, skins, credentialInitialize, journalInitialize, learningLoad, resultInitialize,
     scan, applyCss, unloadSkin, settingRefresh, displayRefresh, registeredViews, layouts, initialize, syncBoards, notice, resolveRequired,
     credentialDispose, credentialFlush, credentialSave, journalDispose, restoreTasks, supportSummaries, supportLoad, supportListeners, settingsRead, settings,
-    persistJournalId: (id: string) => persistJournalId!(id), stageSettled, credentialCreated };
+    persistJournalId: (id: string) => persistJournalId!(id), stageSettled, credentialCreated, translationDispose };
 }
 
 afterEach(() => { for (const cleanup of registeredCleanups.splice(0)) cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("production startup lifecycle", () => {
+  it("disposes the registered translation service on plugin unload", async () => {
+    const r = fixture(); r.resolveRequired(); await r.host.onload();
+    r.host.onunload(); expect(r.translationDispose).toHaveBeenCalledOnce();
+  });
+
   it("blocks publication if unload wins the microtask gap after a measured settings read", async () => {
     const r = fixture(); r.resolveRequired();
     // Unload after the real waitFor and measurement resolve, immediately before

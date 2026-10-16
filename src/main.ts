@@ -1097,7 +1097,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       settings: () => this.settings,
       chatTimeoutMs: () => this.chatTimeoutMs(),
       pretranslateConcurrency: () => this.settings.reviewEngine === "api" ? 2 : 1,
-      captureText: async (prompt, timeoutMs) => {const done=beginTutorActivity();try{return await this.captureText(prompt, timeoutMs);}finally{done();}}
+      captureText: async (prompt, timeoutMs, signal) => {const done=beginTutorActivity();try{return await this.captureText(prompt, timeoutMs, signal);}finally{done();}}
     });
     this.notebook = new NotebookController({
       app: this.app,
@@ -1172,6 +1172,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
         void this.boards.changed(file.path).catch(error => console.error("Tutor board", error));
         this.watcher.notify(file.path);
         if (file instanceof TFile && file.extension === "md") {
+          this.translation?.onFileChanged(file.path);
           void this.migrateTableAnchors(file);
           this.queueOfficialWebClip(file);
         }
@@ -1296,6 +1297,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
 
   public override onunload(): void {
     this.pluginUnloaded = true;
+    this.translation?.dispose();
     this.startupLifetime.cancel();
     this.startupIdle.dispose();
     void this.externalGenerations.close();
@@ -1354,6 +1356,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   }
 
   public async persistSettings(): Promise<void> {
+    this.translation?.onSettingsChanged();
     setTeachingPolicy({mode:this.settings.teachingMode,audience:"adult",version:1});
     // Invalidate synchronously: an old provider must not commit while settings
     // persistence or MCP shutdown is awaiting IO.
@@ -3289,11 +3292,10 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   /** Run one one-shot text generation through the configured review engine. */
   private async captureText(
     prompt: string,
-    timeoutMs: number
+    timeoutMs: number,
+    signal?: AbortSignal
   ): Promise<ReviewOutcome> {
-    return this.settings.reviewEngine === "api"
-      ? this.captureApiReview(prompt, timeoutMs)
-      : this.captureOpenCodeReview(prompt, timeoutMs);
+    return this.captureTextWithEngine(this.settings.reviewEngine, prompt, timeoutMs, signal);
   }
 
   /** Run a one-shot task through a named feature route. */
@@ -3305,9 +3307,11 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     if(engine!=="api")return this.captureOpenCodeReview(prompt,timeoutMs,signal);
     if(!signal)return this.captureApiReview(prompt,timeoutMs);
     signal.throwIfAborted();
+    if(!this.settings.apiKey.trim())return {kind:"needs-key"};
     const result=await streamChatCompletion({baseUrl:this.settings.apiBaseUrl,apiKey:this.settings.apiKey,model:this.settings.apiModel,messages:[{role:"user",content:prompt}],timeoutMs,signal,fast:true},nodeHttpStream);
     signal.throwIfAborted();
-    return result.ok&&result.text.trim()?{kind:"ok",reviewText:result.text}:{kind:"failed",detail:"provider-request-failed"};
+    return result.ok ? result.text.trim() ? {kind:"ok",reviewText:result.text} : {kind:"empty"} :
+      /tim(?:e|ed)?\s?-?\s?out/i.test(result.error??"") ? {kind:"timeout"} : {kind:"failed",detail:"provider-request-failed"};
   }
 
   // --- open / edit / delete --------------------------------------------------

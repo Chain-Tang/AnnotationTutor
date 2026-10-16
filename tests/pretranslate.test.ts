@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   applyGlossary,
   buildFileGlossary,
@@ -140,6 +140,44 @@ describe("applyGlossary", () => {
   it("resolves a bare single word (the word-mode cache fallback)", () => {
     // Word mode tries lookupGloss first, then applyGlossary on the lone word.
     expect(applyGlossary("ego", glossary)).toBe("ego (自我)");
+  });
+
+  it("precomputes term normalization and skips whole buckets for an unmatched 10000-character paragraph", () => {
+    const large = buildFileGlossary("h", Array.from({ length: 10000 }, (_, i) => ({ surface: `term${i}`, gloss: `含义${i}` })));
+    const lower = vi.spyOn(String.prototype, "toLowerCase"), starts = vi.spyOn(String.prototype, "startsWith");
+    const passage = "z".repeat(10000), result = applyGlossary(passage, large);
+    const lowerCount = lower.mock.calls.length, comparisons = starts.mock.calls.length;
+    lower.mockRestore(); starts.mockRestore();
+    expect(result).toBe(passage); expect(lowerCount).toBe(1); expect(comparisons).toBe(0);
+  });
+
+  it("matches the original greedy algorithm for mixed Latin/CJK, punctuation, duplicates and prefixes", () => {
+    const entries = [
+      { surface: "ego", gloss: "first" }, { surface: "EGO", gloss: "duplicate" },
+      { surface: "ego mind", gloss: "phrase" }, { surface: "認知", gloss: "CJK" },
+      { surface: "認知科学", gloss: "long CJK" }, { surface: "élan", gloss: "accent" },
+      { surface: "A認知", gloss: "mixed" }, { surface: "12", gloss: "digits" },
+      { surface: "🧠", gloss: "emoji" }, { surface: "İ", gloss: "case expansion" }
+    ];
+    const glossary = buildFileGlossary("h", entries);
+    function original(passage: string): string {
+      const lower = passage.toLowerCase(); let out = "", i = 0;
+      while (i < passage.length) {
+        const match = glossary.entries.find(entry => {
+          if (!entry.surface.length || !lower.startsWith(entry.surface.toLowerCase(), i)) return false;
+          if (/[A-Za-zÀ-ɏ]/.test(entry.surface) && !/[぀-ヿ㐀-鿿가-힯]/.test(entry.surface)) {
+            if (/[A-Za-z0-9À-ɏ]/.test(passage[i - 1] ?? "") || /[A-Za-z0-9À-ɏ]/.test(passage[i + entry.surface.length] ?? "")) return false;
+          }
+          return true;
+        });
+        if (match) { out += `${passage.slice(i, i + match.surface.length)} (${match.gloss})`; i += match.surface.length; }
+        else { out += passage[i]; i++; }
+      }
+      return out;
+    }
+    for (const passage of ["ego mind ego EGO egoist", "これは認知科学です 認知", "élan, ÉLAN; xélan. A認知X", "12 123 🧠! İ ego", "Nothing to translate."]) {
+      expect(applyGlossary(passage, glossary)).toBe(original(passage));
+    }
   });
 });
 

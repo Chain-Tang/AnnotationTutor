@@ -387,6 +387,7 @@ describe("bounded settings lists and drafts", () => {
   it.each(["annotations", "cells", "scenes"] as const)("renders at most 100 %s record groups from ten thousand and searches the complete list with IME", async kind => {
     const { tab, plugin, scroll } = await library(kind, 10000);
     expect(groups(tab, kind)).toHaveLength(100);
+    for (const facet of tab.containerEl.querySelectorAll<HTMLSelectElement>(".atl-toolbar select")) expect(facet.options.length).toBeLessThanOrEqual(102);
     expect(tab.containerEl.querySelector(".atl-pagination-count")!.textContent).toContain("10000");
     next(tab); expect(groups(tab, kind)).toHaveLength(100); expect(previous(tab).disabled).toBe(false);
     const toolbar = tab.containerEl.querySelector(".atl-toolbar")!;
@@ -406,6 +407,25 @@ describe("bounded settings lists and drafts", () => {
     expect(tab.containerEl.querySelector<HTMLInputElement>(".atl-toolbar input")!.value).toBe("中文目标");
     expect(groups(tab, kind)).toHaveLength(1);
     expect(plugin.persistSettings).not.toHaveBeenCalled();
+  }, 20000);
+
+  it("searches and selects the final unique concept without materializing its whole catalog", async () => {
+    const { tab, plugin } = await library("annotations", 10000);
+    const search = tab.containerEl.querySelector<HTMLInputElement>(".atl-facet-search")!;
+    const concept = tab.containerEl.querySelectorAll<HTMLSelectElement>(".atl-toolbar select")[2]!;
+    expect(search.getAttribute("aria-label")).toBe(t("list.searchOptions", { label: t("dash.allConcepts") }));
+    search.focus(); search.dispatchEvent(new CompositionEvent("compositionstart")); draft(search, "中文目标");
+    plugin.librarySnapshot = { ...plugin.librarySnapshot }; tab.refresh();
+    expect(tab.containerEl.querySelector(".atl-facet-search")).toBe(search); expect(document.activeElement).toBe(search);
+    expect(search.value).toBe("中文目标"); expect(concept.options.length).toBeLessThanOrEqual(102);
+    search.dispatchEvent(new CompositionEvent("compositionend"));
+    expect(concept.querySelector('option[value="中文目标"]')).not.toBeNull();
+    change(concept, "中文目标");
+    expect(groups(tab, "annotations")).toHaveLength(1);
+    expect(groups(tab, "annotations")[0]!.textContent).toContain("ID-09999");
+    // Keep the chosen exact filter when its suggestion search changes.
+    draft(search, "Concept 1"); expect(concept.value).toBe("中文目标");
+    expect(concept.options.length).toBeLessThanOrEqual(102); expect(groups(tab, "annotations")).toHaveLength(1);
   }, 20000);
 
   it.each(["annotations", "cells", "scenes"] as const)("clamps %s after the final page is removed or archived", async kind => {

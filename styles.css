@@ -3816,3 +3816,4 @@
 
 .atl-pagination { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:8px; margin:12px 0; }
 .atl-pagination-count { color:var(--text-muted); font-size:var(--font-ui-small); }
+.atl-facet-count { align-self:center; font-size:var(--font-ui-small); }

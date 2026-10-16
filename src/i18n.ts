@@ -10,6 +10,9 @@ export type Locale = "en" | "zh-cn" | "zh-tw" | "ja";
 type Dict = Record<string, string>;
 
 const en = {
+  "list.searchOptions": "Search options: {label}",
+  "list.optionCount": "{shown} of {total} options; type to narrow",
+
   "list.pagination": "Pagination",
   "list.previous": "Previous",
   "list.next": "Next",
@@ -609,6 +612,9 @@ const en = {
 type CoreDict = Record<keyof typeof en, string>;
 
 const zhCn: CoreDict = {
+  "list.searchOptions": "搜索选项：{label}",
+  "list.optionCount": "显示 {shown} / {total} 个选项，可输入缩小范围",
+
   "list.pagination": "分页",
   "list.previous": "上一页",
   "list.next": "下一页",
@@ -1206,6 +1212,9 @@ const zhCn: CoreDict = {
 };
 
 const zhTw: CoreDict = {
+  "list.searchOptions": "搜尋選項：{label}",
+  "list.optionCount": "顯示 {shown} / {total} 個選項，可輸入縮小範圍",
+
   "list.pagination": "分頁",
   "list.previous": "上一頁",
   "list.next": "下一頁",
@@ -1803,6 +1812,9 @@ const zhTw: CoreDict = {
 };
 
 const ja: CoreDict = {
+  "list.searchOptions": "選択肢を検索：{label}",
+  "list.optionCount": "{total} 件中 {shown} 件を表示・入力して絞り込み",
+
   "list.pagination": "ページ切り替え",
   "list.previous": "前へ",
   "list.next": "次へ",

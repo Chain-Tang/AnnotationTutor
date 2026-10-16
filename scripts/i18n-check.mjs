@@ -62,17 +62,20 @@ export async function auditI18n(root = path.resolve(import.meta.dirname, "..")) 
   const { localeTables } = await import(`data:text/javascript;base64,${Buffer.from(output.outputFiles[0].text).toString("base64")}`);
   const errors = validateLocaleTables(localeTables), keys = new Set(Object.keys(localeTables.en));
   let literalCalls = 0, dynamicCalls = 0;
+  const files = [];
   const walk = async directory => {
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       const file = path.join(directory, entry.name);
       if (entry.isDirectory()) await walk(file);
-      else if (entry.name.endsWith(".ts")) {
-        const result = auditTranslationCalls(await readFile(file, "utf8"), path.relative(root, file), keys);
-        errors.push(...result.errors); literalCalls += result.literalCalls; dynamicCalls += result.dynamicCalls;
-      }
+      else if (entry.name.endsWith(".ts")) files.push(file);
     }
   };
   await walk(path.join(root, "src"));
+  const sources = await Promise.all(files.sort().map(async file => ({ file, source: await readFile(file, "utf8") })));
+  for (const { file, source } of sources) {
+    const result = auditTranslationCalls(source, path.relative(root, file), keys);
+    errors.push(...result.errors); literalCalls += result.literalCalls; dynamicCalls += result.dynamicCalls;
+  }
   return { errors, keys: keys.size, locales: Object.keys(localeTables).length, literalCalls, dynamicCalls };
 }
 

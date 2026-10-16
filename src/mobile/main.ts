@@ -11,7 +11,7 @@ import {configureBoardFonts} from '../board-fonts.js';
 import {inkSelectionFingerprint} from '../ink-transcript.js';
 import {AndroidInkProvider,inkBridgeRequest,readInkBridgeResult,type InkBridgeRequest} from './recognition.js';
 import {t,setLanguage} from '../i18n.js';
-import type {BoardBundle,BoardPoint,BoardObject,TutorCharacterProfile,RecognitionResult,RecognitionRequest} from '../board-types.js';
+import type {BoardBundle,BoardPoint,BoardObject,TutorCharacterProfile,RecognitionRequest} from '../board-types.js';
 import {chatCompletionsUrl,extractApiReviewText} from '../api-runner.js';
 const uuid=()=>crypto.randomUUID();
 const same=(a:BoardObject['anchor'],b:BoardObject['anchor'])=>a.kind===b.kind&&(a.kind==='markdown'&&b.kind==='markdown'?a.key===b.key:a.kind==='pdf'&&b.kind==='pdf'?a.page===b.page:a.kind==='canvas'&&b.kind==='canvas'&&a.pageId===b.pageId);
@@ -28,7 +28,7 @@ export default class TutorMobile extends Plugin {
     this.profiles=[...builtInBoardAssets(),...await this.repository.characters()];
     this.editors=new BoardEditorBridge({getRegistry:(source,text)=>{const registry=this.registries.get(source);registry?.reconcile(text);return registry;},onChange:()=>{for(const board of this.boards.values())board.schedule();}});this.registerEditorExtension(this.editors.extension);this.register(()=>this.editors.dispose());
     this.registerMarkdownPostProcessor((element,context)=>{const section=context.getSectionInfo(element);if(section)registerMarkdownBoardSection(element,context.sourcePath,section);});
-    this.addCommand({id:'inspiration-board',name:t('board.open'),callback:()=>void this.open()});this.addRibbonIcon('pen-tool',t('board.open'),()=>void this.open());
+    this.addCommand({id:'inspiration-board',name:t('board.title'),callback:()=>void this.open()});this.addRibbonIcon('pen-tool',t('board.title'),()=>void this.open());
     this.addCommand({id:'android-ink-connection',name:t('board.androidConnection'),callback:()=>this.pair()});
     this.addCommand({id:'android-handwriting-page',name:t('board.handwritingPage'),callback:()=>void this.page()});
     this.registerEvent(this.app.workspace.on('layout-change',()=>{for(const [view,board]of this.boards)if(!view.containerEl.isConnected){board.close();this.boards.delete(view);}}));

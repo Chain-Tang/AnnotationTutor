@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { LearningFlow } from "../src/learning-flow.js";
 import { LearningEpisodeStore, type LearningIO } from "../src/learning-episode-store.js";
 import { evidenceSummary, type ConceptId } from "../src/learning-episode.js";
@@ -21,9 +21,15 @@ describe("legacy card automatic evidence privacy",()=>{
     expect(files).toEqual(before);expect(flow.active).toEqual(episode);expect(flow.busy).toBe(false);
   });
   it.each([[" 8 / 2 ","4","correct"],["−0","0","incorrect"],["4e0","4","correct"]])("stores only the bounded canonical value for %s",async(input,value,outcome)=>{
-    const {files,flow}=await fixture();expect(await flow.answer(input)).toEqual({status:"saved"});
-    expect(flow.active?.evidence[0]).toMatchObject({answer:value,outcome});
-    expect([...files.values()].join("\n")).not.toContain(input);
+    // Random UUIDs can contain "4e0" by coincidence. Keep the privacy assertion
+    // over all files, with unrelated generated identities made reproducible.
+    let sequence=0;
+    const ids=vi.spyOn(crypto,"randomUUID").mockImplementation(()=>`00000000-0000-4000-8000-${String(++sequence).padStart(12,"0")}`);
+    try {
+      const {files,flow}=await fixture();expect(await flow.answer(input)).toEqual({status:"saved"});
+      expect(flow.active?.evidence[0]).toMatchObject({answer:value,outcome});
+      expect([...files.values()].join("\n")).not.toContain(input);
+    } finally { ids.mockRestore(); }
   });
   it("accepts exactly the authored choice, without saving surrounding prose",async()=>{
     const {files,flow}=await fixture("jump"),before=new Map(files);

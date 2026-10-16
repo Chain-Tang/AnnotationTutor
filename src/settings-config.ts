@@ -362,7 +362,8 @@ export const DEFAULT_SETTINGS: AnnotationTutorLiteSettings = {
   cardGeom: {}
 };
 
-export function normalizeMemoryRoot(value: string): string {
+export function normalizeMemoryRoot(value: unknown): string {
+  if (typeof value !== "string") return DEFAULT_SETTINGS.memoryRoot;
   const normalized = value.trim().replace(/\\/g, "/").replace(/\/+/g, "/");
   if (
     !normalized ||
@@ -461,6 +462,7 @@ export function migrateSettings(loaded: unknown): AnnotationTutorLiteSettings {
   if (!Array.isArray(settings.tutorPairings)) settings.tutorPairings = [];
   else settings.tutorPairings = settings.tutorPairings.slice(0,100).flatMap(record => {const parsed=tutorPairingSchema.safeParse(record);return parsed.success?[parsed.data]:[];});
   if (!settings.tutorSurfaceIds || typeof settings.tutorSurfaceIds !== "object" || Array.isArray(settings.tutorSurfaceIds)) settings.tutorSurfaceIds = {};
+  else settings.tutorSurfaceIds = { ...settings.tutorSurfaceIds };
   for(const key of ["tutorRemoteName","tutorRemoteUrl","tutorRemoteToken"] as const)if(typeof settings[key]!=="string")settings[key]=DEFAULT_SETTINGS[key];
   if(typeof settings.tutorCodexCommand!=="string"||!settings.tutorCodexCommand.trim())settings.tutorCodexCommand="codex";
   if (typeof settings.boardMcpEnabled !== "boolean") settings.boardMcpEnabled = false;

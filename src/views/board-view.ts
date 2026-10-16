@@ -15,10 +15,10 @@ import { TutorTaskCoordinator, type ContextGrant } from "../tutor-task.js";
 import type { TutorAction } from "../tutor-intent.js";
 import { ItemView, Notice, Modal, Menu, setIcon, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
 import { deflateSync, inflateSync } from "fflate";
-import type { TutorCharacterProfile, BoardAgent, BoardArtistStrategy, BoardBundle, BoardObject, BoardOperation, BoardPoint, BoardBrushKind, BoardBrushStyle, BoardVectorAsset, ImageGenerationCandidate, ImageGenerationProvider, BoardSelectionRegion, VectorizationProvider } from "../board-types.js";
+import type { TutorCharacterProfile, BoardAgent, BoardArtistStrategy, BoardBundle, BoardObject, BoardPoint, BoardBrushKind, BoardBrushStyle, BoardVectorAsset, ImageGenerationCandidate, ImageGenerationProvider, BoardSelectionRegion, VectorizationProvider } from "../board-types.js";
 import { BoardHistory, upgradeBoardDocument } from "../board-model.js";
 import { BOARD_BRUSHES, brushComposite, defaultBoardBrush, studioBoardBrush } from "../board-brushes.js";
-import { affectedBoardTiles, floodFillMask, generateBrushDabs, renderBrushDabs } from "../board-paint.js";
+import { affectedBoardTiles, floodFillMask } from "../board-paint.js";
 import { brushEngineFor, missingBrushResources } from "../board-brush-engine.js";
 import { boardGalleryMarkdown, buildOpenRasterArchive, buildTutorBoardArchive } from "../board-share.js";
 import { exportTutorBrush, importTutorBrush, sha256Hex } from "../board-brush-pack.js";
@@ -757,12 +757,6 @@ export class StandaloneBoardView extends ItemView {
     this.refreshTools();
     this.schedule();
   }
-  private addButton(parent: HTMLElement, key: string, callback: () => void): void {
-    const button = parent.createEl("button", { text: t(`board.${key}`) });
-    decorateBoardButton(button, key);
-    button.type = "button";
-    button.onclick = callback;
-  }
   private studioButton(parent: HTMLElement, label: string, icon: string, showLabel: boolean, callback: () => void): HTMLButtonElement {
     const button = parent.createEl("button", { cls: `atl-studio-action${showLabel ? " has-label" : ""}`, attr: { "aria-label": label, title: label } });
     button.type = "button";
@@ -1400,15 +1394,15 @@ export class StandaloneBoardView extends ItemView {
     const previews=new Map<BoardArtworkStage,BoardVectorAsset>();
     const preview=modal.contentEl.createEl("img",{cls:"atl-comic-preview",attr:{alt:"三角色漫画封面阶段预览"}});
     preview.tabIndex=0;preview.setAttribute("title","点击或按回车放大预览");preview.onclick=()=>preview.toggleClass("is-expanded",!preview.hasClass("is-expanded"));preview.onkeydown=event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();preview.click();}};
-    let previewUrl:string|undefined,pending:BoardVectorAsset|undefined,abort:AbortController|undefined,paused=false,resume:((value?:void)=>void)|undefined,viewing:BoardArtworkStage="composition";
+    let previewUrl:string|undefined,pending:BoardVectorAsset|undefined,abort:AbortController|undefined,paused=false,resume:((value?:void)=>void)|undefined;
     const setPreview=(asset:BoardVectorAsset)=>{if(previewUrl)URL.revokeObjectURL(previewUrl);previewUrl=URL.createObjectURL(new Blob([exportVectorAssetSvg(asset,{width:800,height:1200})],{type:"image/svg+xml"}));preview.src=previewUrl;};
-    for(const stage of BOARD_ARTWORK_STAGES){const button=stageNav.createEl("button",{text:stageNames[stage]});button.disabled=true;button.type="button";button.setAttribute("aria-label",`查看${stageNames[stage]}阶段`);button.onclick=()=>{const asset=previews.get(stage);if(asset){viewing=stage;setPreview(asset);for(const [key,item] of stageButtons)item.toggleClass("is-active",key===stage);}};stageButtons.set(stage,button);}
+    for(const stage of BOARD_ARTWORK_STAGES){const button=stageNav.createEl("button",{text:stageNames[stage]});button.disabled=true;button.type="button";button.setAttribute("aria-label",`查看${stageNames[stage]}阶段`);button.onclick=()=>{const asset=previews.get(stage);if(asset){setPreview(asset);for(const [key,item] of stageButtons)item.toggleClass("is-active",key===stage);}};stageButtons.set(stage,button);}
     const consentRow=modal.contentEl.createEl("label",{cls:"atl-studio-cloud-consent"}),consent=consentRow.createEl("input",{type:"checkbox"});consentRow.appendText(" 允许将这幅预览发送给已配置的视觉模型补绘原生节点");
     const status=modal.contentEl.createDiv({cls:"atl-studio-ai-status",text:"准备生成可编辑预览；当前作品保持不变。"}),actions=modal.contentEl.createDiv({cls:"modal-button-container"});
     const run=actions.createEl("button",{text:"生成六阶段预览"}),pause=actions.createEl("button",{text:"暂停"}),retry=actions.createEl("button",{text:"重试网点"}),enhance=actions.createEl("button",{text:"AI 补绘（实验）"}),cancel=actions.createEl("button",{text:"取消"}),insert=actions.createEl("button",{text:"加入独立 Artboard"});
     pause.disabled=true;retry.disabled=true;enhance.disabled=true;cancel.disabled=true;insert.disabled=true;
     const start=async()=>{run.disabled=true;insert.disabled=true;enhance.disabled=true;pause.disabled=false;cancel.disabled=false;retry.disabled=true;paused=false;pause.textContent="暂停";pending=undefined;previews.clear();for(const button of stageButtons.values())button.disabled=true;abort?.abort();abort=new AbortController();for(const [key,input]of colorInputs)plan.palette[key]=input.value;
-      try{const created=await createThreeCharacterCoverSession(plan,{signal:abort.signal,onStage:async event=>{if(abort?.signal.aborted)throw new DOMException("Cancelled","AbortError");previews.set(event.stage,event.asset);const button=stageButtons.get(event.stage)!;button.disabled=false;button.textContent=`${stageNames[event.stage]} ✓`;viewing=event.stage;for(const [key,item]of stageButtons)item.toggleClass("is-active",key===event.stage);setPreview(event.asset);status.textContent=`${stageNames[event.stage]}：${event.asset.nodes.length} 个可编辑节点 · ${event.elapsedMs}ms${event.warnings.length?` · ${event.warnings.join("；")}`:""}`;if(paused)await new Promise<void>(resolve=>{resume=resolve;});if(abort?.signal.aborted)throw new DOMException("Cancelled","AbortError");}});if(this.history?.document.id!==boardId||this.history.revision!==baseRevision)throw new Error("画板已改变，请重新生成预览");const inspection=inspectThreeCharacterCover(created,plan);if(!inspection.valid)throw new Error(inspection.warnings.join("；"));pending=created;insert.disabled=false;retry.disabled=false;enhance.disabled=!this.host.artworkComplete;status.textContent=`完成：${created.nodes.length} 个原生节点，命名可编辑率 ${Math.round(inspection.editablePartRatio*100)}%。请检查成品后加入。`;
+      try{const created=await createThreeCharacterCoverSession(plan,{signal:abort.signal,onStage:async event=>{if(abort?.signal.aborted)throw new DOMException("Cancelled","AbortError");previews.set(event.stage,event.asset);const button=stageButtons.get(event.stage)!;button.disabled=false;button.textContent=`${stageNames[event.stage]} ✓`;for(const [key,item]of stageButtons)item.toggleClass("is-active",key===event.stage);setPreview(event.asset);status.textContent=`${stageNames[event.stage]}：${event.asset.nodes.length} 个可编辑节点 · ${event.elapsedMs}ms${event.warnings.length?` · ${event.warnings.join("；")}`:""}`;if(paused)await new Promise<void>(resolve=>{resume=resolve;});if(abort?.signal.aborted)throw new DOMException("Cancelled","AbortError");}});if(this.history?.document.id!==boardId||this.history.revision!==baseRevision)throw new Error("画板已改变，请重新生成预览");const inspection=inspectThreeCharacterCover(created,plan);if(!inspection.valid)throw new Error(inspection.warnings.join("；"));pending=created;insert.disabled=false;retry.disabled=false;enhance.disabled=!this.host.artworkComplete;status.textContent=`完成：${created.nodes.length} 个原生节点，命名可编辑率 ${Math.round(inspection.editablePartRatio*100)}%。请检查成品后加入。`;
       }catch(error){pending=undefined;status.textContent=abort?.signal.aborted?"已取消；原作品未改变。":`生成失败：${error instanceof Error?error.message:String(error)}`;}finally{run.disabled=false;pause.disabled=true;cancel.disabled=true;resume?.();resume=undefined;}};
     run.onclick=()=>void start();
     pause.onclick=()=>{paused=!paused;pause.textContent=paused?"继续":"暂停";if(!paused){resume?.();resume=undefined;}};
@@ -2470,7 +2464,6 @@ export class StandaloneBoardView extends ItemView {
       context.fillStyle = artboard.background; context.fillRect(artboard.x, artboard.y, artboard.width, artboard.height);
       renderBoardBackgroundCanvas(context, document.background ?? { kind: "plain", color: artboard.background, spacing: 24, opacity: 1 }, artboard);
     }
-    const defaultLayerId = document.layers?.find(layer => layer.kind !== "group")?.id;
     const objects = document.objects;
     this.renderLayeredScene(context,document,objects,layerIds);
     return canvas;

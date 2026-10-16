@@ -1,4 +1,5 @@
 const en = {
+  preview: "Preview",
   layoutLegacyNotice: "Old annotations remain in place. Select the diagram and its notes, then use More → Attach annotations to associate them.",
   attachAnnotations: "Attach selected annotations to the selected diagram",
   sourceBranchPreviewLarge: "This drawing is large. Its thumbnail was skipped; you can open the full work.",
@@ -293,6 +294,7 @@ const en = {
 };
 type Keys = keyof typeof en;
 const zhCn: Record<Keys, string> = {
+  preview: "预览",
   layoutLegacyNotice: "旧批注保留原位。选中图示和相关批注后，可在更多中确认关联，关联可撤销。",
   attachAnnotations: "将选中批注关联到选中图示",
   sourceBranchPreviewLarge: "作品较大，已略过缩略预览；仍可打开完整画作。",
@@ -587,6 +589,7 @@ const zhCn: Record<Keys, string> = {
 };
 const zhTw: Record<Keys, string> = {
   ...zhCn,
+  preview: "預覽",
   sourceBranchPreviewLarge: "作品較大，已略過縮圖預覽；仍可開啟完整畫作。",
   sourceBranchSelected: "畫作選擇已儲存。",
   sourceBranchesNotice: "此文件有多份畫作。開啟靈感畫板後可選擇，所有作品都會保留。",
@@ -792,6 +795,7 @@ const zhTw: Record<Keys, string> = {
   modelChanged: "模型已更換，準備好後可重新開啟共畫。",
 };
 const ja: Record<Keys, string> = {
+  preview: "プレビュー",
   layoutLegacyNotice: "以前の注釈は元の位置に保持されます。図と注釈を選択し、その他から関連付けできます。取り消しも可能です。",
   attachAnnotations: "選択した注釈を図に関連付ける",
   sourceBranchPreviewLarge: "大きな作品のためサムネイルを省略しました。完全な作品は開くことができます。",

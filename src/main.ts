@@ -1070,7 +1070,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
           view.commitBoardToolAsset(bound.artboardId, baseRevision, asset, bound.layerId,bound.objectId);
         } };
       },
-      commit: async ({ artboardId, baseRevision, asset }) => {
+      commit: async () => {
         throw new Error("board-transaction-must-bind-target");
       },
     });

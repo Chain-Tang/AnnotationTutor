@@ -380,8 +380,6 @@ export function buildBoardStreamPrompt(request: BoardAgentRequest): string {
   const identity = {
     requestId: request.requestId, baseRevision: request.baseRevision,
   };
-  const w=request.snapshot.width,h=request.snapshot.height;
-  const left=Math.round(w*.18),right=Math.round(w*.86),top=Math.round(h*.25),bottom=Math.round(h*.85);
   if(request.math) return buildBoardPrompt(request)
     .replace("Return ONLY one JSON object; no markdown fences, prose, tools, file operations or executable code. The host applies all drawing operations. Do not call any tools.","Return ONLY newline-delimited JSON events. No prose outside JSON, tools or code.")
     .replace(/^Format: .*$/m,[

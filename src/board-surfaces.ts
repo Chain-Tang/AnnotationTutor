@@ -158,7 +158,7 @@ export function discoverMarkdownBoardSurfaces(
   for (const record of records)
     counts.set(record.key, (counts.get(record.key) ?? 0) + 1);
   return records.flatMap((record, index): BoardSurface[] => {
-    const { element, section, text, blockId } = record;
+    const { element, section, text } = record;
     let key = record.key;
     // Repeated paragraphs need surrounding context. If that is also identical,
     // retain an occurrence suffix; callers must not fuzzy-rebind missing anchors.

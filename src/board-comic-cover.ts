@@ -1,7 +1,7 @@
 import { boardVectorAssetSchema } from "./board-model.js";
 import { parseSvgPathData } from "./board-vector.js";
 import { DefaultBoardToolRuntime } from "./board-tools.js";
-import type { BoardToolEvent, BoardVectorAsset, BoardVectorNode, BoardVectorPaint } from "./board-types.js";
+import type { BoardVectorAsset, BoardVectorNode, BoardVectorPaint } from "./board-types.js";
 
 /** A reproducible native-vector challenge, independent of any image provider. */
 export type BoardArtworkStage = "composition" | "large-forms" | "ink" | "color" | "texture" | "review";

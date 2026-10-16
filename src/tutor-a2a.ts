@@ -1,5 +1,5 @@
-import {AgentCard,Task,Message,StreamResponse,ListTasksResponse,type SendMessageRequest,type GetTaskRequest,type CancelTaskRequest,type SubscribeToTaskRequest,type ListTasksRequest} from '@a2a-js/sdk';
-import {JsonRpcTransportHandler,ServerCallContext,type A2ARequestHandler} from '@a2a-js/sdk/server';
+import {AgentCard,Task,StreamResponse,ListTasksResponse,type SendMessageRequest,type GetTaskRequest,type CancelTaskRequest,type SubscribeToTaskRequest,type ListTasksRequest} from '@a2a-js/sdk';
+import {JsonRpcTransportHandler,type A2ARequestHandler} from '@a2a-js/sdk/server';
 import {UnsupportedOperationError,RequestMalformedError,TaskNotFoundError} from '@a2a-js/sdk/errors';
 import type {TutorMcpTools,TutorClientGrant} from './tutor-mcp.js';
 import type {TutorTask,TutorTaskCoordinator} from './tutor-task.js';

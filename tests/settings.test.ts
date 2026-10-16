@@ -6,6 +6,24 @@ import {
 } from "../src/settings-config.js";
 
 describe("migrateSettings", () => {
+  it.each([undefined, null, 42, true, {}, []])("defaults a malformed memory root without throwing: %j", value => {
+    expect(normalizeMemoryRoot(value)).toBe(DEFAULT_SETTINGS.memoryRoot);
+    expect(migrateSettings({ memoryRoot: value }).memoryRoot).toBe(DEFAULT_SETTINGS.memoryRoot);
+  });
+  it("isolates surface mappings from defaults, input and other migrations", () => {
+    const first = migrateSettings({}), second = migrateSettings({});
+    expect(first.tutorSurfaceIds).not.toBe(DEFAULT_SETTINGS.tutorSurfaceIds);
+    expect(first.tutorSurfaceIds).not.toBe(second.tutorSurfaceIds);
+    first.tutorSurfaceIds["first.md"] = "first";
+    expect(second.tutorSurfaceIds["first.md"]).toBeUndefined();
+    expect(DEFAULT_SETTINGS.tutorSurfaceIds["first.md"]).toBeUndefined();
+    const original = { "existing.md": "existing" };
+    const migrated = migrateSettings({ tutorSurfaceIds: original });
+    expect(migrated.tutorSurfaceIds).toEqual(original);
+    expect(migrated.tutorSurfaceIds).not.toBe(original);
+    migrated.tutorSurfaceIds["existing.md"] = "changed";
+    expect(original["existing.md"]).toBe("existing");
+  });
   it("returns defaults for empty / non-object input", () => {
     expect(migrateSettings(undefined)).toEqual(DEFAULT_SETTINGS);
     expect(migrateSettings(null)).toEqual(DEFAULT_SETTINGS);

@@ -1,6 +1,6 @@
 # Annotation Tutor Lite
 
-> 当前源码候选 **0.5.4**（2026-10-14 核对），尚未完成全部商业与桌面验收。学习、主动关怀和专家核对仍默认关闭。见 [实现状态与 C67 安装记录](docs/qa/implementation-status-20261012/report.md)、[使用与回退](docs/tutor-learning-upgrade.md) 和 [本轮优化核验](docs/optimization-stage2-2026-10-14.md)。
+> 当前本地源码候选 **0.7.7**（2026-10-22 恢复）。验证结果见 [恢复记录](docs/project-recovery-2026-10-22.md)，恢复前状态见 [项目评估](docs/project-assessment-2026-10-22.md)。恢复工程不等于发布版本，也不会更新已安装的库。全部商业与桌面验收仍未完成；学习、主动关怀和专家核对仍默认关闭。[使用与回退](docs/tutor-learning-upgrade.md)。
 
 
 **读到重要的地方，留下自己的理解。**
@@ -70,16 +70,24 @@ PDF 批注使用与 Markdown 一致的高亮颜色变量和样式设置。独立
 
 ### 安装当前源码版本
 
-本页介绍的是本地源码候选 **0.5.4**；远端 Git 分支可能仍落后于本地工作区，克隆后请核对 `manifest.json`。GitHub 最新发行版可能早于源码，请先核对版本号。要获得当前源码，需要 **Node 22.13+** 和 **pnpm 10**：
+本页介绍的是本地源码候选 **0.7.7**；远端 Git 分支可能仍落后于本地工作区，克隆后请核对 `manifest.json` 和当前提交。GitHub 最新发行版可能早于源码，请先核对版本号。开发需要 **Node 22.13+** 和 **pnpm 10**：
 
 ```bash
 git clone https://github.com/Chain-Tang/AnnotationTutor.git
 cd AnnotationTutor
 pnpm install --frozen-lockfile
+npm --prefix extension ci
+pnpm typecheck
+pnpm test
+pnpm test:release
+pnpm package
+pnpm package:verify
 pnpm install:vault -- --vault "/path/to/YourVault"
 ```
 
-安装命令会构建、复制插件文件（包含离线 `assets/fonts/` 字体目录）并更新 Vault 的启用列表。请先保存正在编辑的批注，再重载 Obsidian，或关闭后重新启用插件。**复制新文件不等于运行中的旧插件已经重载。**
+最后一条命令只对选定的测试库执行，并填写库的绝对路径。默认在线安装目前使用 macOS Obsidian CLI：校验程序和凭据兼容性，要求运行中的插件保存并停止任务，备份安装目录，事务式替换，再重载插件并核对版本。请保留输出中的备份路径；任务忙碌或保存失败会阻止替换。
+
+离线安装时，先完全退出 Obsidian，再增加 `--offline`，随后启动 Obsidian 并手动检查加载。离线成功仅代表文件系统检查通过。其他平台需采用离线流程，或另行验证宿主入口。**复制新文件不等于运行中的旧插件已经重载。** [升级与恢复说明 →](docs/tutor-learning-upgrade.md)
 
 ### 安装打包发行版
 
@@ -89,7 +97,7 @@ pnpm install:vault -- --vault "/path/to/YourVault"
 <你的Vault>/.obsidian/plugins/annotation-tutor-lite/
 ```
 
-完整插件 ZIP 和源码安装脚本均包含字体。**仅复制三个常规插件文件不足以安装画板的手写字体。** 在 Obsidian 的第三方插件设置中启用 **Annotation Tutor Lite**。通过 BRAT 安装 `Chain-Tang/AnnotationTutor` 的兼容发行版时，也需确认包含 `assets/fonts/`；否则使用完整 ZIP。BRAT 不会安装尚未发布为发行版的源码改动。
+完整插件 ZIP 和源码安装脚本均包含运行时分包、兼容声明、字体和许可证。**仅复制三个常规插件文件不足以完成安装。** 手动安装后，在 Obsidian 的第三方插件设置中启用 **Annotation Tutor Lite**。更新现有安装时，优先采用带备份与回退的受控安装脚本，避免覆盖运行中的文件。第三方安装工具也必须保留完整封存目录；如果只获取常规插件文件，请改用完整 ZIP。尚未发布的源码改动不会出现在 GitHub 发行附件中。
 
 ### 写下第一条批注
 
@@ -161,10 +169,12 @@ pnpm install --frozen-lockfile
 npm --prefix extension ci
 pnpm typecheck
 pnpm test
-pnpm build
+pnpm test:release
+pnpm package
+pnpm package:verify
 ```
 
-`pnpm dev` 监听构建；`pnpm package` 重新构建插件与扩展并生成发行附件，`pnpm package:verify` 校验封存 ZIP。当前测试数量与保留项见 [本轮优化核验](docs/optimization-stage2-2026-10-14.md)。CI 已配置 Linux、Windows 与 macOS 的类型、测试和打包检查；远端结果需推送后核对。
+`pnpm dev` 监听源码变化；`pnpm build` 仅构建插件产物。`pnpm package` 重新构建插件与扩展并生成完整封存目录和 ZIP，`pnpm package:verify` 校验 ZIP 并写入 `dist/package-verification.json`。当前恢复结果与保留项见 [恢复记录](docs/project-recovery-2026-10-22.md)，旧优化报告只代表对应日期的快照。CI 已配置 Linux、Windows 与 macOS 的类型、测试、发布事务和打包检查，Linux 另有覆盖率检查；远端结果需按审阅的提交核对。发布使用经过审阅的分支／提交及完整 ZIP，详见 [维护交接文档](HANDOFF.md)。
 
 反馈交互问题时，请附上 Obsidian／插件版本、皮肤、视图模式、复现步骤，以及安装后是否确实重载了插件。尽量使用不含隐私信息的示例文档。
 

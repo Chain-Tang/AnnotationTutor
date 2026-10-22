@@ -20,7 +20,7 @@ export type MemoryWriteMode = "direct" | "confirmation";
  * Persisted per-margin-card geometry: drag offset, any user-resized size, and `s`
  * — the CTRL+scroll text zoom scale (1 = default), so a card keeps its zoom too.
  */
-export type CardGeom = { dx: number; dy: number; w?: number; h?: number; s?: number };
+export type CardGeom = { dx: number; dy: number; w?: number; h?: number; s?: number; side?: "left" | "right" | "bottom"; space?: "source" };
 
 /** Which engine produces reviews: a direct HTTPS API, or the OpenCode CLI. */
 export type ReviewEngine = "api" | "opencode";
@@ -146,6 +146,8 @@ export type AnnotationTutorLiteSettings = {
   /** Optional desktop-only local MCP bridge for the typed BoardToolRuntime. */
   boardMcpEnabled: boolean;
   tutorCodexCommand: string;
+  tutorCommunicationEnabled:boolean;
+  tutorCommunicationEngine:"inherit"|"codex";
   tutorRemoteName:string;
   tutorRemoteUrl:string;
   tutorRemoteToken:string;
@@ -177,6 +179,10 @@ export type AnnotationTutorLiteSettings = {
   boardImageWatermark: boolean;
   /** Persist the tutor chat as one Markdown file per session under `<memoryRoot>/chats/`. */
   persistChatLog: boolean;
+  /** Automatic qualitative analysis of saved ordinary learning dialogue in this vault. */
+  learningInsightsEnabled: boolean;
+  /** Source IDs, exact memory-file paths, or folder prefixes excluded from analysis. */
+  learningInsightExcludedSources: string[];
   /** How many saved chat sessions to keep (the oldest is pruned on each save). */
   chatLogKeepSessions: number;
   /** Optional second model tried once if the primary returns an empty review. */
@@ -304,6 +310,8 @@ export const DEFAULT_SETTINGS: AnnotationTutorLiteSettings = {
   boardAnimate: true,
   boardMcpEnabled: false,
   tutorCodexCommand: "codex",
+  tutorCommunicationEnabled:false,
+  tutorCommunicationEngine:"inherit",
   tutorRemoteName:"expert",tutorRemoteUrl:"",tutorRemoteToken:"",
   tutorPairings: [],
   tutorSurfaceIds: {},
@@ -324,6 +332,8 @@ export const DEFAULT_SETTINGS: AnnotationTutorLiteSettings = {
   boardImageThinking: true,
   boardImageWatermark: false,
   persistChatLog: true,
+  learningInsightsEnabled: true,
+  learningInsightExcludedSources: [],
   chatLogKeepSessions: 30,
   agentFallbackModel: "",
   agentTimeoutSeconds: 240,
@@ -414,6 +424,9 @@ export function migrateSettings(loaded: unknown): AnnotationTutorLiteSettings {
   }
   for (const flag of ["learningFlowEnabled","supportCheckinEnabled","learningExpertsEnabled"] as const)
     settings[flag] = settings[flag] === true;
+  settings.learningInsightsEnabled = typeof settings.learningInsightsEnabled === "boolean" ? settings.learningInsightsEnabled : true;
+  settings.learningInsightExcludedSources = Array.isArray(settings.learningInsightExcludedSources)
+    ? [...new Set(settings.learningInsightExcludedSources.filter((value):value is string => typeof value === "string").map(value=>value.trim()).filter(Boolean))] : [];
   if (!["auto","answer","hint","coach","check"].includes(settings.teachingMode)) settings.teachingMode="auto";
   settings.learningDailyMinutes=Number.isFinite(settings.learningDailyMinutes)?Math.max(5,Math.min(180,Math.round(settings.learningDailyMinutes))):20;
   settings.supportRetentionDays=Number.isFinite(settings.supportRetentionDays)?Math.max(1,Math.min(30,Math.round(settings.supportRetentionDays))):7;
@@ -465,6 +478,8 @@ export function migrateSettings(loaded: unknown): AnnotationTutorLiteSettings {
   else settings.tutorSurfaceIds = { ...settings.tutorSurfaceIds };
   for(const key of ["tutorRemoteName","tutorRemoteUrl","tutorRemoteToken"] as const)if(typeof settings[key]!=="string")settings[key]=DEFAULT_SETTINGS[key];
   if(typeof settings.tutorCodexCommand!=="string"||!settings.tutorCodexCommand.trim())settings.tutorCodexCommand="codex";
+  if(typeof settings.tutorCommunicationEnabled!=="boolean")settings.tutorCommunicationEnabled=false;
+  if(settings.tutorCommunicationEngine!=="codex")settings.tutorCommunicationEngine="inherit";
   if (typeof settings.boardMcpEnabled !== "boolean") settings.boardMcpEnabled = false;
   if (typeof settings.boardMcpReadOnly !== "boolean") settings.boardMcpReadOnly = true;
   if (!boardImageProviders.includes(settings.boardImageProvider)) {

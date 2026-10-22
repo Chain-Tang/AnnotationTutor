@@ -44,6 +44,35 @@ describe("parseAgentReview", () => {
     expect(review?.source).toBe("claude-code");
   });
 
+  it.each(["Comment:", "**Comment:**", "**Comment**:", "__Comment：__"])(
+    "preserves inline Markdown after the %s label",
+    (label) => {
+      const comment = '**能指**是 __物质性的单位__，保留 `**代码**` 和 [原文](note.md)。';
+      const question = "怎样理解 **替代** 与 *差异*？";
+      const review = parseAgentReview(
+        `Correctness: correct\n${label} ${comment}\n**Question:** ${question}`,
+        CREATED
+      );
+      expect(review?.summary).toBe(comment);
+      expect(review?.socraticQuestion).toBe(question);
+    }
+  );
+
+  it("preserves emphasis in an unlabelled summary fallback", () => {
+    const review = parseAgentReview("**重要区别**与 __具体例子__。\nCorrectness: uncertain", CREATED);
+    expect(review?.summary).toBe("**重要区别**与 __具体例子__。");
+  });
+
+  it("continues to accept fields whose whole line is emphasized", () => {
+    const review = parseAgentReview(
+      "**Correctness: correct**\n**Comment: 保留 __重点__。**\n__Question: 怎样理解 **替代**？__",
+      CREATED
+    );
+    expect(review?.correctness).toBe("correct");
+    expect(review?.summary).toBe("保留 __重点__。");
+    expect(review?.socraticQuestion).toBe("怎样理解 **替代**？");
+  });
+
   it("returns null when correctness cannot be determined", () => {
     expect(parseAgentReview("This looks mostly right to me.", CREATED)).toBeNull();
   });

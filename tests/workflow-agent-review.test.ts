@@ -22,9 +22,9 @@ const source = readFileSync(new URL("../src/main.ts", import.meta.url), "utf8");
 const methods = source.slice(source.indexOf("  public async askAgent(record:"), source.indexOf("  /** Direct-API engine:")) +
   source.slice(source.indexOf("  private async finishCreate("), source.indexOf("  /** Right-click in Reading view")) +
   source.slice(source.indexOf("  public async changeMemoryRoot("), source.indexOf("  public onSettingsChanged():"));
-const code = transformSync(`class Host { requestingAgents = new Set(); runningAgents = new Set(); ${methods} }; module.exports = Host;`, { loader: "ts", format: "cjs" }).code;
+const code = transformSync(`class Host { requestingAgents = new Set(); runningAgents = new Set(); annotationLearningBusy = new Set(); ${methods} }; module.exports = Host;`, { loader: "ts", format: "cjs" }).code;
 type Host = { askAgent(record: IndexRecord): Promise<void>; finishCreate(annotation: Annotation, ask: boolean): Promise<void>; changeMemoryRoot(value: string): Promise<{ ok: boolean }>;
-  runningAgents: Set<string>; requestingAgents: Set<string>; learningInputsPaused: boolean; indexRefresh: Promise<void> };
+  runningAgents: Set<string>; requestingAgents: Set<string>; annotationLearningBusy: Set<string>; learningInputsPaused: boolean; indexRefresh: Promise<void> };
 
 async function fixture(outcome: () => Promise<ReviewOutcome>, status: Annotation["status"] = "saved") {
   const app = createMockApp();
@@ -46,7 +46,8 @@ async function fixture(outcome: () => Promise<ReviewOutcome>, status: Annotation
   const Constructor = module.exports as { new(): Host };
   const host = new Constructor();
   const capture = vi.fn(outcome), cell = vi.fn(async () => {});
-  Object.assign(host, { settings, store, indexTable, commit: commits, captureApiReview: capture, captureOpenCodeReview: capture, learnerProfileSummary: () => "", activeSceneSummary: () => "", review: { autoSaveCellFromReview: cell } });
+  Object.assign(host, { publishAnnotationInsight: vi.fn(), settings, store, indexTable, commit: commits, captureApiReview: capture, captureOpenCodeReview: capture, learnerProfileSummary: () => "", activeSceneSummary: () => "", review: { autoSaveCellFromReview: cell },
+    stopBoardMcp: vi.fn(async () => {}), stopTutorCommunication: vi.fn(async () => {}) });
   return { host, record, store, capture, commits, cell, notices, settings, app, annotation };
 }
 
@@ -91,6 +92,28 @@ describe("agent review failure recovery", () => {
     expect(f.capture).toHaveBeenCalledTimes(1);
   });
 
+  it("does not start an original review or mutate its task/annotation while same-card depth is running", async () => {
+    const f = await fixture(async () => ({ kind: "ok", reviewText: "Must not run during depth" }));
+    const before = await f.store.readAnnotation(f.annotation.id);
+    const tasksBefore = await f.store.readTasks();
+    f.host.annotationLearningBusy.add(f.annotation.id);
+    await f.host.askAgent(f.record);
+    expect(f.capture).not.toHaveBeenCalled();
+    expect(f.cell).not.toHaveBeenCalled();
+    expect(f.commits).not.toHaveBeenCalled();
+    expect(await f.store.readAnnotation(f.annotation.id)).toEqual(before);
+    expect(await f.store.readTasks()).toEqual(tasksBefore);
+    expect(f.host.runningAgents.size).toBe(0);
+    expect(f.host.requestingAgents.size).toBe(0);
+    expect(f.host.annotationLearningBusy.has(f.annotation.id)).toBe(true);
+    expect(f.notices).toEqual([t("notice.agentBusy", { id: f.annotation.id })]);
+    // Once the continuation releases its card, a normal review can proceed.
+    f.host.annotationLearningBusy.delete(f.annotation.id);
+    await f.host.askAgent(f.record);
+    expect(f.capture).toHaveBeenCalledOnce();
+    expect((await f.store.readTasks())[0]?.status).toBe("completed");
+  });
+
   it("marks a successful review completed and refreshes once after review/cell writes", async () => {
     const f = await fixture(async () => ({ kind: "ok", reviewText: "Helpful review" }));
     await f.host.askAgent(f.record);
@@ -124,19 +147,27 @@ describe("agent review failure recovery", () => {
     const f = await fixture(async () => ({ kind: "empty" }));
     let finishIndex!: () => void;
     f.host.indexRefresh = new Promise(done => { finishIndex = done; });
+    let finishCommunication!: () => void;
+    const drainingCommunication = new Promise<void>(done => { finishCommunication = done; });
     const noOp = async () => {};
-    Object.assign(f.host, { app: f.app, stopLearningRuns: noOp,
+    Object.assign(f.host, { app: f.app, stopLearningRuns: noOp, stopTutorCommunication: () => drainingCommunication,
       tutorConversation: { cancel() {}, flush: noOp, tasks: { cancelAll() {} }, reset() {} },
       expertWrites: [], boards: { changeRoot: noOp, rootChanged() {} },
-      initializeLearningDialogue() {}, initializeTutorResults: noOp, persistSettings: noOp,
+      initializeLearningDialogue() {}, initializeLearningInsights: noOp, initializeTutorResults: noOp, persistSettings: noOp,
       rebuildIndex: noOp, refreshChatViews() {} });
     const switching = f.host.changeMemoryRoot("New Memory");
+    // The input gate must close synchronously, before the first service drain.
+    expect(f.host.learningInputsPaused).toBe(true);
     for (let i = 0; i < 20; i++) await Promise.resolve();
     expect(f.settings.memoryRoot).toBe("Agent Memory");
     expect(f.host.learningInputsPaused).toBe(true);
     await f.host.askAgent(f.record);
     expect(f.capture).not.toHaveBeenCalled();
     expect(await f.store.readTasks()).toHaveLength(0);
+    finishCommunication();
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+    expect(f.settings.memoryRoot).toBe("Agent Memory");
+    expect(f.host.learningInputsPaused).toBe(true);
     finishIndex(); await expect(switching).resolves.toEqual({ ok: true });
     expect(f.settings.memoryRoot).toBe("New Memory");
     expect(f.host.learningInputsPaused).toBe(false);

@@ -31,6 +31,7 @@ export function recordFromAnnotation(
       ? truncate(annotation.reviewText)
       : undefined;
   return {
+    ...(annotation.tracking ? { tracking: annotation.tracking } : {}),
     annotationId: annotation.id,
     memoryFile,
     sourceFile: annotation.sourceFile,
@@ -51,6 +52,9 @@ export function recordFromAnnotation(
     ...(annotation.dialogue && annotation.dialogue.length > 0
       ? { dialogue: annotation.dialogue }
       : {}),
+    ...(annotation.branch ? { branch: annotation.branch } : {}),
+    ...(annotation.request ? { request: annotation.request } : {}),
+    ...(annotation.dialogueRequest ? { dialogueRequest: annotation.dialogueRequest } : {}),
     createdAt: annotation.createdAt,
     updatedAt: annotation.updatedAt
   };
@@ -115,7 +119,7 @@ export class IndexTable {
   public upsert(record: IndexRecord): void {
     this.remove(record.annotationId);
     this.records.set(record.annotationId, record);
-    if (record.anchorOrigin === "generated") {
+    if (record.anchorOrigin === "generated" && !record.branch) {
       const anchors = this.generatedBySource.get(record.sourceFile) ?? new Map<string, string>();
       anchors.set(record.annotationId, record.anchor);
       this.generatedBySource.set(record.sourceFile, anchors);

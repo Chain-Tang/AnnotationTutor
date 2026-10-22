@@ -15,6 +15,15 @@ Generic MCP clients may run `node /absolute/path/to/tutor/scripts/connector.cjs`
 
 The reverse Tutor → Codex workflow is available from Obsidian's **Tutor + Codex collaboration** command. Set the Codex executable in Tutor settings. It uses existing Codex authentication, an ephemeral thread and a temporary working directory; it returns specialist advice/drafts for Tutor to review. It does not modify your current Codex chat or automatically apply expert output.
 
+For ongoing collaboration use **Tutor collaboration spaces** (Tutor 0.6.0+).
+Each space has a dedicated persistent Codex conversation, explicit members,
+editable Markdown context and a dialogue record. Tutors may initiate requests;
+results return to the same space. Pair with the separate communication permission
+and have the space owner add your identity. The `tutor_communication_*` tools
+expose only authorized spaces. Add `instanceId` per tool call to route concurrent
+requests to a fixed vault; omitted IDs retain the selected-vault fallback.
+See [the project communication guide](../../docs/communication/README.md).
+
 ## Build and rollback
 
 Run `node scripts/build-tutor-plugin.mjs` at repository root. Reinstall the resulting plugin and start a fresh Codex task. To roll back, restore the previous plugin folder and Obsidian installation bundle. Preserve Obsidian `data.json` and Vault drawing data. Existing data stays on format v5.

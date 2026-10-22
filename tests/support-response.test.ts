@@ -9,11 +9,11 @@ function fixture(){const shown:string[]=[],signal=new AbortController();return {
 describe('ephemeral semantic support response gate (fake model boundary)',()=>{
  it('keeps a normal reply streaming in one request with no forced support script',async()=>{
   const f=fixture(),transport=vi.fn(async(_instructions:string,onDelta:(d:string)=>void)=>{onDelta(raw({type:'none'},'听你说。'));return {text:''};});
-  const result=await runSupportResponse({...f.options,transport});expect(result.text).toBe('听你说。');expect(f.shown.join('')).toBe(result.text);expect(transport).toHaveBeenCalledOnce();
+  const result=await runSupportResponse({...f.options,transport});expect(result.text).toBe('听你说。');expect(result.tracking).toBeUndefined();expect(f.shown.join('')).toBe(result.text);expect(transport).toHaveBeenCalledOnce();
  });
  it('suppresses unsafe model prose and presents bounded support only after completed transport',async()=>{
   const f=fixture(),data=raw(immediate,'UNSAFE_MODEL_TRAVEL_AND_ALWAYS_ONLINE'),transport=vi.fn(async(_i:string,onDelta:(d:string)=>void)=>{onDelta(data.slice(0,-1));await Promise.resolve();expect(f.shown).toEqual([]);onDelta(data.slice(-1));return {text:data};});
-  const result=await runSupportResponse({...f.options,transport});expect(result.text).toBe(hostSupportReply(immediate,f.options.text));expect(result.text).not.toContain('UNSAFE_MODEL');expect(f.shown).toEqual([result.text]);expect(transport).toHaveBeenCalledOnce();
+  const result=await runSupportResponse({...f.options,transport});expect(result.tracking).toBe('private');expect(result.text).toBe(hostSupportReply(immediate,f.options.text));expect(result.text).not.toContain('UNSAFE_MODEL');expect(f.shown).toEqual([result.text]);expect(transport).toHaveBeenCalledOnce();
  });
  it.each(['cancel','truncated','suffix','source'] as const)('does not present a late fixed response after %s',async kind=>{
   const f=fixture();let stale=false;const data=raw(immediate,'PRIVATE'),transport=vi.fn(async(_i:string,d:(s:string)=>void)=>{d(kind==='truncated'?data.slice(0,-1):data);if(kind==='suffix')d(' extra');if(kind==='cancel')f.signal.abort();if(kind==='source')stale=true;return {text:data};});

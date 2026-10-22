@@ -6,8 +6,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Manually created annotation conversation branches, durable card histories,
+  pinned context, and an editable, zoomable annotation relationship view.
+- Per-vault background learning observations with resumable history backfill,
+  source-linked causal hypotheses, discriminating exercises, and private settings
+  for pausing, excluding, correcting or removing observations.
+
+- Versioned multi-vault collaboration spaces with editable Markdown context and
+  dialogue, durable directed messages, explicit membership and recipient receipts.
+- A dedicated persistent Codex conversation per space; Tutors can initiate
+  requests and receive replies without replacing the desktop main chat.
+- Scoped peer pairing, encrypted credentials outside the Vault, per-call MCP
+  instance routing and a separate background communication switch.
+- Collaboration-only Codex-backed Tutor sessions, isolated by Tutor and space,
+  with persistent recovery and fixed diagnostic codes for failed replies.
+
 ### Fixed
 
+- Recover one proven zero-byte transient chat connection failure on a fresh
+  connection, with a cancelable pause, shared timeout/model-call budget and
+  revalidated annotation associations. Show reconnection progress in cards;
+  never replay partial replies or bypass strict format validation.
+- Restore hidden annotation branches through a dedicated header toggle, separate
+  from each card's continuing conversation. Use the selected custom branch icon
+  in the former memory-cell slot and the brain icon for annotation review.
+- Restore native card text selection, keyboard and selected-text context-menu
+  copy without letting the surrounding source editor take over.
+- Drag cards from blank outer padding and borders, leaving text selection,
+  scrollbars and the resize corner available; persist only real drags.
+- Connect parent and child borders with one continuous curve, without the
+  fixed straight segment at the hover port.
+- Preserve finite reply failure causes across reopening and distinguish
+  connection, timeout, format and provider failures. Keep strict string replies
+  and one guarded format correction, with targeted string/escaping guidance.
+
+- Include the initial annotation and Tutor review in follow-up context; keep
+  failed branch questions durable and reject stale or duplicate reply commits.
+- Preserve legacy chat completion uncertainty and invalidate qualitative learning
+  observations when their source is changed, removed or excluded.
+
+- Keep independent Tutor conversations out of the ACP drawing role while
+  retaining strict model selection and tool isolation.
 - Restore annotation status after failed, empty or cancelled reviews; retain
   completed reviews when a later derived-memory step fails.
 - Replace repeated translation placeholders literally and typecheck complete
@@ -19,6 +60,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   without O_NOFOLLOW, and make CI fixtures portable across paths and CRLF checkouts.
 
 ### Changed
+
+- Show linked conversation annotations directly beside their original text; use
+  three hover-only external ports to add left, right or lower child cards, with
+  independently draggable saved positions and card-local continuing dialogue.
+- Keep branch cards visually identical to existing annotations, removing nested
+  branch lists, default draft labels and relation-page navigation.
+
+- Continue repeated questions in each card through its header conversation
+  button; create breadth through hover-revealed edge ports without coupling
+  parent and child positions. Store both kinds of activity as source-linked
+  observations for optional background learning analysis.
+- Compact conversation navigation and size note inputs to their text instead
+  of stretching them into the available card height.
 
 - Reduce board draft validation and library refresh work; retain awaited durable
   saves and explicit full-index rebuilds.

@@ -19,6 +19,22 @@ function drawingReceipt(requestId:string,durability:SurfaceCommitReceipt["durabi
 }
 
 describe("additional model call budget",()=>{
+  it("assigns durable turn ids and keeps support dialogue out of ordinary tracking",async()=>{
+    const service=new TutorConversation({run:async()=>({text:"answer"})});
+    await service.submit("question",{context:{chat:{replyProtocol:"support"}}});
+    const messages=service.state.history;
+    expect(messages.map(m=>m.tracking)).toEqual(["private","private"]);
+    expect(messages[0]?.persistentId).not.toBe(messages[1]?.persistentId);
+    expect(messages.every(m=>/^[a-f0-9-]{36}$/.test(m.persistentId??""))).toBe(true);
+  });
+  it("uses the trusted executed result to exclude support after normal route preparation",async()=>{
+    let calls=0;
+    const service=new TutorConversation({run:async()=>++calls===2?{text:"bounded support",tracking:"private"}:{text:"ordinary answer"}});
+    await service.submit("ordinary first");await service.submit("support second");await service.submit("ordinary third");
+    expect(service.state.history.map(m=>m.tracking)).toEqual(["ordinary","ordinary","private","private","ordinary","ordinary"]);
+    expect(service.state.history[2]?.completionStatus).toBeUndefined();
+    expect(service.state.history[3]?.completionStatus).toBe("complete");
+  });
   it.each([false,true])("charges a correction to its original turn with semantic preparation=%s",async prepare=>{
     const ready=deferred<void>();let input!:TutorRunnerInput;
     const service=new TutorConversation({

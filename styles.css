@@ -390,8 +390,26 @@
   resize: both;
   overflow-y: auto;
   overflow-x: hidden;
+  /* Obsidian's editor shell can inherit user-select:none. Annotation prose
+     remains native selectable text; only chrome and actual drags suppress it. */
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: grab;
   transition: box-shadow 150ms cubic-bezier(0.22, 1, 0.36, 1);
 }
+
+.atl-rail-review,
+.atl-rail-question,
+.atl-rail-turn,
+.atl-rail-editcard,
+.atl-rail-edit,
+.atl-rail-reply {
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: text;
+}
+
+.atl-rail-card[data-dragging] { cursor: grabbing; }
 
 .atl-rail-card:hover {
   box-shadow: var(--shadow-l);
@@ -809,6 +827,8 @@
 .atl-rail-dialogue {
   flex: none;
   margin-top: var(--size-2-2);
+  padding-top: var(--size-2-2);
+  border-top: 1px solid var(--background-modifier-border);
   display: flex;
   flex-direction: column;
   gap: var(--size-2-2);
@@ -881,8 +901,13 @@
   color: var(--text-muted);
 }
 
-/* Rendered-Markdown tutor turns: tighten block spacing so they read as a chat
-   bubble, not a document. */
+/* Rendered-Markdown reviews and tutor turns share compact card spacing. */
+.atl-rail-md {
+  white-space: normal;
+}
+.atl-rail-md strong {
+  font-weight: var(--font-bold, 700);
+}
 .atl-rail-md > :first-child {
   margin-top: 0;
 }
@@ -908,9 +933,19 @@
   gap: var(--size-2-1);
 }
 
+.atl-rail-reply-row[hidden],
+.atl-branch-send-row[hidden],
+.atl-rail-dialogue-status[hidden] { display: none !important; }
+
+.atl-rail-dialogue-status {
+  color: var(--text-muted);
+  font-size: calc(var(--font-ui-smaller) * var(--atl-card-scale, 1));
+}
+
 .atl-rail-reply {
   flex: 1;
   min-height: 28px;
+  field-sizing: content;
   max-height: 120px;
   resize: none;
   padding: var(--size-2-1) var(--size-2-2);
@@ -3817,3 +3852,154 @@
 .atl-pagination { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:8px; margin:12px 0; }
 .atl-pagination-count { color:var(--text-muted); font-size:var(--font-ui-small); }
 .atl-facet-count { align-self:center; font-size:var(--font-ui-small); }
+
+/* Conversation branches are persisted annotations; these surfaces are views.
+   The header owns disclosure; the edge port adds a node without a footer. */
+.atl-card-conversation[hidden], .atl-rail-dialogue[hidden] { display: none !important; }
+.atl-card-conversation { flex: none; min-width: 0; }
+.atl-rail-card > .atl-rail-edit,
+.atl-branch-detail > .atl-rail-edit { flex: none; field-sizing: content; min-height: 48px; max-height: 240px; overflow-y: auto; }
+.atl-dialogue-toggle[aria-expanded="true"],
+.atl-rail-card-head .atl-dialogue-toggle.is-active { color: var(--text-accent); background: var(--background-modifier-hover); border-radius: var(--radius-s); }
+.atl-rail-turn.atl-has-branch-port,
+.atl-branch-detail.atl-has-branch-port { position: relative; padding-right: 30px; }
+.atl-branch-port {
+  position: absolute; z-index: 2; right: 4px; top: 50%; transform: translateY(-50%);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; min-width: 24px; padding: 0 !important; margin: 0;
+  border: 1px solid var(--background-modifier-border); border-radius: 50%;
+  color: var(--text-muted); background: var(--background-primary); box-shadow: none;
+  font-size: 18px; line-height: 1; cursor: pointer;
+  opacity: 0; pointer-events: none; transition: opacity 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.atl-branch-port::before { content: ""; position: absolute; right: 100%; top: 50%; width: 7px; border-top: 1px solid var(--background-modifier-border); pointer-events: none; }
+.atl-branch-port .svg-icon { width: 14px; height: 14px; }
+.atl-has-branch-port:hover > .atl-branch-port,
+.atl-branch-port:focus-visible { opacity: 1; pointer-events: auto; }
+.atl-branch-port:hover { color: var(--text-accent); border-color: var(--interactive-accent); background: var(--background-primary); box-shadow: var(--shadow-s); }
+.atl-branch-port:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
+.atl-branch-port:disabled { cursor: progress; }
+
+/* Ports share the rail with the card rather than its scrolling contents.
+   Their entire circle stays outside the card. Transparent hit bridges let the
+   pointer cross the small gap without losing the card's hover affordance. */
+.atl-workflow-ports {
+  position: absolute;
+  z-index: 3;
+  overflow: visible;
+  pointer-events: none;
+}
+.atl-workflow-ports[hidden] { display: none !important; }
+.atl-workflow-ports .atl-branch-port {
+  box-sizing: border-box;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  opacity: 0;
+  pointer-events: none;
+}
+.atl-workflow-ports .atl-branch-port::before {
+  content: "";
+  position: absolute;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  width: auto;
+  height: auto;
+  border: 0;
+  pointer-events: inherit;
+}
+.atl-workflow-ports .atl-branch-port[data-direction="left"] {
+  left: -32px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.atl-workflow-ports .atl-branch-port[data-direction="left"]::before {
+  left: 100%;
+  top: -4px;
+  width: 9px;
+  height: 30px;
+}
+.atl-workflow-ports .atl-branch-port[data-direction="right"] {
+  right: -32px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.atl-workflow-ports .atl-branch-port[data-direction="right"]::before {
+  right: 100%;
+  top: -4px;
+  width: 9px;
+  height: 30px;
+}
+.atl-workflow-ports .atl-branch-port[data-direction="bottom"] {
+  left: 50%;
+  bottom: -32px;
+  transform: translateX(-50%);
+}
+.atl-workflow-ports .atl-branch-port[data-direction="bottom"]::before {
+  left: -4px;
+  bottom: 100%;
+  width: 30px;
+  height: 9px;
+}
+.atl-workflow-ports.is-hovered .atl-branch-port,
+.atl-workflow-ports .atl-branch-port:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.atl-workflow-ports.is-hovered .atl-branch-port:disabled { opacity: .65; }
+.atl-workflow-link {
+  fill: none;
+  stroke: var(--text-faint);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: .7;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) { .atl-branch-port { transition: none; } }
+.atl-branch-send-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.atl-branch-status { flex: 1; color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.atl-branch-send { flex: none; }
+.atl-branches { flex: none; border-top: 1px solid var(--background-modifier-border); padding-top: 8px; margin-top: 10px; }
+.atl-branches-head { display: flex; align-items: center; gap: 6px; justify-content: space-between; color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.atl-branches-head button { font-size: var(--font-ui-smaller); }
+.atl-branches-head .atl-iconbtn { width: 24px; height: 24px; min-width: 24px; padding: 3px; color: var(--text-muted); box-shadow: none; background: transparent; }
+.atl-branches-head .atl-iconbtn .svg-icon { width: 15px; height: 15px; }
+.atl-branches-graph { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 3px !important; color: var(--text-muted); box-shadow: none; background: transparent; }
+.atl-branches-graph .svg-icon { width: 15px; height: 15px; }
+.atl-branches-nearby { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0; }
+.atl-branch-link { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-size: var(--font-ui-smaller); padding: 4px 8px; height: auto; min-height: 26px; border: 1px solid var(--background-modifier-border); border-radius: 6px; color: var(--text-muted); box-shadow: none; background: transparent; }
+.atl-branch-link.is-active { border-color: var(--interactive-accent); color: var(--text-accent); background: var(--background-modifier-hover); }
+.atl-branch-detail { border: 1px solid var(--background-modifier-border); border-left: 2px solid var(--interactive-accent); border-radius: 6px; padding: 10px; margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
+.atl-branch-provenance, .atl-branches-empty { color: var(--text-muted); font-size: var(--font-ui-smaller); line-height: 1.5; }
+.atl-branch-question { min-height: 64px; }
+.atl-annotation-graph { display: flex; flex-direction: column; padding: 0 !important; overflow: hidden; height: 100%; }
+.atl-graph-toolbar { display: flex; align-items: center; gap: 8px; padding: 12px; flex-wrap: wrap; border-bottom: 1px solid var(--background-modifier-border); }
+.atl-graph-toolbar span { color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.atl-graph-body { display: flex; flex: 1; min-height: 0; }
+.atl-graph-viewport { flex: 1; position: relative; overflow: hidden; min-width: 180px; background: radial-gradient(var(--background-modifier-border) 1px, transparent 1px); background-size: 20px 20px; touch-action: none; }
+.atl-graph-viewport.is-panning { cursor: grabbing; }
+.atl-graph-scene { position: absolute; inset: 0; transform-origin: 0 0; }
+.atl-graph-edges { position: absolute; pointer-events: none; overflow: visible; }
+.atl-graph-edges path { fill: none; stroke: var(--text-faint); stroke-width: 1.5; }
+.atl-graph-node { position: absolute; box-sizing: border-box; width: 280px; height: 180px; padding: 12px; border: 1px solid var(--background-modifier-border); border-radius: 10px; background: var(--background-primary); box-shadow: var(--shadow-s); display: flex; flex-direction: column; gap: 6px; }
+.atl-graph-node > .atl-branch-port { right: -12px; }
+.atl-graph-node > .atl-branch-port::before { display: none; }
+.atl-graph-node.is-active { border-color: var(--interactive-accent); box-shadow: 0 0 0 1px var(--interactive-accent); }
+.atl-graph-node.is-placeholder { border-style: dashed; opacity: .75; }
+.atl-graph-node-select { align-self: flex-start; font-size: var(--font-ui-smaller); color: var(--text-accent); }
+.atl-graph-node-question, .atl-graph-node-reply { overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.4; font-size: var(--font-ui-small); white-space: pre-wrap; }
+.atl-graph-node-reply { color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.atl-graph-fold { margin-top: auto; font-size: var(--font-ui-smaller); align-self: flex-start; }
+.atl-graph-details { flex: 0 0 min(420px, 45%); min-width: 250px; overflow-y: auto; border-left: 1px solid var(--background-modifier-border); padding: 12px; }
+.atl-graph-details .atl-rail-card { position: relative; width: 100%; max-width: none; min-width: 0; max-height: none; height: auto; resize: none; transform: none; }
+.atl-graph-details .atl-rail-review { max-height: none; }
+.atl-graph-detail-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.atl-graph-empty { padding: 24px; color: var(--text-muted); }
+@media (max-width: 700px) { .atl-graph-body { flex-direction: column; } .atl-graph-details { flex-basis: 45%; max-height: 50%; border-left: 0; border-top: 1px solid var(--background-modifier-border); } }
+.atl-branch-origin { margin: 6px 0; font-size: var(--font-ui-smaller); color: var(--text-muted); }
+.atl-branch-origin summary { cursor: pointer; }
+.atl-branch-origin-reply { max-height: 200px; overflow-y: auto; margin-top: 6px; padding: 6px 8px; border-left: 2px solid var(--background-modifier-border); }

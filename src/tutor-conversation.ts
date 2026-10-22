@@ -14,6 +14,7 @@ import { z } from "zod";
 import type { LearningTurnIdentity } from "./learning-control-v3.js";
 
 export type TutorHistoryMessage = { role: "user" | "assistant"; content: string };
+export type TutorRunnerResult = { text: string; tracking?: "private" };
 export type TutorMode = "ask" | "plan" | "build";
 /** Explicit note edits keep the existing edit/diff flow; visual requests target the open board. */
 export function tutorRouteForText(text: string, context: { mode: TutorMode; pinned: boolean; hasBoard: boolean }): "auto" | "board" | "chat" {
@@ -26,6 +27,12 @@ export function tutorRouteForText(text: string, context: { mode: TutorMode; pinn
 
 export type TutorMessage = {
   id: string;
+  /** Durable transcript identity, independent of the UI/task sequence. */
+  persistentId?: string;
+  source?: "chat" | "board";
+  tracking?: "ordinary" | "private" | "excluded";
+  /** Legacy transcript text may exist without a known completion outcome. */
+  completionStatus?: "complete" | "stopped" | "unknown";
   taskId?: string;
   role: "user" | "assistant";
   text: string;
@@ -37,6 +44,7 @@ export type TutorMessage = {
   events: AcpStreamEvent[];
 };
 export type TutorSubmitOptions = {
+  tracking?: "ordinary" | "private" | "excluded";
   learningRequestId?: string;
   learningTurn?: LearningTurnIdentity;
   /** Opaque local-host drawing/evidence capability; external JSON cannot mint it. */
@@ -74,6 +82,11 @@ export type TutorRunnerInput = {
   /** Reserve budget before another model call in this turn. The runner still
    * enforces its own retry limit; cancelled or completed turns cannot reserve. */
   consumeAdditionalModelCall?: () => void;
+  /** Revalidate pinned annotation/request associations before any extra call. */
+  beforeAdditionalModelCall?: () => Promise<void>;
+  onConnectionRetry?: () => void;
+  /** Host-only transport controls; never included in model context or logs. */
+  apiTransport?: { timeoutMs: number; freshConnection: boolean };
   onReply: (delta: string) => boolean | void;
   onEvent: (event: AcpStreamEvent) => void;
 };
@@ -102,11 +115,17 @@ export type TutorConversationState = {
 type DrawingRetryBinding = { target: TaskTarget; runner: TutorBoardRunner; hasStableTarget: boolean };
 type ConversationAttempt = { text: string; options: TutorSubmitOptions; signal: AbortSignal; settled: boolean; boardStarted: boolean; drawing?: DrawingRetryBinding; retryInvalid?: boolean };
 
+function messageTracking(options: TutorSubmitOptions): "ordinary" | "private" | "excluded" {
+  if (options.tracking) return options.tracking;
+  const context = options.context as { replyProtocol?: unknown; chat?: { replyProtocol?: unknown } } | undefined;
+  return context?.replyProtocol === "support" || context?.chat?.replyProtocol === "support" ? "private" : "ordinary";
+}
+
 type ConversationHost = {
   onActivity?:()=>void;
   tasks?: TutorTaskCoordinator;
   prepare?: (text:string, options:TutorSubmitOptions, history:TutorHistoryMessage[], signal:AbortSignal)=>Promise<TutorSubmitOptions>;
-  run: (input: TutorRunnerInput) => Promise<{ text: string }>;
+  run: (input: TutorRunnerInput) => Promise<TutorRunnerResult>;
   /** Prepare host-owned state before any board preview. run is bound to this
    * task and runs at most once, even if the wrapper calls it again after failure. */
   withBoardRun?: (input: TutorBoardRunInput, run: () => Promise<{ text: string }>) => Promise<{ text: string }>;
@@ -249,9 +268,10 @@ export class TutorConversation {
     this.lastAttempt = text.trim() ? attempt : null;
     this.taskStatus = "running";
     const now = new Date().toISOString();
-    this.messages.push({ id: `${id}-user`, role: "user", text: text.trim() || this.host.boardUpdateLabel?.() || "Board updated",
+    const tracking = messageTracking(options), source = options.source ?? "chat";
+    this.messages.push({ id: `${id}-user`, persistentId: crypto.randomUUID(), source, tracking, role: "user", text: text.trim() || this.host.boardUpdateLabel?.() || "Board updated",
       at: now, status: "complete", boardId, events: [] });
-    const assistant: TutorMessage = { id: `${id}-assistant`, role: "assistant", text: "", at: now,
+    const assistant: TutorMessage = { id: `${id}-assistant`, persistentId: crypto.randomUUID(), source, tracking, role: "assistant", text: "", at: now,
       status: "streaming", boardId, metadata: options.metadata, events: [] };
     this.messages.push(assistant);
     this.latest = ""; this.latestBoard = preparingIntent ? null : boardId ?? (this.hasBoard() ? this.activeBoard : null); this.error = null; this.failure=undefined; this.execution=undefined;
@@ -290,7 +310,9 @@ export class TutorConversation {
           board=this.pickBoard(options);
           if(options.route==="board"&&!board)throw new Error("board-unavailable");
           active.boardId=board?.id??null;assistant.boardId=active.boardId;
-          const user=this.messages.find(m=>m.id===`${id}-user`);if(user)user.boardId=active.boardId;
+          assistant.source=board?"board":source;
+          assistant.tracking=messageTracking(options);
+          const user=this.messages.find(m=>m.id===`${id}-user`);if(user){user.boardId=active.boardId;user.source=assistant.source;user.tracking=assistant.tracking;}
           this.latestBoard=active.boardId;
           if(this.lastAttempt===attempt)attempt.options={...options,key:undefined};
           this.emit();
@@ -312,7 +334,7 @@ export class TutorConversation {
         }
         this.execution=board?.connection?.(); assistant.execution=this.execution;
         this.tasks.phase(task.id, "obsidian", board ? "drawing" : "answering", this.execution); this.emit();
-        let result:{text:string};
+        let result:TutorRunnerResult;
         if(board && this.host.withBoardRun){
           const selected=board,bound=this.tasks.get(task.id,"obsidian").target;
           if(!bound)throw new Error("board-target-unavailable");
@@ -370,6 +392,11 @@ export class TutorConversation {
         }
         assistant.text = reply;
         assistant.status = "complete";
+        assistant.completionStatus = "complete";
+        if(result.tracking==="private"){
+          assistant.tracking="private";
+          const user=this.messages.find(message=>message.id===`${id}-user`);if(user)user.tracking="private";
+        }
         this.tasks.complete(task.id, "obsidian");
         this.latest = assistant.text;
       } catch (error) {
@@ -423,8 +450,9 @@ export class TutorConversation {
     this.lastAttempt = null;
     const id = ++this.sequence;
     const at = new Date().toISOString();
-    this.messages.push({ id: `${id}-user`, role: "user", text: userText, at, status: "complete", boardId: null, events: [] },
-      { id: `${id}-assistant`, role: "assistant", text: assistantText, at, status: "complete", boardId: null, metadata, events: [] });
+    const tracking=(metadata as {tracking?:TutorSubmitOptions["tracking"]}|undefined)?.tracking??"ordinary";
+    this.messages.push({ id: `${id}-user`, persistentId:crypto.randomUUID(), source:"chat", tracking, role: "user", text: userText, at, status: "complete", boardId: null, events: [] },
+      { id: `${id}-assistant`, persistentId:crypto.randomUUID(), source:"chat", tracking, role: "assistant", text: assistantText, at, status: "complete", boardId: null, metadata, events: [] });
     this.latest = assistantText; this.latestBoard = null; this.error = null; this.failure=undefined; this.execution=undefined; this.save(); this.emit();
   }
   retry(): Promise<void> {
@@ -469,6 +497,7 @@ export class TutorConversation {
         ? "图形已落图，保存尚未确认。请先核对本次修改，再仅重试保存；不要重新生成或重复插入。"
         : "本次图形提交结果待核对。请先核对目标中的本次修改；不要重新生成或重复插入。";
     message.status = "complete";
+    message.completionStatus = "complete";
     if (active.id === this.sequence) {
       this.taskStatus = receipt.durability === "committed" ? "complete" : "reconciliation";
       this.latest = message.text; this.latestBoard = active.boardId;
@@ -493,8 +522,8 @@ export class TutorConversation {
   }
   async restore(log: ChatLog): Promise<void> {
     this.reset(); this.log = log; this.mode = log.mode;
-    this.messages = log.turns.map(turn => ({ id: `${++this.sequence}-${turn.role}`, role: turn.role,
-      text: turn.text, at: turn.at, status: "complete", boardId: null, events: [] }));
+    this.messages = log.turns.map(turn => ({ id: `${++this.sequence}-${turn.role}`, persistentId:turn.id??crypto.randomUUID(), source:turn.source??"chat", tracking:turn.tracking??log.tracking??"ordinary", completionStatus:turn.status??"unknown", role: turn.role,
+      text: turn.text, at: turn.at, status: turn.status==="stopped"?"stopped":"complete", boardId: turn.boardId??null, events: [] }));
     this.latest = [...this.messages].reverse().find(m => m.role === "assistant")?.text ?? "";
     this.emit();
     if(!this.host.restoreDrawingTasks)return;
@@ -522,7 +551,7 @@ export class TutorConversation {
         seen.add(task.id);this.tasks.restore([task]);this.tasks.recordSurfaceCommit(receipt,true);
         let message=group.assistant;
         if(!message&&group.user){
-          message={id:group.user.id.replace(/-user$/,"-assistant"),role:"assistant",text:"",at:group.user.at,status:"complete",boardId:receipt.targetId,events:[]};
+          message={id:group.user.id.replace(/-user$/,"-assistant"),persistentId:crypto.randomUUID(),source:"board",tracking:group.user.tracking,role:"assistant",text:"",at:group.user.at,status:"complete",boardId:receipt.targetId,events:[]};
           this.messages.splice(this.messages.indexOf(group.user)+1,0,message);
         }
         if(!message)continue;

@@ -122,18 +122,30 @@ export function emptyLibrarySnapshot(): LibrarySnapshot {
 }
 
 const indexRecordSchema = z.object({
+  tracking: z.enum(["ordinary", "private", "excluded"]).optional(),
   annotationId: z.string(),
   memoryFile: z.string(),
   sourceFile: z.string(),
   anchor: z.string(),
   anchorOrigin: z.enum(["generated", "existing", "legacy"]),
   selectedText: z.string(),
+  sourceType: z.enum(["markdown", "pdf"]).optional(),
+  sourcePage: z.number().int().positive().optional(),
   status: z.string(),
   concepts: z.array(z.string()),
   relatedMemoryCells: z.array(z.string()),
   reviewSummary: z.string().optional(),
+  reviewText: z.string().optional(),
   userNoteSummary: z.string().optional(),
   userNote: z.string().optional(),
+  dialogue: z.array(z.object({ id: z.string().optional(), role: z.enum(["user", "agent"]), text: z.string(), at: z.string() })).optional(),
+  branch: z.object({ parentAnnotationId: z.string(), rootAnnotationId: z.string(), sourceVersion: z.string(),
+    parentReply: z.object({ id: z.string(), kind: z.enum(["review", "dialogue"]), version: z.string(), text: z.string(), question: z.string().optional(), contextVersion: z.string().optional(),
+      history: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string() })).optional() }) }).optional(),
+  request: z.object({ id: z.string(), status: z.enum(["draft", "generating", "completed", "failed", "cancelled", "interrupted"]),
+    question: z.string(), errorCode: z.string().optional(), startedAt: z.string().optional(), contextVersion: z.string().optional(), sourceVersion: z.string().optional(), updatedAt: z.string() }).optional(),
+  dialogueRequest: z.object({ id: z.string(), status: z.enum(["draft", "generating", "completed", "failed", "cancelled", "interrupted"]),
+    question: z.string(), errorCode: z.string().optional(), startedAt: z.string().optional(), contextVersion: z.string().optional(), sourceVersion: z.string().optional(), updatedAt: z.string() }).optional(),
   createdAt: z.string(),
   updatedAt: z.string()
 });
@@ -163,6 +175,7 @@ const diagnosticSchema = z.object({
 
 const libraryCacheSchema = z.object({
   version: z.literal(2),
+  annotationProjectionVersion: z.literal(3),
   annotations: z.array(indexRecordSchema),
   cells: z.array(cellRecordSchema),
   scenes: z.array(sceneRecordSchema),
@@ -291,13 +304,15 @@ export function buildLibrarySnapshot(
 }
 
 export function serializeLibraryCache(snapshot: LibrarySnapshot): string {
-  return `${JSON.stringify(snapshot, null, 2)}\n`;
+  return `${JSON.stringify({ ...snapshot, annotationProjectionVersion: 3 }, null, 2)}\n`;
 }
 
 export function parseLibraryCache(text: string): LibrarySnapshot | null {
   try {
     const result = libraryCacheSchema.safeParse(JSON.parse(text));
-    return result.success ? (result.data as LibrarySnapshot) : null;
+    if (!result.success) return null;
+    const { annotationProjectionVersion: _projectionVersion, ...snapshot } = result.data;
+    return snapshot as LibrarySnapshot;
   } catch {
     return null;
   }

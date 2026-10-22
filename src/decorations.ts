@@ -175,6 +175,9 @@ const annotationViewPlugin = ViewPlugin.fromClass(
 const annotationClickHandler = EditorView.domEventHandlers({
   mousedown(event) {
     const target = event.target as HTMLElement | null;
+    // Annotation cards and their workflow ports belong to the overlay, never
+    // to the original-text marker even when they carry the same annotation id.
+    if (target?.closest(".atl-rail, .atl-rail-svg")) return false;
     const el = target?.closest<HTMLElement>("[data-atl-id]");
     if (!el || el.classList.contains("atl-marker")) return false;
     const id = el.getAttribute("data-atl-id");

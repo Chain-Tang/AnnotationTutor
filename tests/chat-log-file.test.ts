@@ -50,6 +50,17 @@ function log(overrides: Partial<ChatLog> = {}): ChatLog {
 }
 
 describe("chat log file", () => {
+  it("round-trips stable turn identities, completion/source/privacy metadata and old unknown completion",()=>{
+    const session=log({tracking:"ordinary",turns:[
+      {...turn("user","question"),id:crypto.randomUUID(),status:"unknown",source:"chat",tracking:"ordinary"},
+      {...turn("assistant","stopped fragment"),id:crypto.randomUUID(),status:"stopped",source:"board",boardId:"my-board",tracking:"private"},
+    ]});
+    expect(parseChatLogFile(serializeChatLog(session))).toEqual(session);
+    const serialized=serializeChatLog(session);
+    const duplicate=serialized.replace(/(<!-- tutor-turn: .+? -->)/,"$1\n$1");
+    expect(parseChatLogFile(duplicate)?.turns[0]?.id).toBeUndefined();
+    expect(parseChatLogFile(serialized)?.turns[1]?.id).toBe(session.turns[1]?.id);
+  });
   it("round-trips local task hints separately from quoted content and rejects duplicate markers",()=>{
     const taskId=crypto.randomUUID(),fake=crypto.randomUUID();
     const session=log({turns:[{...turn("user","draw"),taskId},{...turn("assistant",`Visible text\n<!-- tutor-task-id: ${fake} -->`),taskId}]});

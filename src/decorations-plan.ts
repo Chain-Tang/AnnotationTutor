@@ -2,7 +2,7 @@
 // runtimes, so source locations can be tested without an editor DOM. `decorations.ts` turns these plans into real CM6 ranges.
 
 import type { Text } from "@codemirror/state";
-import type { DialogueTurn } from "./model.js";
+import type { AnnotationBranch, AnnotationRequest, DialogueTurn } from "./model.js";
 import type { HighlightStyle } from "./settings.js";
 import { findTableInLines } from "./editor.js";
 
@@ -20,6 +20,11 @@ export type AnchorMark = {
   reviewQuestion?: string;
   /** In-annotation dialogue turns, rendered as a thread in the margin card. */
   dialogue?: DialogueTurn[];
+  /** Conversation children share their root's source anchor, without decorating it. */
+  branch?: AnnotationBranch;
+  request?: AnnotationRequest;
+  dialogueRequest?: AnnotationRequest;
+  sourceFile?: string;
 };
 
 export type DecoPlan =

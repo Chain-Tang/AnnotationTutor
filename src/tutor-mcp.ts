@@ -12,9 +12,12 @@ import type { ContextGrant, TaskArtifact, TutorTask, TutorTaskCoordinator } from
 import { SurfaceCommitError, requireDurableSurfaceCommit, surfaceDigest, surfaceSignature, type ChangeSet, type SurfaceAdapter, type SurfaceCommitResult } from "./tutor-surface.js";
 import { surfaceReceiptSchema, SURFACE_TRANSACTION_POLICY, type SurfaceTransactionJournal, type SurfaceTransactionRecord } from "./surface-transaction-journal.js";
 import { ServiceWork } from "./service-work.js";
+import { registerTutorCommunicationTools, type TutorCommunicationGateway } from "./tutor-communication-mcp.js";
+import type { CommunicationIdentity } from "./tutor-communication.js";
 
-export type TutorClientGrant = ContextGrant & { learningEvidence?:boolean; name:string; documents:string[]; createdAt:string };
+export type TutorClientGrant = ContextGrant & { learningEvidence?:boolean; communication?:boolean; communicationIdentity?:CommunicationIdentity; name:string; documents:string[]; createdAt:string };
 export type TutorMcpHost = {
+  communication?:TutorCommunicationGateway;
   transactions?:SurfaceTransactionJournal;
   learningContext?(query:LearningContextQuery):Promise<LearningContextSnapshot>;
   tasks:TutorTaskCoordinator;
@@ -36,10 +39,11 @@ export class TutorMcpTools {
   private readonly inputs=new Map<string,{prompt:string;source?:string}>();
   private readonly pendingCommits=new Map<string,{signature:string;promise:Promise<SurfaceCommitResult>}>();
   private readonly recovering=new Map<string,Set<AbortController>>();
+  private readonly communicating=new Map<string,Set<AbortController>>();
   private readonly work=new ServiceWork();
   private readonly clients=new Set<string>();
   constructor(private readonly host:TutorMcpHost){}
-  revoke(clientId:string):void{this.revoked.add(clientId);this.host.tasks.cancelAll(clientId);for(const abort of this.recovering.get(clientId)??[])abort.abort();}
+  revoke(clientId:string):void{this.revoked.add(clientId);this.host.tasks.cancelAll(clientId);for(const abort of this.recovering.get(clientId)??[])abort.abort();for(const abort of this.communicating.get(clientId)??[])abort.abort();}
   /** Permanent closure. Restart with a new service; old grant closures stay closed. */
   close():Promise<void>{
     if(this.work.closed)return this.work.close();
@@ -49,7 +53,7 @@ export class TutorMcpTools {
   }
 
   async invoke(grant:TutorClientGrant,name:string,args:Record<string,unknown>):Promise<Record<string,unknown>>{
-    const server=this.server(grant),client=new Client({name:"tutor-a2a-transport",version:"0.3.0"}),[a,b]=InMemoryTransport.createLinkedPair();
+    const server=this.server(grant),client=new Client({name:"tutor-a2a-transport",version:"0.6.0"}),[a,b]=InMemoryTransport.createLinkedPair();
     try{await server.connect(b);await client.connect(a);const result=CallToolResultSchema.parse(await client.callTool({name,arguments:args}));if(result.isError)throw new Error(result.content.filter(c=>c.type==="text").map(c=>c.text).join(" "));return result.structuredContent??{};}
     finally{await client.close();await server.close();}
   }
@@ -114,7 +118,7 @@ export class TutorMcpTools {
   }
   server(grant:TutorClientGrant):McpServer{
     this.work.assertOpen();
-    const server=new McpServer({name:"tutor",version:"0.3.0"},{instructions:"Tutor has independent reasoning and learning context. Work only with granted documents and surfaces. Start long tasks then query their status. Changes require the original scene revision; never retry a stale commit blindly. A completed reasoning task is not a committed drawing."});
+    const server=new McpServer({name:"tutor",version:"0.6.0"},{instructions:"Tutor has independent reasoning and learning context. Work only with granted documents and surfaces. Start long tasks then query their status. Changes require the original scene revision; never retry a stale commit blindly. A completed reasoning task is not a committed drawing."});
     const tool=<I extends z.ZodRawShape,O extends z.ZodRawShape>(name:string,description:string,inputSchema:I,outputSchema:O,readOnlyHint:boolean,run:(input:z.infer<z.ZodObject<I>>,signal:AbortSignal)=>Promise<z.infer<z.ZodObject<O>>>)=>{
       const callback: ToolCallback<z.ZodRawShape> = async(input,extra):Promise<CallToolResult>=>{
         try{
@@ -223,6 +227,16 @@ export class TutorMcpTools {
     tool("tutor_list_tasks","List this client's recent tasks.",{offset:page},{tasks:z.array(taskSchema)},true,async({offset})=>({tasks:this.host.tasks.list(grant.clientId,offset)}));
     tool("tutor_task_events","Read bounded progress events after a sequence number.",{taskId:id,after:page},{events:z.array(z.object({sequence:z.number(),at:z.number(),type:z.string(),data:z.unknown()}))},true,async({taskId,after})=>({events:this.host.tasks.events(taskId,grant.clientId,after)}));
     tool("tutor_cancel_task","Cancel a task and all its children. Late results cannot commit.",{taskId:id},{task:taskSchema},false,async({taskId})=>{this.host.tasks.cancel(taskId,grant.clientId);return {task:this.host.tasks.get(taskId,grant.clientId)};});
+    if(this.host.communication){
+      const gateway=this.host.communication;
+      registerTutorCommunicationTools((name,description,input,output,readOnly,run)=>tool(name,description,input,output,readOnly,async(args,signal)=>{
+        const abort=new AbortController(),cancel=()=>abort.abort(),active=this.communicating.get(grant.clientId)??new Set<AbortController>();
+        active.add(abort);this.communicating.set(grant.clientId,active);signal.addEventListener("abort",cancel,{once:true});
+        if(signal.aborted||this.revoked.has(grant.clientId))cancel();
+        try{return await run(args,abort.signal);}
+        finally{signal.removeEventListener("abort",cancel);active.delete(abort);if(!active.size)this.communicating.delete(grant.clientId);}
+      }),grant,gateway);
+    }
     return server;
   }
 }

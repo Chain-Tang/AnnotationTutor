@@ -48,6 +48,9 @@ import {planVectorEdit} from "./board-vector-agent.js";
 import { CodexAppServerAdapter } from "./tutor-codex.js";
 import { TutorCollaboration } from "./tutor-collaboration.js";
 import { TutorCollaborationModal } from "./tutor-collaboration-modal.js";
+import { TutorCommunicationController } from "./tutor-communication-controller.js";
+import { TutorCommunicationModal } from "./tutor-communication-modal.js";
+import { communicationIdentityKey, type CommunicationIdentity } from "./tutor-communication.js";
 import { DirectTutorAdapter, AcpTutorAdapter } from "./tutor-agent-adapters.js";
 import { TutorMcpTools } from "./tutor-mcp.js";
 import { TutorPairingModal } from "./tutor-pairing-modal.js";
@@ -103,6 +106,9 @@ import {
   lineTextWithoutBlockId
 } from "./editor.js";
 import { IndexTable, recordFromAnnotation } from "./index-table.js";
+import { assembleAnnotationContext, AnnotationContextError, isRootAnnotation, type AnnotationReplyTarget } from "./annotation-branches.js";
+import { ANNOTATION_GRAPH_VIEW_TYPE, AnnotationGraphView } from "./views/annotation-graph.js";
+import { LearningInsightService, commitFromAnnotation, commitFromChatLog, type LearningConversationCommit } from "./learning-insight.js";
 import { GenerationRefreshQueue } from "./refresh-queue.js";
 import {
   emptyLibrarySnapshot,
@@ -130,6 +136,7 @@ import {
   type HttpRequestJson
 } from "./api-runner.js";
 import { parseAgentReview } from "./markdown/review.js";
+import { parseAnnotationFile } from "./markdown/annotation-file.js";
 import { freeModels, pickDefaultModel } from "./agent-models.js";
 import { VaultStore } from "./store.js";
 import { MemoryWatcher } from "./watcher.js";
@@ -140,7 +147,8 @@ import { createBoardAgent } from "./board-agent.js";
 import { createOpenAIImageProvider, createQwenImageProvider } from "./board-image-provider.js";
 import { createSemanticVectorizationProvider } from "./board-vectorization.js";
 import { nodeHttpStream, streamChatCompletion } from "./api-stream.js";
-import { beginConversationDiagnostic, conversationDiagnostics } from "./conversation-diagnostics.js";
+import { beginConversationDiagnostic, conversationDiagnostics, ConversationTransportError } from "./conversation-diagnostics.js";
+import { annotationReplyFailureCode, annotationReplyFailureMessage } from "./annotation-reply-status.js";
 import { learningApiProtocol, supportsLearningReplyTool } from "./learning-api-protocol.js";
 import { runSupportResponse } from "./support-response.js";
 import { resolveSupportStorageContext } from "./support-storage-context.js";
@@ -182,6 +190,8 @@ import {
   type DialogueReplyResult
 } from "./margin-rail.js";
 import { ReadingRail } from "./reading-rail.js";
+import { flushMarginConversationDrafts, type AnnotationReplyProgressHandler } from "./margin-card.js";
+import { ConversationRecovery } from "./conversation-recovery.js";
 import {
   BUILTIN_SKINS,
   mergeSkins,
@@ -297,6 +307,9 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   public librarySnapshot: LibrarySnapshot = emptyLibrarySnapshot();
   /** Public for the chat view (session persistence talks to the vault directly). */
   public store!: VaultStore;
+  public learningInsights?: LearningInsightService;
+  private readonly annotationGraphListeners = new Set<() => void>();
+  private insightReconcileTimer?: ReturnType<typeof setTimeout>;
   private watcher!: MemoryWatcher;
   private boards!: InspirationBoards;
   private openStudioLibrary: (() => Promise<void>) | null = null;
@@ -364,6 +377,10 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   private boardToolRuntime!: DefaultBoardToolRuntime;
   private tutorTools?: TutorMcpTools;
   private tutorDiscoveryPath?: string;
+  private communicationController?:TutorCommunicationController;
+  private communicationInitialization?:Promise<TutorCommunicationController>;
+  private communicationStopping?:Promise<void>;
+  private communicationGeneration=0;
   private tutorPairingPending=false;
   private boardMcp: LocalBoardMcpAdapter | null = null;
   private boardMcpEndpoint: { host: "127.0.0.1"; port: number; token: string } | null = null;
@@ -402,7 +419,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   private supportPointers = new Map<Document,Set<number>>();
   private supportInputAt=0;
   public supportQuiet():boolean {return !tutorActivityBusy() && !this.supportComposition.size && ![...this.supportPointers.values()].some(s=>s.size) && !this.tutorConversation.state.busy && !this.tutorConversation.tasks.busy && !this.runningAgents.size && !this.learning?.busy && Date.now()-this.supportInputAt>1200;}
-  public learningActivity():void {void this.support?.activity(this.settings.supportCheckinEnabled).catch(()=>{});}
+  public learningActivity():void {this.learningInsights?.foregroundStarted();void this.support?.activity(this.settings.supportCheckinEnabled).catch(()=>{});}
   private async initializeSupport(startup: StartupLifetime = this.startupLifetime):Promise<void>{
     let cipher:SupportCipher|undefined,appData=`${homedir()}/Library/Application Support`;
     try {const loader=require;const remote=loader("@electron/remote") as {safeStorage:SupportCipher;app:{getPath(name:string):string}};cipher=remote.safeStorage;appData=remote.app.getPath("appData");} catch { /* Ephemeral support remains available without OS encryption. */ }
@@ -664,8 +681,12 @@ export default class AnnotationTutorLitePlugin extends Plugin {
           id: makeId("CHAT", (await this.store.listChatLogs()).map(head => head.id)),
           title: chatTitleFrom(messages[0]?.text ?? "Tutor"), createdAt: now
         }), engine: this.settings.chatEngine, mode, status: "active", updatedAt: now,
-          turns: messages.map(message => ({ role: message.role, text: message.text, at: message.at, ...(message.taskId?{taskId:message.taskId}:{}) })) };
+          turns: messages.map(message => ({ id:message.persistentId,role: message.role, text: message.text, at: message.at,
+            status:message.completionStatus??(message.status==="complete"?"complete":"stopped"),source:message.source,tracking:message.tracking,
+            ...(message.boardId?{boardId:message.boardId}:{}),...(message.taskId?{taskId:message.taskId}:{}) })) };
         await this.store.saveChatLog(log);
+        void this.learningInsights?.commit(commitFromChatLog(log,`${this.store.chatsDir()}/${log.id}.md`)).catch(()=>{});
+        this.scheduleInsightReconcile();
         return log;
       }
     });
@@ -813,6 +834,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     const phases=new Map<string,string>();
     this.register(this.tutorConversation.tasks.subscribe(task=>{const key=`${task.state}:${task.phase}`;if(phases.get(task.id)===key)return;phases.set(task.id,key);if(phases.size>200)phases.delete(phases.keys().next().value!);void this.tutorJournal!.record(task).catch(()=>{});const rootId=task.parentId??task.id;if(this.recoveredExpertRoots.has(rootId)){const saving=this.saveExpertResult(rootId).catch(()=>{new Notice("专家结果暂未保存，当前结果仍可查看。");});this.expertWrites.add(saving);void saving.finally(()=>this.expertWrites.delete(saving));}}));
     this.addCommand({id:"tutor-codex-collaboration",name:t("board.collaborationTitle"),callback:()=>new TutorCollaborationModal(this.app,this.tutorConversation.tasks,(prompt,experts)=>this.delegateTutorToCodex(prompt,experts),!!this.settings.tutorRemoteUrl).open()});
+    this.addCommand({id:"tutor-communication-spaces",name:t("upgrade.communicationTitle"),callback:()=>void this.openTutorCommunication().catch(error=>new Notice(String(error)))});
     this.addCommand({id:"create-excalidraw-drawing",name:t("board.excalidrawCreate"),callback:()=>void this.createExcalidrawDrawing().catch(error=>new Notice(String(error)))});
     const openStudio = async (sourceFile: string) => {
       const leaf = this.app.workspace.getLeaf("tab");
@@ -884,7 +906,20 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       save: (id, note) => void this.saveNoteInline(id, note),
       ask: (id, note) => void this.askFromCard(id, note),
       discuss: (id) => void this.openChatForAnnotation(id),
-      reply: (id, message) => this.replyInAnnotation(id, message),
+      reply: (id, message, onProgress) => this.replyInAnnotation(id, message, onProgress),
+      continueDialogue: (id, message, onProgress) => this.replyInAnnotationBranch(id, message, true, onProgress),
+      saveDialogueDraft: (id, note) => this.saveAnnotationDialogueDraft(id, note),
+      createConversation: (id, target) => this.createAnnotationConversation(id, target),
+      saveDraft: (id, note) => this.saveAnnotationConversationDraft(id, note),
+      graphCards: () => this.annotationGraphCards(),
+      // The local relation controller has already selected the newly created card.
+      openAnnotation: () => {},
+      refreshParent: async id => {
+        const updated=await this.store.refreshConversationParent(id);
+        if(updated)this.indexTable.upsert(recordFromAnnotation(updated,this.store.annotationPath(id)));
+        this.notifyAnnotationGraph();
+      },
+      subscribeGraph: listener => this.subscribeAnnotationGraph(listener),
       render: (el, markdown, annotationId) =>
         MarkdownRenderer.render(
           this.app,
@@ -909,7 +944,9 @@ export default class AnnotationTutorLitePlugin extends Plugin {
           dy: geom.dy,
           ...(geom.w ? { w: geom.w } : {}),
           ...(geom.h ? { h: geom.h } : {}),
-          ...(geom.s ? { s: geom.s } : {})
+          ...(geom.s ? { s: geom.s } : {}),
+          ...(geom.side ? { side: geom.side } : {}),
+          ...(geom.space ? { space: geom.space } : {})
         };
         this.scheduleCardGeomSave();
       }
@@ -934,6 +971,12 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       (leaf) => new DashboardView(leaf, this)
     );
     this.registerView(CHAT_VIEW_TYPE, (leaf) => new ChatView(leaf, this));
+    this.registerView(ANNOTATION_GRAPH_VIEW_TYPE, leaf => new AnnotationGraphView(leaf, {
+      snapshot: () => this.annotationGraphCards(),
+      openAnnotation: async id => {const record=this.indexTable.get(id);if(record)await this.app.workspace.openLinkText(record.memoryFile,"",false);},
+      locateSource: async id => { const record=this.indexTable.get(id); if(record)await this.openAnnotation(record); },
+      subscribe: listener => this.subscribeAnnotationGraph(listener)
+    }));
     this.registerView(BOARD_VIEW_TYPE, (leaf) => new StandaloneBoardView(leaf, {
       open: (sourceFile) => this.boards.openStandalone(sourceFile),
       chooseVersion: (sourceFile, boardId) => this.boards.openSavedStandalone(sourceFile, boardId),
@@ -1169,6 +1212,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     );
     this.registerEvent(
       this.app.vault.on("modify", (file) => {
+        this.scheduleInsightReconcile(file.path);
         void this.boards.changed(file.path).catch(error => console.error("Tutor board", error));
         this.watcher.notify(file.path);
         if (file instanceof TFile && file.extension === "md") {
@@ -1180,6 +1224,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     );
     this.registerEvent(
       this.app.vault.on("create", (file) => {
+        this.scheduleInsightReconcile(file.path);
         this.watcher.notify(file.path);
         void this.boards.changed(file.path,"create").catch(error => console.error("Tutor board", error));
         if (file instanceof TFile && file.extension === "md") this.queueOfficialWebClip(file);
@@ -1187,6 +1232,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     );
     this.registerEvent(
       this.app.vault.on("delete", (file) => {
+        this.scheduleInsightReconcile(file.path);
         void this.boards.changed(file.path,"delete").catch(error => console.error("Tutor board", error));
         this.translation.onFileDeleted(file.path);
         this.watcher.notify(file.path);
@@ -1194,6 +1240,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     );
     this.registerEvent(
       this.app.vault.on("rename", (file, oldPath) => {
+        this.scheduleInsightReconcile(oldPath);this.scheduleInsightReconcile(file.path);
         if(this.settings.tutorSurfaceIds[oldPath]){
           const id=this.settings.tutorSurfaceIds[oldPath]!;this.confirmedSurfaceIds.delete(id);
           for(const leaf of this.app.workspace.getLeavesOfType("excalidraw")){const adapter=this.excalidrawSurfaces.get(leaf.view);if(adapter?.id===id)adapter.setIdentityReady(false);}
@@ -1232,6 +1279,10 @@ export default class AnnotationTutorLitePlugin extends Plugin {
           if (startup.active) console.error("Tutor custom skins", error);
         });
       });
+      this.startupIdle.defer(() => {
+        if(!startup.active||!this.desktopState||!this.settings.tutorCommunicationEnabled)return;
+        void this.desktopState.read("communication-identity.json").then(raw=>raw&&startup.active?this.tutorCommunication():undefined).catch(()=>{});
+      });
     });
   }
 
@@ -1257,23 +1308,28 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     // must flush below. Ordinary running/awaiting-input tasks continue to block.
     this.tutorConversation.tasks.pauseWhenIdle({allowDurableReconciliation:this.surfaceTransactions?.status().available===true});
     this.upgrading=true;
+    this.learningInsights?.foregroundStarted();
     this.clipperGeneration++;
     const restoreClipper=this.settings.webEnabled;
     const restoreMcp=this.settings.boardMcpEnabled;
     try {
       await this.mcpApply.catch(()=>{});
       await this.stopBoardMcp();
+      await this.stopTutorCommunication();
       await this.externalGenerations.close();
       const clipper=this.webBridge;this.webBridge=null;
       await clipper?.stop();
       await this.clipperApply.catch(()=>{});
       await Promise.all([...this.localRecoveries]);
       await this.stopLearningRuns();
+      await flushMarginConversationDrafts();
+      await this.store.drainConversationWrites();
       await this.tutorConversation.flush();
       await this.learning?.store.flush();
       await this.learningV2?.flush();
       await this.learningV3?.flush();
       await this.support?.flush();
+      await this.learningInsights?.flush();
       await this.credentials?.flush();
       await this.surfaceTransactions?.flush();
       await this.clipperReceipts?.flush();
@@ -1286,6 +1342,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       }
     } catch (error) {
       this.upgrading=false;
+      void this.learningInsights?.refreshSettings().catch(()=>{});
       this.externalGenerations = new ExternalGenerationGate();
       this.tutorConversation.tasks.resume();
       await this.boards.sync().catch(()=>{});
@@ -1297,6 +1354,10 @@ export default class AnnotationTutorLitePlugin extends Plugin {
 
   public override onunload(): void {
     this.pluginUnloaded = true;
+    this.learningInsights?.dispose();
+    if(this.insightReconcileTimer)clearTimeout(this.insightReconcileTimer);
+    this.annotationGraphListeners.clear();
+    void this.stopTutorCommunication();
     this.translation?.dispose();
     this.startupLifetime.cancel();
     this.startupIdle.dispose();
@@ -1356,6 +1417,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   }
 
   public async persistSettings(): Promise<void> {
+    this.learningInsights?.foregroundStarted();
     this.translation?.onSettingsChanged();
     setTeachingPolicy({mode:this.settings.teachingMode,audience:"adult",version:1});
     // Invalidate synchronously: an old provider must not commit while settings
@@ -1378,6 +1440,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     }
     await this.saveSettingsSecurely();
     if (this.pluginUnloaded) return;
+    await this.learningInsights?.refreshSettings().catch(()=>{});
     if(!this.settings.supportCheckinEnabled)this.support?.skip();
     if(this.learning && this.settings.learningFlowEnabled && !this.learning.episodes.length)await this.learning.load();
     if (this.pluginUnloaded) return;
@@ -1387,6 +1450,69 @@ export default class AnnotationTutorLitePlugin extends Plugin {
 
   public boardDrawingDiagnostics(): ReturnType<typeof drawingDiagnostics> { return drawingDiagnostics(); }
   public conversationDiagnostics(): ReturnType<typeof conversationDiagnostics> { return conversationDiagnostics(this); }
+
+  private tutorCommunication():Promise<TutorCommunicationController>{
+    if(this.pluginUnloaded||this.upgrading||!this.settings.tutorCommunicationEnabled)return Promise.reject(new Error("communication-service-unavailable"));
+    if(this.communicationStopping)return Promise.reject(new Error("communication-service-stopping"));
+    if(this.communicationController)return Promise.resolve(this.communicationController);
+    if(this.communicationInitialization)return this.communicationInitialization;
+    const adapter=this.app.vault.adapter;
+    if(!(adapter instanceof FileSystemAdapter)||!this.desktopState)return Promise.reject(new Error("communication-requires-desktop"));
+    const storage=detectDesktopPrivateStorage();
+    const generation=this.communicationGeneration;
+    const work=TutorCommunicationController.create({app:this.app,root:`${this.settings.memoryRoot}/communication`,state:this.desktopState,vaultPath:adapter.getBasePath(),appData:storage.appData,cipher:storage.cipher,
+      command:this.settings.tutorCodexCommand,env:this.agentSpawnEnv(),pairings:()=>this.settings.tutorPairings,tutorEngine:this.settings.tutorCommunicationEngine,
+      runTutor:async(prompt,context,signal)=>{
+        if(this.pluginUnloaded||this.upgrading||!this.settings.tutorCommunicationEnabled)throw new Error("communication-service-unavailable");
+        const tasks=this.tutorConversation.tasks,task=tasks.start({clientId:"communication-local",lead:"tutor",agent:"tutor"});
+        try{
+          const result=await this.externalGenerations.run("communication-local",signal,active=>tutorServiceRunner(()=>this.settings,tasks,()=>this.agentSpawnEnv(),{intent:"chat"})({task,prompt,context,signal:active,emit:()=>{}}));
+          signal.throwIfAborted();tasks.complete(task.id,task.clientId,result);
+          const text=result.filter(item=>item.type==="text").map(item=>String((item.data as {text?:string}).text??"")).join("\n");if(!text.trim())throw new Error("communication-empty-tutor-reply");return text;
+        }catch(error){tasks.fail(task.id,task.clientId,"communication-failed","Communication reply was not confirmed.");throw error;}
+      },
+    }).then(async controller=>{
+      if(this.pluginUnloaded||this.upgrading||!this.settings.tutorCommunicationEnabled||generation!==this.communicationGeneration){await controller.close();throw new Error("communication-service-unavailable");}
+      this.communicationController=controller;return controller;
+    });
+    this.communicationInitialization=work;
+    void work.finally(()=>{if(this.communicationInitialization===work)this.communicationInitialization=undefined;}).catch(()=>{});
+    return work;
+  }
+  private stopTutorCommunication():Promise<void>{
+    if(this.communicationStopping)return this.communicationStopping;
+    this.communicationGeneration++;
+    const controller=this.communicationController,pending=this.communicationInitialization;
+    this.communicationController=undefined;this.communicationInitialization=undefined;
+    const closing=controller?.close();
+    const stopping=(async()=>{const late=await pending?.catch(()=>undefined);await closing;if(late&&late!==controller)await late.close();})();
+    this.communicationStopping=stopping;
+    void stopping.finally(()=>{if(this.communicationStopping===stopping)this.communicationStopping=undefined;}).catch(()=>{});
+    return stopping;
+  }
+  public async openTutorCommunication():Promise<void>{
+    if(!this.settings.tutorCommunicationEnabled)await this.setTutorCommunicationEnabled(true);
+    const controller=await this.tutorCommunication();
+    new TutorCommunicationModal(this.app,controller.ui()).open();
+  }
+  public async setTutorCommunicationEnabled(enabled:boolean):Promise<void>{
+    this.settings.tutorCommunicationEnabled=enabled;
+    const stopping=enabled?undefined:this.stopTutorCommunication();
+    await this.saveSettingsSecurely();
+    await this.stopBoardMcp();
+    if(!enabled)await stopping;
+    else await this.tutorCommunication();
+    await this.applyBoardMcp();
+  }
+  public async setTutorCommunicationEngine(engine:"inherit"|"codex"):Promise<void>{
+    if(engine!=="inherit"&&engine!=="codex")throw new Error("communication-engine-invalid");
+    if(this.settings.tutorCommunicationEngine===engine)return;
+    this.settings.tutorCommunicationEngine=engine;
+    const stopping=this.stopTutorCommunication();
+    await this.stopBoardMcp();await stopping;await this.saveSettingsSecurely();
+    if(this.settings.tutorCommunicationEnabled)await this.tutorCommunication();
+    await this.applyBoardMcp();
+  }
 
   private tutorJournal?:TutorJournal;
   public tutorResults?:TutorResultStore;
@@ -1575,28 +1701,40 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     return captureStudySource(this,source,view);
   }
 
-  private async pairTutorClient(name:string,signal?:AbortSignal):Promise<{token:string;clientId:string}>{
+  private async pairTutorClient(name:string,signal?:AbortSignal,communicationIdentity?:CommunicationIdentity):Promise<{token:string;clientId:string}>{
     if(signal?.aborted)throw new Error("pairing-cancelled");
+    if(communicationIdentity){
+      if(communicationIdentity.kind!=="tutor"||["codex","external"].includes(communicationIdentity.vaultId)||communicationIdentity.agentId.startsWith("codex-"))throw new Error("communication-pair-identity-reserved");
+      const local=(await this.tutorCommunication()).identity;
+      if(communicationIdentityKey(local)===communicationIdentityKey(communicationIdentity))throw new Error("communication-pair-cannot-impersonate-host");
+      if(this.settings.tutorPairings.some(pairing=>pairing.grant.communicationIdentity&&communicationIdentityKey(pairing.grant.communicationIdentity)===communicationIdentityKey(communicationIdentity)))throw new Error("communication-identity-already-paired-revoke-before-repair");
+    }
     if(this.tutorPairingPending || this.settings.tutorPairings.length>=30)throw new Error("pairing-busy-or-capacity");
     this.tutorPairingPending=true;
     try{
       const scenes=await Promise.all((await this.tutorSurfaces()).map(surface=>surface.read()));
       const active=this.app.workspace.getActiveFile()?.path,documents=[...new Set([...scenes.map(scene=>scene.target.source),...(active?[active]:[])])];
-      if(!documents.length)throw new Error("Open the document or drawing to authorize first");
       if(signal?.aborted)throw new Error("pairing-cancelled");
       const grant=await new Promise<import("./tutor-mcp.js").TutorClientGrant|null>(resolve=>{
-        const modal=new TutorPairingModal(this.app,name,scenes,documents,this.settings.boardMcpReadOnly,value=>{signal?.removeEventListener("abort",cancel);resolve(value);});
+        const modal=new TutorPairingModal(this.app,name,scenes,documents,this.settings.boardMcpReadOnly,value=>{signal?.removeEventListener("abort",cancel);resolve(value);},communicationIdentity);
         const cancel=()=>modal.close();signal?.addEventListener("abort",cancel,{once:true});modal.open();
       });
       if(signal?.aborted)throw new Error("pairing-cancelled");
       if(!grant)throw new Error("pairing-declined");
+      const grantedIdentity=grant.communicationIdentity;
+      if(grantedIdentity&&communicationIdentity&&communicationIdentityKey(grantedIdentity)!==communicationIdentityKey(communicationIdentity))throw new Error("communication-pair-identity-changed");
+      if(grantedIdentity&&this.settings.tutorPairings.some(pairing=>pairing.grant.communicationIdentity&&communicationIdentityKey(pairing.grant.communicationIdentity)===communicationIdentityKey(grantedIdentity)))throw new Error("communication-identity-already-paired-revoke-before-repair");
       const {record,token}=createTutorPairing(grant);this.settings.tutorPairings.push(record);await this.saveSettingsSecurely();return {token,clientId:grant.clientId};
     }finally{this.tutorPairingPending=false;}
   }
   public async revokeTutorClient(clientId:string):Promise<void>{
+    const identity=this.settings.tutorPairings.find(record=>record.grant.clientId===clientId)?.grant.communicationIdentity;
     this.settings.tutorPairings=this.settings.tutorPairings.filter(record=>record.grant.clientId!==clientId);
     this.tutorConversation.tasks.cancelAll(clientId);this.tutorTools?.revoke(clientId);
+    const revoking=identity?this.communicationController?.revoke(identity):undefined;
     await this.saveSettingsSecurely();
+    if(revoking)await revoking;
+    else if(identity){const communication=await this.communicationInitialization?.catch(()=>undefined);await communication?.revoke(identity);}
   }
 
   private async stopBoardMcp():Promise<void>{
@@ -1620,17 +1758,20 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     try {
       await this.stopBoardMcp();
       if (!startup.active) return;
+      const communication=this.settings.tutorCommunicationEnabled?await this.tutorCommunication():undefined;
+      if(!startup.active)return;
       const tools = this.tutorTools = new TutorMcpTools({transactions:this.surfaceTransactions,tasks:this.tutorConversation.tasks,surfaces:()=>this.tutorSurfaces(),context:async(source,start,length)=>{const {sourceBinding,...context}=await this.tutorContext(source,start,length);return context;},
+        ...(communication?{communication:communication.gateway}:{}),
         learningContext:query=>this.learningContextSnapshot(query),
         memory:async(sources,offset)=>this.librarySnapshot.annotations.filter(record=>sources.includes(record.sourceFile)).slice(offset,offset+30).map(record=>({id:record.annotationId,source:record.sourceFile,text:[record.selectedText,record.reviewSummary,record.userNoteSummary].filter(Boolean).join("\n").slice(0,8000)})),
         run:input=>this.externalGenerations.run(`agent:${input.task.clientId}`,input.signal,signal=>tutorServiceRunner(()=>this.settings,this.tutorConversation.tasks,()=>this.agentSpawnEnv())({...input,signal}))});
       const server = this.boardMcp = new LocalBoardMcpAdapter(this.boardToolRuntime, { readOnly: this.settings.boardMcpReadOnly,tutor:tools,a2a:new TutorA2AService(tools,this.tutorConversation.tasks),
         authenticate:token=>{const grant=this.upgrading||!startup.active?undefined:authenticateTutorClient(token,this.settings.tutorPairings);return grant?{...grant,write:grant.write&&!this.settings.boardMcpReadOnly}:undefined;},
-        pair:(name,signal)=>{if(!startup.active)return Promise.reject(new StartupCancelled());if(this.upgrading)return Promise.reject(new Error("Tutor upgrade is in progress"));return this.pairTutorClient(name,signal);} });
+        pair:(name,signal,identity)=>{if(!startup.active)return Promise.reject(new StartupCancelled());if(this.upgrading)return Promise.reject(new Error("Tutor upgrade is in progress"));return this.pairTutorClient(name,signal,identity);} });
       const endpoint = await server.start();
       if (!startup.active) { await server.stop(); await tools.close(); return; }
       this.boardMcpEndpoint = endpoint;
-      const discoveryPath = await publishTutorInstance((this.app.vault.adapter as FileSystemAdapter).getBasePath(),this.app.vault.getName(),endpoint.port);
+      const discoveryPath = await publishTutorInstance((this.app.vault.adapter as FileSystemAdapter).getBasePath(),this.app.vault.getName(),endpoint.port,communication?.identity);
       if (!startup.active) { await removeTutorInstance(discoveryPath); await server.stop(); await tools.close(); return; }
       this.tutorDiscoveryPath=discoveryPath;
       this.boardMcpReadOnly = this.settings.boardMcpReadOnly;
@@ -1702,7 +1843,8 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       const snapshot=await this.learningContextSnapshot(query);
       untrack=this.learningReaders.track(query,()=>{invalidated=true;agent.cancel();},{snapshot});
       if(invalidated)throw new DOMException("Learning evidence changed","AbortError");
-      const result=await agent.request({...request,learningSummary:snapshot.summary},event=>{if(!invalidated)onEvent?.(event);});
+      this.learningInsights?.foregroundStarted();
+      const result=await agent.request({...request,learningSummary:snapshot.summary,learningInsightSummary:this.learningInsights?.summary({sourcePath:request.sourceFile})},event=>{if(!invalidated)onEvent?.(event);});
       const current=await this.learningContextSnapshot(query);
       if(invalidated||current.revision!==snapshot.revision)
         throw new DOMException("Learning evidence changed","AbortError");
@@ -1720,10 +1862,12 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   private async runTutorConversation(input: TutorRunnerInput,
     conversationId:string=this.tutorConversation.conversationId,
     transport:(input:TutorRunnerInput)=>Promise<{text:string}>=input=>this.runTutorTransport(input)
-  ): Promise<{ text: string; confirmProvided?:()=>Promise<void> }> {
+  ): Promise<{ text: string; tracking?:"private"; confirmProvided?:()=>Promise<void> }> {
     if(this.upgrading||this.learningInputsPaused)throw new Error("Tutor learning inputs are temporarily paused");
     const supplied=input.options.context as {chat?:ChatContext;engineText?:string}|undefined;
     const ctx={...(supplied?.chat??await this.chatContext()??{})};
+    this.learningInsights?.foregroundStarted();
+    ctx.learningInsightSummary=this.learningInsights?.summary({sourcePath:ctx.notePath,annotationId:(input.options.metadata as {annotationId?:string}|undefined)?.annotationId,text:input.text});
     if(ctx.notePath&&input.options.learningTurn&&permitsLearningControl(input.options.learningTurn))ctx.sourceBinding??=this.captureLearningSource(ctx.notePath);
     const metadata=input.options.metadata as {learningEpisodeId?:string;annotationId?:string}|undefined;
     const query={source:ctx.notePath,episodeId:metadata?.learningEpisodeId,annotationId:metadata?.annotationId};
@@ -1756,13 +1900,15 @@ export default class AnnotationTutorLitePlugin extends Plugin {
         const revision=eligible?await this.learningSourceRevision(source.path,ctx.sourceBinding):undefined;
         if(input.signal.aborted||service!==this.learningDialogue||current.revision!==state.snapshot.revision||(eligible&&revision!==sourceRevision))throw new DOMException("Learning evidence changed","AbortError");
       };
-      let transportCalls=0;
-      const send=(instructions:string|undefined,onReply:(delta:string)=>void,replyProtocol?:"support")=>{
-        // Isolated annotation turns do not borrow the sidebar task's budget.
-        // Every local turn still has an absolute first-call + one-repair cap.
-        if(++transportCalls>2)throw new Error("learning-model-call-limit");
-        return transport({...input,options:{...input.options,context:{...supplied,chat:{...ctx,...(instructions?{teachingControl:instructions}:{}),...(replyProtocol?{replyProtocol}:{})},learningRead:{query,snapshot:state.snapshot}}},onReply});
-      };
+      const connectionSettings=()=>[this.settings.chatEngine,this.settings.apiBaseUrl,this.settings.apiModel,this.settings.apiKey,this.settings.reviewLanguage,this.settings.teachingMode];
+      const capturedSettings=connectionSettings();
+      const recovery=new ConversationRecovery({signal:input.signal,
+        timeoutMs:this.settings.chatEngine==="api"?this.chatTimeoutMs():180_000,
+        ensureCurrent:async()=>{await ensureCurrent();if(connectionSettings().some((value,index)=>value!==capturedSettings[index]))throw new DOMException("Connection settings changed","AbortError");},
+        reserveAdditional:async()=>{await ensureCurrent();await input.beforeAdditionalModelCall?.();await ensureCurrent();input.consumeAdditionalModelCall?.();},
+        onReconnect:()=>input.onConnectionRetry?.()});
+      const send=(instructions:string|undefined,onReply:(delta:string)=>void,replyProtocol?:"support")=>recovery.run(attempt=>
+        transport({...input,apiTransport:{timeoutMs:attempt.timeoutMs,freshConnection:attempt.freshConnection},options:{...input.options,context:{...supplied,chat:{...ctx,...(instructions?{teachingControl:instructions}:{}),...(replyProtocol?{replyProtocol}:{})},learningRead:{query,snapshot:state.snapshot}}},onReply:attempt.onDelta}),onReply);
       await ensureCurrent();
       if(!eligible){
         if(this.settings.chatEngine==="api"&&supportsLearningReplyTool(this.settings.apiBaseUrl,this.settings.apiModel))
@@ -1791,7 +1937,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
         // The runner checks cancellation before offering any further text.
       };
       return await runLearningTurnV3({dialogue:this.learningDialogue,turn,signal:input.signal,priorReplies:input.history.filter(m=>m.role==="assistant").map(m=>m.content),storageContext,transport:send,present:input.onReply,ensureCurrent,ownCommit,
-        onProtocolCorrection:async()=>{await ensureCurrent();input.consumeAdditionalModelCall?.();},
+        onProtocolCorrection:input=>recovery.reserveCorrection(input.errorCode),
         minutes:turn.configuredMinutes??20,resumeLegacy:async id=>{
           const selected=turn.legacyCandidates.find(record=>record.id===id);if(!selected)throw new Error("learning-legacy-target-unavailable");
           const read=selected.format===1?await this.learning.store.listResult():await this.learningV2.listResult();
@@ -2008,10 +2154,15 @@ export default class AnnotationTutorLitePlugin extends Plugin {
         apiKey: this.settings.apiKey, model: this.settings.apiModel,
         messages: buildApiMessages(input.history, ctx, engineText, language),
         ...protocol.options,
-        timeoutMs: this.chatTimeoutMs(), signal: input.signal, onDelta: delta => diagnostic.onDelta(delta, input.onReply),
+        timeoutMs: input.apiTransport?.timeoutMs ?? this.chatTimeoutMs(), freshConnection:input.apiTransport?.freshConnection, signal: input.signal, onDelta: delta => diagnostic.onDelta(delta, input.onReply),
         fast: !input.options.mode || input.options.mode === "ask" }, nodeHttpStream);
       diagnostic.finish(result);
-      if (!result.ok || !result.text.trim()) throw new Error(["api-secure-connection-failed","api-connection-failed","api-transport-failed"].includes(result.error??"")?t("chat.connectionFailed"):result.error || t("chat.empty"));
+      if (!result.ok || !result.text.trim()) {
+        const error=new ConversationTransportError(result);
+        if(error.category==="connection")error.message=t("chat.connectionFailed");
+        else if(error.category==="no-output")error.message=t("chat.empty");
+        throw error;
+      }
       return { text: result.text };
     };
     if (this.settings.chatEngine === "api") return runApi();
@@ -2125,6 +2276,9 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     this.learningInputsPaused=true;
     try {
     try {
+      this.learningInsights?.dispose();await this.learningInsights?.flush();
+      await this.stopBoardMcp();
+      await this.stopTutorCommunication();
       this.tutorConversation.cancel();
       await this.stopLearningRuns();
       await this.tutorConversation.flush();
@@ -2150,9 +2304,10 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     this.boards.rootChanged();
     this.librarySnapshot = emptyLibrarySnapshot();
     await this.rebuildIndex(false);
+    await this.initializeLearningInsights();
     this.refreshChatViews();
     return { ok: true };
-    } finally {this.learningInputsPaused=false;}
+    } finally {this.learningInputsPaused=false;void this.learningInsights?.refreshSettings().catch(()=>{});}
   }
 
   public onSettingsChanged(): void {
@@ -2264,11 +2419,13 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   private async initialize(startup: StartupLifetime = this.startupLifetime): Promise<void> {
     await startup.waitFor(() => this.store.ensureScaffold());
     startup.assertActive();
+    await startup.waitFor(() => this.store.interruptConversationRequests());
     const cached = await startup.waitFor(() => this.store.loadLibraryCache());
     startup.assertActive();
     if (cached) this.librarySnapshot = cached;
     await startup.waitFor(() => this.rebuildIndex(false));
     startup.assertActive();
+    await startup.waitFor(() => this.initializeLearningInsights());
     // Warm up the OpenCode connection on open whenever an engine uses it (review
     // or chat), not just when auto-run is enabled: this both readies the model
     // picker (its free models change over time) and establishes connectivity so
@@ -2291,6 +2448,83 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     if (active?.extension === "md") await startup.waitFor(() => this.migrateTableAnchors(active));
     startup.assertActive();
     if (active && active.extension === "md") void this.translation.maybePretranslate(active);
+  }
+
+  private async insightSources():Promise<LearningConversationCommit[]> {
+    const sources:LearningConversationCommit[]=[];
+    for(const file of await this.store.listAnnotationFiles()){
+      const annotation=parseAnnotationFile(file.content);
+      if(annotation)sources.push(this.annotationInsightCommit(annotation,file.path));
+    }
+    if(this.settings.persistChatLog)for(const head of await this.store.listChatLogs()){
+      const log=await this.store.loadChatLog(head.id);
+      if(log)sources.push(commitFromChatLog(log,`${this.store.chatsDir()}/${log.id}.md`));
+    }
+    return sources;
+  }
+
+  private async initializeLearningInsights():Promise<void> {
+    const previous=this.learningInsights;previous?.dispose();await previous?.flush();
+    if(this.pluginUnloaded)return;
+    const root=this.store.memoryRoot(),io=learningVaultIO(this.app);
+    const confined=(path:string):string=>{
+      const normalized=normalizePath(path);
+      if(normalized!==path||!path.startsWith(`${root}/thinking/`)||path.includes("/../"))throw new Error("thinking-storage-path-invalid");
+      return path;
+    };
+    const service=new LearningInsightService({root:()=>this.store.memoryRoot(),enabled:()=>this.settings.learningInsightsEnabled&&!this.upgrading&&!this.learningInputsPaused,
+      excludedSources:()=>this.settings.learningInsightExcludedSources,read:path=>io.read(confined(path)),write:(path,text)=>io.write(confined(path),text),
+      remove:async path=>{path=confined(path);if(await this.app.vault.adapter.exists(path))await this.app.vault.adapter.remove(path);},
+      listSources:()=>this.insightSources(),resolveSource:async source=>{
+        if(source.sourceKind==="annotation"){
+          if(!/^ANN-[\w-]+$/.test(source.sourceId)||source.path!==this.store.annotationPath(source.sourceId))return null;
+          const annotation=await this.store.readAnnotation(source.sourceId);return annotation?this.annotationInsightCommit(annotation,source.path):null;
+        }
+        if(!this.settings.persistChatLog||!/^CHAT-[\w-]+$/.test(source.sourceId)||source.path!==`${this.store.chatsDir()}/${source.sourceId}.md`)return null;
+        const log=await this.store.loadChatLog(source.sourceId);return log?commitFromChatLog(log,source.path):null;
+      },run:(prompt,signal)=>this.runLearningInsightAnalysis(prompt,signal),
+      isForegroundBusy:()=>this.upgrading||this.learningInputsPaused||tutorActivityBusy()||!!this.tutorConversation?.state.busy||this.runningAgents.size>0||this.annotationLearningBusy.size>0||!!this.support?.busy});
+    this.learningInsights=service;
+    await service.start();
+  }
+
+  private async runLearningInsightAnalysis(prompt:string,signal:AbortSignal):Promise<string> {
+    if(signal.aborted)throw new DOMException("Cancelled","AbortError");
+    if(this.settings.chatEngine==="api"){
+      const result=await streamChatCompletion({baseUrl:this.settings.apiBaseUrl,apiKey:this.settings.apiKey,model:this.settings.apiModel,
+        messages:[{role:"system",content:prompt}],responseFormat:{type:"json_object"},temperature:.15,timeoutMs:this.chatTimeoutMs(),signal,onDelta:()=>{},fast:true},nodeHttpStream);
+      if(!result.ok||!result.text.trim())throw new Error("thinking-model-response-unavailable");
+      return result.text;
+    }
+    // An independent tool-free connection; it cannot borrow or alter a learning session.
+    const handle=await startAcpSession({command:this.settings.agentCommand.trim()||"opencode",model:this.settings.agentModel,cwd:tmpdir(),denyTools:true,
+      strictModelSelection:true,maxTurnChars:48_000,toolFreeRole:"conversation",mcpServers:[],onUpdate:()=>{},onExit:()=>{},
+      requestPermission:async()=>"reject_once",readFile:async()=>{throw new Error("thinking-file-tools-disabled");},
+      startTimeoutMs:Math.max(60_000,this.settings.agentTimeoutSeconds*1000),env:this.agentSpawnEnv()});
+    const abort=()=>handle.dispose();signal.addEventListener("abort",abort,{once:true});
+    try{if(signal.aborted)throw new DOMException("Cancelled","AbortError");const result=await handle.session.prompt(prompt);
+      if(!result.ok||!result.text.trim())throw new Error("thinking-model-response-unavailable");return result.text;
+    }finally{signal.removeEventListener("abort",abort);handle.dispose();}
+  }
+
+  private publishAnnotationInsight(annotation:Annotation):void {
+    void this.learningInsights?.commit(this.annotationInsightCommit(annotation,this.store.annotationPath(annotation.id))).catch(()=>{});
+  }
+
+  private annotationInsightCommit(annotation:Annotation,path:string):LearningConversationCommit {
+    const source=this.app.vault.getAbstractFileByPath(annotation.sourceFile);
+    const commit=commitFromAnnotation(annotation,path,source instanceof TFile?`${source.stat.mtime}:${source.stat.size}`:"missing");
+    return source instanceof TFile?commit:{...commit,tracking:"excluded"};
+  }
+
+  private scheduleInsightReconcile(path?:string):void {
+    if(path){
+      const conversation=path.startsWith(`${this.store.annotationsDir()}/`)||path.startsWith(`${this.store.chatsDir()}/`);
+      const affected=this.learningInsights?.sourceChanged(path);
+      if(!conversation&&!affected)return;
+    }
+    if(this.insightReconcileTimer)clearTimeout(this.insightReconcileTimer);
+    this.insightReconcileTimer=setTimeout(()=>{this.insightReconcileTimer=undefined;void this.learningInsights?.reconcile().catch(()=>{});},350);
   }
 
   /**
@@ -3041,7 +3275,15 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   // --- agent tasks -----------------------------------------------------------
 
   public async askAgent(record: IndexRecord): Promise<void> {
-    if (this.learningInputsPaused || this.requestingAgents.has(record.annotationId) || this.runningAgents.has(record.annotationId)) {
+    this.learningInsights?.foregroundStarted();
+    if(record.branch){
+      if(record.request?.status==="completed"){new Notice("点击卡片右上角的对话按钮可继续提问，也可用边缘的 ＋ 创建分支。");return;}
+      if(!record.userNote?.trim()){new Notice("请先在对话卡片中输入问题。");return;}
+      const result=await this.replyInAnnotation(record.annotationId,record.userNote);
+      if(!result.ok&&result.error)new Notice(result.error);
+      return;
+    }
+    if (this.learningInputsPaused || this.requestingAgents.has(record.annotationId) || this.runningAgents.has(record.annotationId) || this.annotationLearningBusy.has(record.annotationId)) {
       new Notice(t("notice.agentBusy", { id: record.annotationId }));
       return;
     }
@@ -3144,7 +3386,8 @@ export default class AnnotationTutorLitePlugin extends Plugin {
         record,
         this.settings.reviewLanguage,
         this.learnerProfileSummary(),
-        this.activeSceneSummary()
+        this.activeSceneSummary(),
+        this.learningInsights?.summary({sourcePath:record.sourceFile,annotationId:record.annotationId,text:record.userNote})
       );
       const timeoutMs =
         Math.max(MIN_AGENT_TIMEOUT_SECONDS, this.settings.agentTimeoutSeconds) *
@@ -3176,6 +3419,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
           const written = await this.store.writeReview(id, outcome.reviewText);
           if (!written) throw new Error(t("notice.fileUnavailable"));
           reviewWritten = true;
+          this.publishAnnotationInsight(written);
           await this.store.setTaskStatus(taskId, "completed");
           // Capture a memory cell automatically (no extra model call), then a
           // single rebuild picks up the review, the cell, and any new scene.
@@ -3406,9 +3650,61 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   }
 
   /** Save an inline (margin card) note edit. */
+  private subscribeAnnotationGraph(listener: () => void): () => void {
+    this.annotationGraphListeners.add(listener);
+    return () => this.annotationGraphListeners.delete(listener);
+  }
+
+  private notifyAnnotationGraph(): void {
+    for (const listener of this.annotationGraphListeners) listener();
+  }
+
+  private annotationGraphCards(): AnchorMark[] {
+    return this.indexTable.all().map(record => {
+      const review=this.cardReview(record);
+      return {id:record.annotationId,blockId:bareBlockId(record.anchor),selectedText:record.selectedText??"",
+        note:record.userNote??record.userNoteSummary??"",status:record.status,review:review.comment,
+        reviewQuestion:review.question,dialogue:record.dialogue,branch:record.branch,request:record.request,dialogueRequest:record.dialogueRequest,sourceFile:record.sourceFile};
+    });
+  }
+
+  public async openAnnotationGraph(id?: string): Promise<void> {
+    const existing=this.app.workspace.getLeavesOfType(ANNOTATION_GRAPH_VIEW_TYPE)[0];
+    const leaf=existing??this.app.workspace.getLeaf("tab");
+    if(!existing)await leaf.setViewState({type:ANNOTATION_GRAPH_VIEW_TYPE,active:true});
+    await leaf.loadIfDeferred();
+    if(leaf.view instanceof AnnotationGraphView && id)leaf.view.setFocus(id);
+    await this.app.workspace.revealLeaf(leaf);
+  }
+
+  private async createAnnotationConversation(parentId: string, target: AnnotationReplyTarget): Promise<{id:string}> {
+    if(this.upgrading||this.learningInputsPaused)throw new Error("Tutor 正在保存并切换，请稍后创建对话。");
+    const annotation=await this.store.createConversationDraft(parentId,target);
+    this.indexTable.upsert(recordFromAnnotation(annotation,this.store.annotationPath(annotation.id)));
+    this.publishAnnotationInsight(annotation);
+    this.notifyAnnotationGraph();
+    await this.refreshDecorations();
+    return {id:annotation.id};
+  }
+
+  private async saveAnnotationConversationDraft(id:string, question:string):Promise<void> {
+    const updated=await this.store.saveConversationDraft(id,question);
+    if(!updated)throw new Error("annotation-draft-save-unavailable");
+    if(updated)this.indexTable.upsert(recordFromAnnotation(updated,this.store.annotationPath(id)));
+    this.notifyAnnotationGraph();
+  }
+
+  private async saveAnnotationDialogueDraft(id: string, question: string): Promise<void> {
+    const updated = await this.store.saveDialogueDraft(id, question);
+    if (!updated) throw new Error("annotation-dialogue-draft-save-unavailable");
+    if (updated) this.indexTable.upsert(recordFromAnnotation(updated, this.store.annotationPath(id)));
+    this.notifyAnnotationGraph();
+  }
+
   private async saveNoteInline(id: string, note: string): Promise<void> {
     const record = this.indexTable.get(id);
     if (!record || record.userNote === note) return;
+    if(record.branch){await this.saveAnnotationConversationDraft(id,note);return;}
     const updated = await this.store.updateAnnotation(id, { userNote: note });
     if (updated) {
       this.indexTable.upsert(
@@ -3460,28 +3756,123 @@ export default class AnnotationTutorLitePlugin extends Plugin {
         entry:"annotation",engine:"api",model:this.settings.apiModel,format:protocol.format});
       const result=await streamChatCompletion({baseUrl:this.settings.apiBaseUrl,apiKey:this.settings.apiKey,model:this.settings.apiModel,
         messages:buildApiMessages(input.history,ctx,input.text,language),...protocol.options,
-        timeoutMs:this.chatTimeoutMs(),signal:input.signal,onDelta:delta=>diagnostic.onDelta(delta,input.onReply),fast:true},nodeHttpStream);
+        timeoutMs:input.apiTransport?.timeoutMs??this.chatTimeoutMs(),freshConnection:input.apiTransport?.freshConnection,signal:input.signal,onDelta:delta=>diagnostic.onDelta(delta,input.onReply),fast:true},nodeHttpStream);
       diagnostic.finish(result);
-      if(!result.ok||!result.text.trim())throw new Error(["api-secure-connection-failed","api-connection-failed","api-transport-failed"].includes(result.error??"")?t("chat.connectionFailed"):result.error||t("chat.empty"));return {text:result.text};
+      if(!result.ok||!result.text.trim())throw new ConversationTransportError(result);return {text:result.text};
     }
     const handle=await this.startChatSession({denyTools:true,onUpdate:event=>{if(event.type==="message")input.onReply(event.text);else input.onEvent(event);},onExit:()=>{}});
     const abort=()=>handle.dispose();input.signal.addEventListener("abort",abort,{once:true});
     try {
       if(input.signal.aborted)throw new DOMException("Cancelled","AbortError");
-      const transcript=input.history.slice(-20).map(m=>`${m.role}: ${m.content}`).join("\n").slice(-16000);
+      // This isolated transport has already received a bounded, pinned path.
+      // Cutting its tail here could remove the exact reply being discussed.
+      const transcript=input.history.map(m=>`${m.role}: ${m.content}`).join("\n");
       const result=await handle.session.prompt(`${opencodePreamble(ctx,language,{allowFileTools:false})}\n${transcript}\n${input.text}`);
       if(!result.ok||!result.text.trim())throw new Error(["api-secure-connection-failed","api-connection-failed","api-transport-failed"].includes(result.error??"")?t("chat.connectionFailed"):result.error||t("chat.empty"));return {text:result.text};
     } finally {input.signal.removeEventListener("abort",abort);handle.dispose();}
   }
 
+  private async replyInAnnotationBranch(id:string,message:string,continuation=false,onProgress?:AnnotationReplyProgressHandler):Promise<DialogueReplyResult> {
+    const question=message.trim();
+    if(!question)return {ok:false};
+    if(this.upgrading||this.learningInputsPaused)return {ok:false,error:"Tutor 正在保存并切换，请稍后继续。"};
+    if(this.annotationLearningBusy.has(id) || this.requestingAgents?.has(id) || this.runningAgents?.has(id))return {ok:false,error:"Tutor 正在回复这张卡片，请稍候。"};
+    this.annotationLearningBusy.add(id);
+    this.learningInsights?.foregroundStarted();
+    const controller=new AbortController();let settled!:()=>void;
+    this.learningRuns.set(controller,new Promise<void>(resolve=>{settled=resolve;}));
+    const endActivity=beginTutorActivity();
+    let requestId:string|undefined;
+    try {
+      const draft=continuation ? await this.store.saveDialogueDraft(id,question) : await this.store.saveConversationDraft(id,question);
+      if(!draft)throw new Error("annotation-card-missing");
+      requestId=crypto.randomUUID();
+      const started=continuation ? await this.store.beginDialogueRequest(id,question,requestId) : await this.store.beginConversationRequest(id,question,requestId);
+      if(!started)throw new Error("annotation-request-unavailable");
+      this.indexTable.upsert(recordFromAnnotation(started,this.store.annotationPath(id)));this.notifyAnnotationGraph();
+      this.publishAnnotationInsight(started);
+      const sourceText=await this.store.readConversationSource(started);
+      const context=await assembleAnnotationContext(id,key=>this.store.readAnnotation(key),{sourceText,includeCurrentCard:continuation});
+      const beforeAdditionalModelCall=async()=>{
+        const current=await this.store.readAnnotation(id),request=continuation?current?.dialogueRequest:current?.request;
+        if(!current||!request||request.id!==requestId||request.status!=="generating"||request.question!==question||current.sourceFile!==started.sourceFile)
+          throw new AnnotationContextError("annotation-request-changed");
+        const latest=await assembleAnnotationContext(id,key=>this.store.readAnnotation(key),{sourceText,includeCurrentCard:continuation});
+        if(latest.system!==context.system||JSON.stringify(latest.history)!==JSON.stringify(context.history))throw new AnnotationContextError("annotation-context-changed");
+      };
+      const sourceBinding=this.captureLearningSource(started.sourceFile);
+      const sourceRevision=await this.learningSourceRevision(started.sourceFile,sourceBinding);
+      if(!sourceRevision)throw new Error("annotation-source-missing");
+      if(/\.md$/i.test(started.sourceFile)&&sourceRevision!==contextVersion(sourceText))
+        throw new AnnotationContextError("annotation-source-unsaved");
+      let conversationId=this.annotationLearningSessions.get(id);
+      if(!conversationId){conversationId=crypto.randomUUID();this.annotationLearningSessions.set(id,conversationId);}
+      const wantsEdit=classifyIntent(question)==="write";
+      const target=wantsEdit?this.captureEditTarget(started.anchor.selectedText,started.sourceFile):null;
+      const engineText=wantsEdit?`${buildEditInstruction(target?.hasSelection??false)}\n\n${question}`:question;
+      const result=await this.runTutorConversation({text:engineText,history:context.history,historyOffset:0,signal:controller.signal,beforeAdditionalModelCall,
+        onConnectionRetry:()=>onProgress?.({type:"reconnecting",attempt:1}),
+        options:{source:"chat",route:"chat",mode:"ask",learningRequestId:requestId,metadata:{annotationId:id},
+          learningTurn:{entry:"annotation",kind:"conversation",authority:localLearnerAuthority()},
+          context:{chat:{sourceBinding,notePath:started.sourceFile,selection:started.anchor.selectedText,annotationContext:context.system,
+            observation:{source:started.sourceFile,version:sourceRevision,scope:"selection",hasImage:false}}}},onReply:()=>{},onEvent:()=>{}},
+        conversationId,input=>this.runIsolatedTutorTurn(input));
+      if(controller.signal.aborted)throw new DOMException("Cancelled","AbortError");
+      if(await this.learningSourceRevision(started.sourceFile,sourceBinding)!==sourceRevision)
+        throw new AnnotationContextError("annotation-source-changed");
+      let agentText=result.text;
+      let edit:DialogueReplyResult["edit"];
+      if(wantsEdit&&target){
+        const parsed=resolveEdit(result.text);
+        if(parsed.edit){
+          const captured=parsed.isInsert?{...target,hasSelection:false,original:""}:target;
+          const before=captured.hasSelection?captured.original:"",replacement=parsed.edit;
+          agentText=parsed.isInsert?result.text:parsed.explanation||t("chat.edit.proposed");
+          edit={diff:before?lineDiff(before,replacement):replacement.split(/\r?\n/).map(line=>`+ ${line}`).join("\n"),text:replacement,apply:()=>this.applyNoteEdit(captured,replacement)};
+        }
+      }
+      const updated=continuation ? await this.store.completeDialogueRequest(id,requestId,agentText,{tracking:result.tracking})
+        : await this.store.completeConversationRequest(id,requestId,agentText,{tracking:result.tracking});
+      if(!updated)throw new Error("annotation-request-changed");
+      this.indexTable.upsert(recordFromAnnotation(updated,this.store.annotationPath(id)));this.notifyAnnotationGraph();
+      this.publishAnnotationInsight(updated);
+      await result.confirmProvided?.().catch(()=>{});
+      return {ok:true,agentText,...(edit?{edit}:{})};
+    } catch(error) {
+      const code=error instanceof AnnotationContextError?error.code:annotationReplyFailureCode(error);
+      if(requestId){
+        const failed=await (continuation ? this.store.failDialogueRequest(id,requestId,controller.signal.aborted?"cancelled":"failed",code)
+          : this.store.failConversationRequest(id,requestId,controller.signal.aborted?"cancelled":"failed",code)).catch(()=>null)
+          ??await this.store.readAnnotation(id).catch(()=>null);
+        if(failed){
+          this.indexTable.upsert(recordFromAnnotation(failed,this.store.annotationPath(id)));
+          this.publishAnnotationInsight(failed);
+        }
+      }
+      this.notifyAnnotationGraph();
+      return {ok:false,errorCode:code,error:annotationReplyFailureMessage(code)};
+    } finally {endActivity();this.annotationLearningBusy.delete(id);this.learningRuns.delete(controller);settled();}
+  }
+
   public async replyInAnnotation(
     id: string,
-    message: string
+    message: string,
+    onProgress?:AnnotationReplyProgressHandler
   ): Promise<DialogueReplyResult> {
     const record = this.indexTable.get(id);
     if (!record) return { ok: false, error: t("card.reply.error") };
+    if(record.branch)return this.replyInAnnotationBranch(id,message,record.request?.status==="completed" || !!record.reviewText?.trim(),onProgress);
     const trimmed = message.trim();
     if (!trimmed) return { ok: false };
+
+    // Legacy flat transcripts remain readable and callable, but share the same
+    // file-backed context builder as new cards, including the initial review.
+    let continuation: Awaited<ReturnType<typeof assembleAnnotationContext>>;
+    try {
+      const original=await this.store.readAnnotation(id);
+      if(!original)return {ok:false,error:"这条批注已不存在。"};
+      continuation=await assembleAnnotationContext(id,key=>this.store.readAnnotation(key),{sourceText:await this.store.readConversationSource(original)});
+    } catch {return {ok:false,error:"无法取得原批注及审阅，请检查来源后重试。"};}
 
     const lang = this.settings.reviewLanguage.trim() || detectLanguageName(trimmed);
     // The learner wants the original rewritten → capture where the edit lands and
@@ -3500,15 +3891,17 @@ export default class AnnotationTutorLitePlugin extends Plugin {
         if(!(file instanceof TFile))throw new Error("批注来源不存在，未记录这次回复。");
         const sourceBinding=this.captureLearningSource(record.sourceFile);
         const source=file.extension==="md"?await this.tutorContext(record.sourceFile,0,6000,sourceBinding):{text:record.selectedText??"",revision:(await readStudySource(this,record.sourceFile,sourceBinding)).revision};
-        const result=await this.runTutorConversation({text:trimmed,history:(record.dialogue??[]).map(turn=>({role:turn.role==="agent"?"assistant":"user",content:turn.text})),historyOffset:0,
-          signal:controller.signal,options:{source:"chat",route:"chat",mode:"ask",learningRequestId:crypto.randomUUID(),metadata:{annotationId:id},
+        const result=await this.runTutorConversation({text:trimmed,history:continuation.history,historyOffset:0,
+          signal:controller.signal,onConnectionRetry:()=>onProgress?.({type:"reconnecting",attempt:1}),options:{source:"chat",route:"chat",mode:"ask",learningRequestId:crypto.randomUUID(),metadata:{annotationId:id},
           learningTurn:{entry:"annotation",kind:"conversation",authority:localLearnerAuthority()},
-          context:{chat:{sourceBinding,notePath:record.sourceFile,selection:record.selectedText,content:source.text,observation:{source:record.sourceFile,version:source.revision,scope:"selection",hasImage:false}}}},
+          context:{chat:{sourceBinding,notePath:record.sourceFile,selection:record.selectedText,content:source.text,annotationContext:continuation.system,observation:{source:record.sourceFile,version:source.revision,scope:"selection",hasImage:false}}}},
           onReply:()=>{},onEvent:()=>{}},conversationId,input=>this.runIsolatedTutorTurn(input));
         if(controller.signal.aborted)throw new DOMException("Annotation reply cancelled","AbortError");
         const updated=await this.store.appendDialogueTurns(id,[{role:"user",text:trimmed,at:nowIso()},{role:"agent",text:result.text,at:nowIso()}]);
         if(!updated)return {ok:false,error:"这条批注已删除，回复没有写回。"};
-        this.indexTable.upsert(recordFromAnnotation(updated,this.store.annotationPath(id)));
+        const saved=result.tracking==="private"?await this.store.updateAnnotation(id,{tracking:"private"})??updated:updated;
+        this.indexTable.upsert(recordFromAnnotation(saved,this.store.annotationPath(id)));
+        this.publishAnnotationInsight(saved);
         // Append succeeded: the reply is now offered through the annotation.
         // Failure to confirm keeps conservative unknown help, not a false claim
         // that the already-saved dialogue disappeared.
@@ -3523,11 +3916,8 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       : trimmed;
 
     const evidence = await this.learningContextSnapshot({annotationId:record.annotationId,source:record.sourceFile});
-    const system = this.dialogueSystemPrompt(record, lang) + "\n" + evidence.summary;
-    const history: ChatMessage[] = (record.dialogue ?? []).map((turn) => ({
-      role: turn.role === "agent" ? "assistant" : "user",
-      content: turn.text
-    }));
+    const system = this.dialogueSystemPrompt(record, lang) + "\n" + evidence.summary + "\n" + continuation.system;
+    const history: ChatMessage[] = continuation.history;
     const messages: ChatMessage[] = [
       { role: "system", content: system },
       ...history,
@@ -3536,8 +3926,8 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     const openCodePrompt = [
       system,
       "--- Conversation so far ---",
-      ...(record.dialogue ?? []).map(
-        (turn) => `${turn.role === "agent" ? "Tutor" : "Learner"}: ${turn.text}`
+      ...continuation.history.map(
+        (turn) => `${turn.role === "assistant" ? "Tutor" : "Learner"}: ${turn.content}`
       ),
       `Learner: ${engineText}`
     ].join("\n\n");
@@ -3580,6 +3970,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       this.indexTable.upsert(
         recordFromAnnotation(updated, this.store.annotationPath(id))
       );
+      this.publishAnnotationInsight(updated);
     }
     return { ok: true, agentText, ...(edit ? { edit } : {}) };
   }
@@ -3590,6 +3981,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     const scenes = this.activeSceneSummary();
     const parts = [
       tutorSystemPrompt(lang),
+      this.learningInsights?.summary({sourcePath:record.sourceFile,annotationId:record.annotationId,text:record.userNote})??"",
       [
         "You are talking with the learner in the margin beside one of their annotations.",
         `Annotation ${record.annotationId} in ${record.sourceFile}.`,
@@ -3667,7 +4059,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   ): void {
     const records = this.indexTable
       .all()
-      .filter((record) => record.sourceFile === ctx.sourcePath);
+      .filter((record) => record.sourceFile === ctx.sourcePath && isRootAnnotation(record));
     if (records.length === 0) return;
     const info = ctx.getSectionInfo(el);
     if (!info) return;
@@ -3740,11 +4132,19 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   }
 
   private async deleteAnnotation(record: IndexRecord): Promise<void> {
+    if(this.indexTable.all().some(child=>child.branch?.parentAnnotationId===record.annotationId)) {
+      await this.store.updateAnnotation(record.annotationId,{status:"archived"});
+      await this.commit();
+      this.scheduleInsightReconcile();
+      new Notice("已归档父批注，保留子卡片及其来源关联。");
+      return;
+    }
     const blockId = bareBlockId(record.anchor);
     const file = this.fileAt(record.sourceFile);
     if (
       file &&
       file.extension === "md" &&
+      isRootAnnotation(record) &&
       shouldRemoveAnnotationBlockId(record, this.indexTable.all())
     ) {
       await this.app.vault.process(file, (data) =>
@@ -3764,6 +4164,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       void this.persistSettings();
     }
     await this.commit();
+    this.scheduleInsightReconcile();
     new Notice(t("notice.deleted", { id: record.annotationId }));
   }
 
@@ -3918,6 +4319,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
     if (this.pluginUnloaded) return;
     this.librarySnapshot = snapshot;
     this.indexTable.replaceAll(this.librarySnapshot.annotations);
+    this.notifyAnnotationGraph();
     this.refreshDashboard();
     this.settingTab?.refresh();
     this.review.refreshBadge();
@@ -5426,6 +5828,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
       .filter(
         (record) =>
           record.sourceFile === sourcePath &&
+          isRootAnnotation(record) &&
           (record.sourceType === "pdf" || /\.pdf$/i.test(record.sourceFile))
       )
       .map((record) => ({
@@ -5439,7 +5842,7 @@ export default class AnnotationTutorLitePlugin extends Plugin {
   private marksFor(sourcePath: string): AnchorMark[] {
     return this.indexTable
       .all()
-      .filter((record) => record.sourceFile === sourcePath)
+      .filter((record) => record.sourceFile === sourcePath && isRootAnnotation(record))
       .map((record) => {
         const { comment, question } = this.cardReview(record);
         return {
@@ -5450,7 +5853,8 @@ export default class AnnotationTutorLitePlugin extends Plugin {
           status: record.status,
           review: comment,
           reviewQuestion: question,
-          ...(record.dialogue ? { dialogue: record.dialogue } : {})
+          ...(record.dialogue ? { dialogue: record.dialogue } : {}),
+          ...(record.dialogueRequest ? { dialogueRequest: record.dialogueRequest } : {})
         };
       });
   }

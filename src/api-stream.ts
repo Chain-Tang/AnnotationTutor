@@ -1,6 +1,8 @@
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { chatCompletionsUrl, extractApiError, extractApiReviewText } from "./api-runner.js";
+import { SocketTransportError, recordConnectionReceipt, type ConnectionIssue } from "./api-transport-receipt.js";
+export { CONNECTION_ISSUES, SocketTransportError, verifiedConnectionReceipt, type ConnectionIssue } from "./api-transport-receipt.js";
 
 const MAX_BODY = 4_000_000;
 const MAX_EVENT = 256_000;
@@ -11,6 +13,8 @@ export type HttpStream = (request: {
   headers: Record<string, string>;
   body: string;
   timeoutMs: number;
+  /** A bounded reconnect may opt out of pooling; TLS verification is unchanged. */
+  freshConnection?: boolean;
   signal?: AbortSignal;
   onResponse: (response: { status: number; contentType: string }) => void;
   onChunk: (chunk: string) => void;
@@ -18,12 +22,18 @@ export type HttpStream = (request: {
 
 /** Only socket/response errors enter here. Parser and presenter exceptions
  * preserve their own identity; no provider call is automatically replayed. */
-function socketFailure(error:unknown):Error {
+function socketFailure(error:unknown):SocketTransportError {
   const code=error&&typeof error==="object"&&"code" in error?String(error.code):"";
   const message=error instanceof Error?error.message:"";
-  if(/^ERR_(?:SSL|TLS|OSSL)_/.test(code)||/OPENSSL_internal:(?:BAD_DECRYPT|DECRYPTION_FAILED)|\b(?:SSL|TLS)\b.*(?:alert|handshake|certificate)/i.test(message))return new Error("api-secure-connection-failed");
-  if(["ECONNRESET","ECONNREFUSED","ENOTFOUND","EAI_AGAIN","ETIMEDOUT","EPIPE"].includes(code))return new Error("api-connection-failed");
-  return new Error("api-transport-failed");
+  // Certificate errors take precedence even when a library appends unrelated
+  // OpenSSL details. A reconnect never weakens certificate verification.
+  if (/CERT|SELF_SIGNED|ISSUER|VERIFY_LEAF|ALTNAME/.test(code)) return new SocketTransportError("tls-certificate");
+  if (["ERR_SSL_DECRYPTION_FAILED_OR_BAD_RECORD_MAC", "ERR_SSL_SSLV3_ALERT_BAD_RECORD_MAC", "ERR_OSSL_BAD_DECRYPT"].includes(code))
+    return new SocketTransportError("tls-record");
+  if(/^ERR_(?:SSL|TLS|OSSL)_/.test(code)||/OPENSSL_internal:(?:BAD_DECRYPT|DECRYPTION_FAILED)|\b(?:SSL|TLS)\b.*(?:alert|handshake|certificate)/i.test(message))return new SocketTransportError("tls-handshake");
+  const socketIssues: Readonly<Record<string, ConnectionIssue>> = {ECONNRESET:"reset", ECONNREFUSED:"refused", ENOTFOUND:"dns-not-found", EAI_AGAIN:"dns-temporary", ETIMEDOUT:"timeout", EPIPE:"pipe"};
+  const issue = socketIssues[code];
+  return new SocketTransportError(issue ?? "unknown");
 }
 
 /** Desktop transport: actual incremental bytes, hard timeout and socket cancellation. */
@@ -49,6 +59,7 @@ export const nodeHttpStream: HttpStream = (input) => new Promise((resolve, rejec
   const abort = (): void => finish(new Error("cancelled"));
   const req = (url.protocol === "https:" ? httpsRequest : httpRequest)(url, {
     method: "POST",
+    ...(input.freshConnection ? { agent: false as const } : {}),
     headers: { ...input.headers, "Content-Length": Buffer.byteLength(input.body), "Accept-Encoding": "identity" },
   }, (response) => {
     try { input.onResponse({ status: response.statusCode ?? 0, contentType: String(response.headers["content-type"] ?? "") }); }
@@ -129,7 +140,8 @@ export class SseDecoder {
   }
 }
 
-export type ChatStreamResult = { ok: boolean; text: string; status?: number; error?: string; finishReason?: string };
+export type ChatStreamResult = { ok: boolean; text: string; receivedBytes: number; status?: number; error?: string; finishReason?: string;
+  connectionIssue?: ConnectionIssue; retryableConnection?: boolean };
 export type StructuredReplyTool = { name: string; description: string; parameters: Record<string, unknown> };
 export type ChatStreamOptions = {
   baseUrl: string;
@@ -142,6 +154,7 @@ export type ChatStreamOptions = {
    * Its raw arguments stream into the caller's bounded schema validator. */
   structuredReply?: StructuredReplyTool;
   timeoutMs: number;
+  freshConnection?: boolean;
   signal?: AbortSignal;
   onDelta?: (text: string) => void;
   temperature?: number;
@@ -151,12 +164,17 @@ export type ChatStreamOptions = {
 
 export async function streamChatCompletion(options: ChatStreamOptions, transport: HttpStream = nodeHttpStream): Promise<ChatStreamResult> {
   let text = "", body = "", status: number | undefined, contentType = "", finishReason: string | undefined;
+  let receivedBytes = 0;
+  let consumerFailure: unknown;
   let done = false;
   const emit = (delta: string): void => {
     if (options.signal?.aborted) throw new Error("cancelled");
     if (text.length + delta.length > MAX_TEXT) throw new Error("api-text-too-large");
     text += delta;
-    if (delta) options.onDelta?.(delta);
+    if (delta) {
+      try { options.onDelta?.(delta); }
+      catch (error) { consumerFailure = error; throw error; }
+    }
   };
   let toolId = "", toolName = "", toolType = "", toolSeen = false, pendingArguments = "";
   const toolDelta = (raw: unknown): void => {
@@ -194,10 +212,12 @@ export async function streamChatCompletion(options: ChatStreamOptions, transport
   const decoder = new SseDecoder((data) => {
     if (done) return;
     if (data === "[DONE]") { done = true; return; }
-    const parsed = JSON.parse(data) as {
+    let parsed: {
       error?: unknown;
       choices?: { index?: number; delta?: { content?: unknown; tool_calls?: unknown }; finish_reason?: unknown }[];
     };
+    try { parsed = JSON.parse(data) as typeof parsed; }
+    catch { throw new Error("api-stream-json-invalid"); }
     if (parsed.error) throw new Error(extractApiError(data));
     const choice = parsed.choices?.find(item => item.index === 0 || item.index === undefined);
     if (options.structuredReply) {
@@ -230,9 +250,13 @@ export async function streamChatCompletion(options: ChatStreamOptions, transport
         ...(options.structuredReply ? { tools: [{ type: "function", function: options.structuredReply }], tool_choice: { type: "function", function: { name: options.structuredReply.name } } } : {}),
         ...(disableThinking ? { thinking: { type: "disabled" } } : {}) }),
       timeoutMs: options.timeoutMs,
+      ...(options.freshConnection ? {freshConnection:true} : {}),
       signal: options.signal,
       onResponse: response => { status = response.status; contentType = response.contentType; },
       onChunk: chunk => {
+        // Count before parsing: comments, split events and tool identity bytes
+        // are still received data even when they never produce a text delta.
+        receivedBytes += Buffer.byteLength(chunk);
         if (options.signal?.aborted) throw new Error("cancelled");
         if (status && status >= 200 && status < 300 && /text\/event-stream/i.test(contentType)) decoder.push(chunk);
         else {
@@ -242,14 +266,16 @@ export async function streamChatCompletion(options: ChatStreamOptions, transport
       },
     });
     if (options.signal?.aborted) throw new Error("cancelled");
-    if (!status || status < 200 || status >= 300) return { ok: false, text, status, error: extractApiError(body) || `http-${status ?? 0}` };
+    if (!status || status < 200 || status >= 300) return { ok: false, text, receivedBytes, status, error: extractApiError(body) || `http-${status ?? 0}` };
     if (/text\/event-stream/i.test(contentType)) {
       decoder.finish();
       if (!done && !finishReason) throw new Error("incomplete-api-response");
     } else {
       // Some compatible gateways ignore stream:true. Preserve compatibility,
       // but never simulate chunks or a typewriter for their complete response.
-      const parsed = JSON.parse(body) as { choices?: { finish_reason?: string; message?: { content?: unknown; tool_calls?: unknown } }[] };
+      let parsed: { choices?: { finish_reason?: string; message?: { content?: unknown; tool_calls?: unknown } }[] };
+      try { parsed = JSON.parse(body) as typeof parsed; }
+      catch { throw new Error("api-response-json-invalid"); }
       finishReason = parsed.choices?.[0]?.finish_reason;
       if (options.structuredReply) {
         const message = parsed.choices?.[0]?.message;
@@ -262,8 +288,11 @@ export async function streamChatCompletion(options: ChatStreamOptions, transport
       if (!toolSeen || !toolId || toolType !== "function" || toolName !== options.structuredReply.name || pendingArguments) throw new Error("api-reply-tool-missing");
       if (finishReason !== "tool_calls") throw new Error(`incomplete-response: ${finishReason ?? "none"}`);
     } else if (finishReason && finishReason !== "stop") throw new Error(`incomplete-response: ${finishReason}`);
-    return { ok: true, text, status, finishReason };
+    return { ok: true, text, receivedBytes, status, finishReason };
   } catch (error) {
-    return { ok: false, text, status, finishReason, error: error instanceof Error ? error.message : String(error) };
+    const result:ChatStreamResult = { ok: false, text, receivedBytes, status, finishReason, error: error instanceof Error ? error.message : String(error) };
+    const connection = error !== consumerFailure ? recordConnectionReceipt(result,error,receivedBytes,status) : undefined;
+    if (connection) { result.connectionIssue=connection.connectionIssue;result.retryableConnection=connection.retryableConnection; }
+    return result;
   }
 }

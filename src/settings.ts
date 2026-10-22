@@ -329,6 +329,7 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     this.addToggle(container, "set.excalidrawAssist", "excalidrawAssist");
 
     this.addToggle(container, "set.persistChatLog", "persistChatLog");
+    this.renderLearningInsights(container);
 
     new Setting(container)
       .setName(t("set.chatLogKeep"))
@@ -362,6 +363,43 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       [t("settings.rebuild"), () => this.plugin.rebuildIndex(true)]
     ]);
     this.renderDiagnostics(container);
+  }
+
+  private renderLearningInsights(container:HTMLElement):void {
+    container.createEl("h3",{text:t("insight.title")});
+    new Setting(container).setName(t("insight.enabled")).setDesc(t("insight.enabledDesc"))
+      .addToggle(toggle=>toggle.setValue(this.plugin.settings.learningInsightsEnabled).onChange(value=>{
+        void this.queueOrdinarySettings(async()=>{
+          const previous=this.plugin.settings.learningInsightsEnabled;
+          this.plugin.settings.learningInsightsEnabled=value;
+          try{await this.plugin.persistSettings();await this.plugin.learningInsights?.refreshSettings();}
+          catch(error){this.plugin.settings.learningInsightsEnabled=previous;new Notice(String(error));this.refresh();}
+        });
+      }));
+    new Setting(container).setName(t("insight.exclusions")).setDesc(t("insight.exclusionsDesc"))
+      .addTextArea(area=>{
+        area.setValue(this.plugin.settings.learningInsightExcludedSources.join("\n"));area.inputEl.rows=3;
+        this.bindSettingInput(area.inputEl,"learningInsightExcludedSources",value=>[...new Set(value.split(/\r?\n/).map(line=>line.trim()).filter(Boolean))],{
+          format:value=>value.join("\n"),onCommit:()=>{void this.plugin.learningInsights?.refreshSettings();},
+        });
+      });
+    const records=container.createDiv();
+    new Setting(container).setName(t("insight.manage")).addButton(button=>button.setButtonText(t("insight.manage")).onClick(()=>{
+      records.empty();
+      const saved=this.plugin.learningInsights?.listRecords()??[];
+      if(!saved.length){records.createEl("p",{text:t("insight.empty")});return;}
+      for(const record of saved){
+        const item=records.createDiv({cls:"atl-thinking-record"});
+        const title=record.analysis.observations[0]?.statement??record.id;
+        new Setting(item).setName(title).setDesc(t("insight.source",{path:record.source.path})).addButton(open=>open.setButtonText(t("insight.open")).onClick(()=>{
+          const path=this.plugin.learningInsights?.pathFor(record.id);if(path)void this.plugin.openLibraryPath(path);
+        }));
+        let correction=record.correction??"";
+        new Setting(item).setName(t("insight.correction")).setDesc(t("insight.correctionDesc")).addTextArea(area=>area.setValue(correction).onChange(value=>{correction=value;}));
+        new Setting(item).addButton(save=>save.setButtonText(t("insight.save")).onClick(()=>{void this.plugin.learningInsights?.correct(record.id,correction).catch(error=>new Notice(String(error)));}))
+          .addButton(remove=>remove.setButtonText(t("insight.delete")).onClick(()=>{void this.plugin.learningInsights?.deleteRecord(record.id).then(()=>item.remove()).catch(error=>new Notice(String(error)));}));
+      }
+    }));
   }
 
   /**
@@ -1180,6 +1218,9 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
   }
 
   private renderBoardMcp(container: HTMLElement): void {
+    new Setting(container).setName(t("upgrade.communicationEnabled")).setDesc(t("upgrade.communicationEnabledDesc")).addToggle(toggle=>toggle.setValue(this.plugin.settings.tutorCommunicationEnabled).onChange(value=>void this.plugin.setTutorCommunicationEnabled(value).catch(error=>new Notice(String(error)))));
+    new Setting(container).setName(t("upgrade.communicationEngine")).setDesc(t("upgrade.communicationEngineDesc")).addDropdown(drop=>drop.addOption("inherit",t("upgrade.communicationEngineInherit")).addOption("codex",t("upgrade.communicationEngineCodex")).setValue(this.plugin.settings.tutorCommunicationEngine).onChange(value=>void this.plugin.setTutorCommunicationEngine(value as "inherit"|"codex").catch(error=>new Notice(String(error)))));
+    new Setting(container).setName(t("upgrade.communicationTitle")).setDesc(t("upgrade.communicationIntro")).addButton(button=>button.setButtonText(t("upgrade.communicationTitle")).onClick(()=>void this.plugin.openTutorCommunication().catch(error=>new Notice(String(error)))));
     for (const key of ["tutorRemoteName", "tutorRemoteUrl"] as const) new Setting(container)
       .setName(t(`board.${key}`)).setDesc(key === "tutorRemoteUrl" ? t("board.remoteScope") : "")
       .addText(text => { text.setValue(this.plugin.settings[key]); this.bindSettingInput(text.inputEl, key, value => value.trim()); });

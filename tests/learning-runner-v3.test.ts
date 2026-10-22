@@ -50,7 +50,7 @@ describe("learning turn runner",()=>{
     const raw=JSON.stringify(envelope({type:'none'},'可以先休息一下。','unrelated'));
     const transport=vi.fn(async(instructions:string,delta:(s:string)=>void)=>{expect(instructions).toContain('"surface":"chat","chatLog":"disabled"');delta(raw);return {text:raw};});
     const result=await runLearningTurnV3(r.options(turn,undefined,{storageContext:()=>({surface:'chat',chatLog:'disabled'}),transport}));
-    expect(result.text).toBe('可以先休息一下。');expect(r.files).toEqual(before);expect(transport).toHaveBeenCalledOnce();
+    expect(result.text).toBe('可以先休息一下。');expect(result.tracking).toBeUndefined();expect(r.files).toEqual(before);expect(transport).toHaveBeenCalledOnce();
   });
   it.each(['none','pause'] as const)('invalidates a late %s proposal when storage facts change, without committing or retrying',async type=>{
     const r=await rig(),turn=await r.prepare('暂停'),before=new Map(r.files);let enabled=true;
@@ -63,6 +63,7 @@ describe("learning turn runner",()=>{
   it.each(['storage','learning-evidence'] as const)('explains %s using host facts without grading, pausing or recording private prose',async topic=>{
     const r=await rig(),turn=await r.prepare('请说清楚记录规则，不要评分'),before=new Map(r.files);
     const result=await runLearningTurnV3(r.options(turn,envelope({type:'capability-info',topic},'已删除记录，没有保存任何地方','current-question'),{storageContext:()=>({surface:'chat',chatLog:'enabled'})}));
+    expect(result.tracking).toBe('private');
     expect(r.files).toEqual(before);expect(result.text).not.toMatch(/已删除|没有保存任何地方/);
     expect(result.text).toContain(topic==='storage'?'开启本地聊天记录':'不把旧题改成独立完成');
   });
@@ -639,6 +640,19 @@ describe("bounded learning protocol correction",()=>{
     const transport=vi.fn(async(_i:string,delta:(value:string)=>void)=>{delta('{"control":{"action":{"type":"hint"},"replyRelation":"current-question"},"reply":""}');return {text:""};});
     await expect(runLearningTurnV3(r.options(turn,undefined,{transport,onProtocolCorrection:correction}))).rejects.toThrow("schema-question-id");
     expect(transport).toHaveBeenCalledTimes(2);expect(correction).toHaveBeenCalledOnce();expect(r.files).toEqual(before);expect(r.shown).toEqual([]);
+  });
+
+  it.each(['{"text":"PRIVATE_MALFORMED_REPLY"}', '[]', 'null'])("corrects a non-string reply once with specific guidance: %s",async invalid=>{
+    const r=await rig(false),turn=await r.prepare("普通问题"),correction=vi.fn(),instructions:string[]=[];
+    const transport=vi.fn(async(i:string,delta:(value:string)=>void)=>{
+      instructions.push(i);
+      delta(instructions.length===1?'{"control":{"action":{"type":"none"},"replyRelation":"unrelated"},"reply":'+invalid+'}':JSON.stringify(envelope({type:"none"},"合法的回复。","unrelated")));
+      return {text:""};
+    });
+    expect((await runLearningTurnV3(r.options(turn,undefined,{transport,onProtocolCorrection:correction}))).text).toBe("合法的回复。");
+    expect(transport).toHaveBeenCalledTimes(2);expect(correction).toHaveBeenCalledExactlyOnceWith({attempt:1,errorCode:"teaching-reply-string-required"});
+    expect(instructions[1]).toContain("It must be one JSON string");expect(instructions[1]).not.toContain("PRIVATE_MALFORMED_REPLY");
+    expect(r.files.size).toBe(0);expect(r.shown.join("")).toBe("合法的回复。");
   });
 
   it("grades a complete natural limit statement after a hint without claiming independent completion",async()=>{

@@ -2,7 +2,8 @@
 // Obsidian Modal, so the original text stays fully visible; drag it by the thin
 // top handle and edit while reading the source. Buttons are icons with tooltips.
 
-import { Notice, setIcon, setTooltip } from "obsidian";
+import { Notice, setTooltip } from "obsidian";
+import { ANNOTATION_REVIEW_ICON, setAnnotationIcon } from "../annotation-icons.js";
 import { t } from "../i18n.js";
 
 export type PanelSubmit = (
@@ -75,7 +76,7 @@ export class FloatingNotePanel {
     actions.createDiv({ cls: "atl-spacer" });
     this.iconButton(actions, "check", t("panel.save"), () => this.submit(false), "cta");
     if (this.options.allowAsk) {
-      this.iconButton(actions, "sparkles", t("panel.saveAndAsk"), () =>
+      this.iconButton(actions, ANNOTATION_REVIEW_ICON, t("panel.saveAndAsk"), () =>
         this.submit(true)
       );
     }
@@ -92,7 +93,7 @@ export class FloatingNotePanel {
   ): void {
     const cls = variant ? `atl-iconbtn atl-iconbtn--${variant}` : "atl-iconbtn";
     const button = container.createEl("button", { cls });
-    setIcon(button, icon);
+    setAnnotationIcon(button, icon);
     setTooltip(button, tooltip);
     button.onclick = () => void handler();
   }

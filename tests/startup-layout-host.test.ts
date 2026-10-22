@@ -36,7 +36,7 @@ function fixture() {
   const index = deferred<LibrarySnapshot>(), migration = deferred<void>(), models = deferred<{ ok: true; models: string[] }>();
   const initial = emptyLibrarySnapshot(), next = emptyLibrarySnapshot();
   const store = {
-    ensureScaffold: vi.fn(() => scaffold.promise), loadLibraryCache: vi.fn(() => cache.promise),
+    ensureScaffold: vi.fn(() => scaffold.promise), interruptConversationRequests: vi.fn(async () => []), loadLibraryCache: vi.fn(() => cache.promise),
     rebuildLibrary: vi.fn(() => index.promise), refreshLibrary: vi.fn(async () => next), syncScenesFromCells: vi.fn(async (_full?: boolean) => {}),
   };
   const warmModels = vi.fn(() => models.promise), pretranslate = vi.fn(), migrate = vi.fn(() => migration.promise);
@@ -52,7 +52,7 @@ function fixture() {
     app: { workspace: { getActiveFile: () => ({ extension: "md", path: "synthetic.md" }) } },
     settings: { reviewEngine: "opencode", chatEngine: "api", agentCommand: "opencode", agentModel: "", webAutoAnalyze: false },
     translation: { maybePretranslate: pretranslate }, migrateTableAnchors: migrate, availableModels: [], modelsLoaded: false,
-    refreshDashboard, settingTab: { refresh: refreshSettings }, review: { refreshBadge }, refreshDecorations,
+    initializeLearningInsights: vi.fn(async () => {}), notifyAnnotationGraph: vi.fn(), scheduleInsightReconcile: vi.fn(), refreshDashboard, settingTab: { refresh: refreshSettings }, review: { refreshBadge }, refreshDecorations,
     indexTable: { replaceAll: replaceIndex }, agentSpawnEnv: () => ({}), persistSettings,
   });
   const unload = () => { host.pluginUnloaded = true; startup.cancel(); };

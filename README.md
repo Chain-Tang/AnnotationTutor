@@ -1,6 +1,6 @@
 # Annotation Tutor Lite
 
-> Current source candidate: **0.5.4** (checked 2026-10-14). Full commercial and desktop acceptance remain open; learning, check-ins and expert features are opt-in. See [implementation status and C67 installation](docs/qa/implementation-status-20261012/report.md), [usage and rollback](docs/tutor-learning-upgrade.md), and [optimization verification](docs/optimization-stage2-2026-10-14.md).
+> Current local source candidate: **0.7.7** (recovery dated 2026-10-22). See the [recovery verification record](docs/project-recovery-2026-10-22.md) and [pre-recovery assessment](docs/project-assessment-2026-10-22.md). Recovery does not publish a release or update installed Vaults. Full commercial and desktop acceptance remain open; learning, check-ins and expert features are opt-in. [Usage and rollback](docs/tutor-learning-upgrade.md).
 
 
 **Read closely. Think in the margins. Remember what matters.**
@@ -68,16 +68,24 @@ AI features are not an included model service or a guarantee of correct feedback
 
 ### Build the current source
 
-This page describes local source candidate **0.5.4**. The remote Git branch may lag behind this workspace; check `manifest.json` after cloning. The latest GitHub Release may be older; check its version before installing. To get the current source, use **Node 22.13+** and **pnpm 10**:
+This page describes local source candidate **0.7.7**. The remote Git branch may lag behind this workspace; check `manifest.json` and the checked-out commit after cloning. The latest GitHub Release may be older; check its version before installing. Development requires **Node 22.13+** and **pnpm 10**:
 
 ```bash
 git clone https://github.com/Chain-Tang/AnnotationTutor.git
 cd AnnotationTutor
 pnpm install --frozen-lockfile
+npm --prefix extension ci
+pnpm typecheck
+pnpm test
+pnpm test:release
+pnpm package
+pnpm package:verify
 pnpm install:vault -- --vault "/path/to/YourVault"
 ```
 
-The install command builds, copies plugin files including the offline `assets/fonts/` directory, and updates the Vault's enabled-plugin list. Save open annotations, then reload Obsidian or disable and re-enable the plugin. Copying files alone does not reload a running instance.
+Run the final install command only for a chosen test Vault, using its absolute path. The default online installer currently uses the macOS Obsidian CLI: it verifies the release and credential compatibility, saves and stops the running plugin, backs up the installation, replaces it transactionally, then reloads and checks its version. Keep the printed backup path. A busy task or failed save blocks replacement.
+
+For offline installation, fully exit Obsidian first and add `--offline`; then start Obsidian and verify loading manually. Offline success confirms filesystem checks only. Other platforms need offline installation or a separately validated host entry. Copying files alone does not reload a running instance. [Upgrade and recovery details →](docs/tutor-learning-upgrade.md)
 
 ### Install a packaged release
 
@@ -87,7 +95,7 @@ Open [Releases](https://github.com/Chain-Tang/AnnotationTutor/releases) and chec
 <YourVault>/.obsidian/plugins/annotation-tutor-lite/
 ```
 
-The full plugin ZIP and source installation scripts include the fonts. Copying only the three conventional plugin files is insufficient for board handwriting. Enable **Annotation Tutor Lite** in Community plugins settings. BRAT can install compatible releases from `Chain-Tang/AnnotationTutor`; ensure the release also supplies `assets/fonts/`, or use the complete ZIP. BRAT does not install unpublished source changes.
+The full plugin ZIP and source installation scripts include runtime chunks, compatibility metadata, fonts and licenses. Copying only the three conventional plugin files is incomplete. Enable **Annotation Tutor Lite** in Community plugins settings after a manual install. For an existing installation, prefer the managed installer and its rollback path rather than overwriting live files. A third-party installer must preserve the complete sealed directory; use the full ZIP if it only retrieves conventional plugin files. Unpublished source changes are not available through a GitHub Release.
 
 ### Make your first annotation
 
@@ -149,10 +157,12 @@ pnpm install --frozen-lockfile
 npm --prefix extension ci
 pnpm typecheck
 pnpm test
-pnpm build
+pnpm test:release
+pnpm package
+pnpm package:verify
 ```
 
-`pnpm dev` watches source changes. `pnpm package` rebuilds the plugin and extension, then creates release artifacts; `pnpm package:verify` checks the sealed ZIP. The current local verification counts and remaining gates are recorded in the [dated optimization verification](docs/optimization-verification-2026-10-14.md). CI is configured to check types, tests and packaging on Linux, Windows and macOS; remote results require a push.
+`pnpm dev` watches source changes; `pnpm build` builds plugin artifacts without packaging. `pnpm package` rebuilds the plugin and extension, then creates the sealed release folder and ZIP; `pnpm package:verify` checks that ZIP and writes `dist/package-verification.json`. Current recovery results and remaining gates belong in the [recovery record](docs/project-recovery-2026-10-22.md); older optimization reports describe their dated snapshots. CI checks types, tests, release transactions and packaging on Linux, Windows and macOS, with coverage on Linux. Remote results must be checked for the reviewed commit. Release from a reviewed branch/commit and distribute the complete ZIP; see [maintainer handoff](HANDOFF.md).
 
 When reporting an interaction issue, include plugin/Obsidian versions, skin, view mode, reproduction steps, and whether the plugin was reloaded after installation. Prefer a non-sensitive sample document.
 

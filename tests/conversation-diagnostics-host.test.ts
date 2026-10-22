@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { transformSync } from "esbuild";
 import { describe, expect, it, vi } from "vitest";
 import { streamChatCompletion, type HttpStream } from "../src/api-stream.js";
-import { beginConversationDiagnostic, conversationDiagnostics, type ConversationDiagnostic } from "../src/conversation-diagnostics.js";
+import { beginConversationDiagnostic, conversationDiagnostics, ConversationTransportError, type ConversationDiagnostic } from "../src/conversation-diagnostics.js";
 import { buildApiMessages } from "../src/chat-prompt.js";
 import { learningApiProtocol } from "../src/learning-api-protocol.js";
 import { t } from "../src/i18n.js";
@@ -45,7 +45,7 @@ function fixture(entry: "sidebar" | "annotation", responses: Response[], protoco
     for (const part of response.chunks) request.onChunk(part);
   });
   const module = { exports: {} };
-  const dependencies = { beginConversationDiagnostic, conversationDiagnostics, streamChatCompletion, nodeHttpStream: transport, buildApiMessages, learningApiProtocol, t };
+  const dependencies = { beginConversationDiagnostic, conversationDiagnostics, ConversationTransportError, streamChatCompletion, nodeHttpStream: transport, buildApiMessages, learningApiProtocol, t };
   new Function("module", ...Object.keys(dependencies), code)(module, ...Object.values(dependencies));
   const Host = module.exports as { new(): Host }, host = new Host();
   Object.assign(host, { settings: { chatEngine: "api", reviewLanguage: "Chinese", apiKey: "TEST_PRIVATE_KEY", apiBaseUrl: "https://api.example.test/v1", apiModel: "provider/actual-model", teachingMode: "guide" }, chatTimeoutMs: () => 1000 });
@@ -102,9 +102,9 @@ describe.each(["sidebar", "annotation"] as const)("%s Direct API diagnostic wiri
     expect(r.transport).toHaveBeenCalledOnce(); expect(r.consumeAdditionalModelCall).not.toHaveBeenCalled();
   });
 
-  it("reports empty successful completions without retrying or changing the UI error", async () => {
+  it("reports empty successful completions without retrying and preserves the annotation failure category", async () => {
     const r = fixture(entry, [{ chunks: [end] }]);
-    await expect(r.run()).rejects.toThrow(t("chat.empty"));
+    await expect(r.run()).rejects.toThrow(entry === "annotation" ? "empty-api-response" : t("chat.empty"));
     expect(r.host.conversationDiagnostics()[0]).toMatchObject({ status: 200, finishReason: "stop", outputChars: 0, deltaCount: 0, ok: false, errorCode: "no-output" });
     expect(r.reply).not.toHaveBeenCalled(); expect(r.transport).toHaveBeenCalledOnce();
     expect(r.consumeAdditionalModelCall).not.toHaveBeenCalled();
@@ -152,7 +152,7 @@ describe.each(["sidebar", "annotation"] as const)("%s Direct API diagnostic wiri
       expect(new Set(r.host.conversationDiagnostics().map(row => row.requestId)).size).toBe(1);
       expect(new Set(r.host.conversationDiagnostics().map(row => row.attemptId)).size).toBe(2);
     } else {
-      await expect(pending).rejects.toThrow(kind === "empty" ? t("chat.empty") : "PRIVATE_PROVIDER_ERROR");
+      await expect(pending).rejects.toThrow(kind === "empty" ? entry === "annotation" ? "empty-api-response" : t("chat.empty") : "PRIVATE_PROVIDER_ERROR");
       expect(r.transport).toHaveBeenCalledOnce(); expect(r.consumeAdditionalModelCall).not.toHaveBeenCalled();
     }
     expect(files.size).toBe(0);

@@ -8,7 +8,7 @@ import { supportControlSchema } from "./support-response.js";
 const envelope = z.object({ control: learningControlV3Schema, reply: z.string().max(48_000) }).strict();
 const tool: StructuredReplyTool = {
   name: "submit_teaching_reply",
-  description: "Return one teaching decision and learner-facing reply. Follow the current Host state and learning instructions. Arguments must be the ordered JSON envelope: control first, reply second. This submits a proposal, not a file operation or a claim of saved progress. The host validates and applies permitted actions. Do not emit a separate assistant message.",
+  description: "Return one teaching decision and learner-facing reply. Follow the current Host state and learning instructions. Arguments must be the ordered JSON envelope: control first, reply second. reply must be a single JSON string containing the complete explanation and Markdown, or an empty string; never use an object, array or null. Escape line breaks and quotation marks inside that string. This submits a proposal, not a file operation or a claim of saved progress. The host validates and applies permitted actions. Do not emit a separate assistant message.",
   parameters: z.toJSONSchema(envelope, { target: "draft-7" }),
 };
 const supportTool:StructuredReplyTool={name:"submit_tutor_reply",description:"Return one ephemeral response decision and reply in the ordered envelope control then reply. This channel cannot save records or execute tools. Follow the supplied support decision instructions. Do not emit separate prose.",parameters:z.toJSONSchema(z.object({control:supportControlSchema,reply:z.string().max(48_000)}).strict(),{target:"draft-7"})};

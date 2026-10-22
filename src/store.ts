@@ -74,6 +74,8 @@ import { deriveScenes } from "./memory-derive.js";
 import { getLocale } from "./i18n.js";
 import { sha256 } from "./markdown/proposal-file.js";
 import { GenerationRefreshQueue } from "./refresh-queue.js";
+import { makeId } from "./ids.js";
+import { AnnotationContextError, assembleAnnotationContext, replySnapshot, type AnnotationReplyTarget } from "./annotation-branches.js";
 
 type LibraryGroup = keyof LibraryFiles;
 type LibraryRead = {
@@ -86,6 +88,10 @@ type OwnWrite = { hash: string | null; generation: number };
 type LibraryOutput = { generatedAt: string; write: OwnWrite };
 
 export class VaultStore {
+  private branchCreation: Promise<unknown> = Promise.resolve();
+  private readonly pendingBranchCreations = new Set<Promise<Annotation>>();
+  private readonly branchReservations = new Set<string>();
+  private readonly conversationOperations = new Map<string, Promise<unknown>>();
   private readonly ownWrites = new Map<string, OwnWrite>();
   private readonly dirtyLibraryPaths = new Map<string, number>();
   private readonly dirtyLibraryOutputs = new Map<string, number>();
@@ -317,6 +323,293 @@ export class VaultStore {
     return content === null ? null : parseAnnotationFile(content);
   }
 
+  /** Source snapshot used by both request preparation and commit validation. */
+  public async readConversationSource(annotation: Annotation): Promise<string> {
+    if (annotation.anchor.sourceType === "pdf" || /\.pdf$/i.test(annotation.sourceFile)) {
+      if (!this.fileAt(annotation.sourceFile)) throw new AnnotationContextError("annotation-source-missing");
+      return annotation.anchor.selectedText;
+    }
+    const content = await this.readVaultFile(annotation.sourceFile);
+    if (content === null) throw new AnnotationContextError("annotation-source-missing");
+    return content;
+  }
+
+  public createConversationDraft(parentId: string, target: AnnotationReplyTarget): Promise<Annotation> {
+    const operation = this.branchCreation.catch(() => undefined).then(async () => {
+      let parent = await this.readAnnotation(parentId);
+      if (!parent) throw new AnnotationContextError("annotation-parent-missing");
+      if (target.kind === "dialogue") {
+        const dialogue = (parent.dialogue ?? []).map(turn => ({ ...turn, id: turn.id ?? crypto.randomUUID() }));
+        parent = await this.updateAnnotation(parentId, { dialogue }) ?? parent;
+      }
+      const snapshot = replySnapshot(parent, target);
+      const source = await this.readConversationSource(parent);
+      // Validate the parent path before creating another descendant.
+      await assembleAnnotationContext(parent.id, id => this.readAnnotation(id), { sourceText: source });
+      const files = await this.listAnnotationFiles();
+      const ids = [...files.map(file => file.path.split("/").at(-1)!.replace(/\.md$/i, "")), ...this.branchReservations];
+      const id = makeId("ANN", ids), at = nowIso();
+      this.branchReservations.add(id);
+      const child: Annotation = {
+        ...(parent.tracking ? { tracking: parent.tracking } : {}),
+        id, sourceFile: parent.sourceFile, anchor: { ...parent.anchor }, anchorOrigin: parent.anchorOrigin,
+        userNote: "", status: "draft", concepts: [], relatedMemoryCells: [],
+        branch: { parentAnnotationId: parent.id, rootAnnotationId: parent.branch?.rootAnnotationId ?? parent.id,
+          parentReply: snapshot, sourceVersion: sha256(source) },
+        request: { id: crypto.randomUUID(), status: "draft", question: "", updatedAt: at }, createdAt: at, updatedAt: at
+      };
+      await this.createAnnotation(child);
+      return child;
+    });
+    this.branchCreation = operation;
+    this.pendingBranchCreations.add(operation);
+    void operation.finally(() => this.pendingBranchCreations.delete(operation)).catch(() => undefined);
+    return operation;
+  }
+
+  public saveConversationDraft(id: string, question: string): Promise<Annotation | null> {
+    return this.queueConversation(id, async () => this.mutateConversation(id, existing => {
+      if (!existing.branch || existing.status === "archived" || existing.status === "source_missing" || existing.request?.status === "generating" || existing.request?.status === "completed") return null;
+      const at = nowIso();
+      return { ...existing, userNote: question, request: { id: existing.request?.id ?? crypto.randomUUID(), status: "draft", question, updatedAt: at }, updatedAt: at };
+    }));
+  }
+
+  public beginConversationRequest(id: string, question: string, requestId: string = crypto.randomUUID()): Promise<Annotation | null> {
+    return this.queueConversation(id, async () => {
+      // Save the question before any context/source read can fail.
+      const current = await this.mutateConversation(id, existing => {
+        if (!existing.branch || existing.status === "archived" || existing.status === "source_missing" || existing.request?.status === "generating" || existing.request?.status === "completed" || !question.trim()) return null;
+        return { ...existing, userNote: question, request: { id: requestId, status: "draft", question, updatedAt: nowIso() }, updatedAt: nowIso() };
+      });
+      if (!current) return null;
+      let stillCurrent: () => boolean;
+      try {
+        stillCurrent = await this.validateConversationContext(current);
+      } catch (error) {
+        await this.mutateConversation(id, existing => existing.request?.id !== requestId ? null
+          : { ...existing, request: { ...existing.request, status: "failed", errorCode: error instanceof AnnotationContextError ? error.code : "annotation-context-unavailable", updatedAt: nowIso() }, updatedAt: nowIso() });
+        throw error;
+      }
+      return this.mutateConversation(id, existing => {
+        if (existing.status === "archived" || existing.status === "source_missing" || existing.request?.status === "generating" || existing.request?.status === "completed"
+          || JSON.stringify(existing.branch) !== JSON.stringify(current.branch)) return null;
+        if (!stillCurrent()) throw new AnnotationContextError("annotation-context-changed");
+        const at = nowIso();
+        return { ...existing, userNote: question, status: "agent_requested", request: { id: requestId, status: "generating", question, startedAt: at, updatedAt: at }, updatedAt: at };
+      });
+    });
+  }
+
+  public completeConversationRequest(id: string, requestId: string, reply: string, options?: { tracking?: Annotation["tracking"] }): Promise<Annotation | null> {
+    return this.queueConversation(id, async () => {
+      if (!reply.trim()) return null;
+      const current = await this.readAnnotation(id);
+      if (!current?.branch || current.request?.id !== requestId || current.request.status !== "generating") return null;
+      let stillCurrent: () => boolean;
+      try {
+        stillCurrent = await this.validateConversationContext(current);
+      } catch (error) {
+        await this.mutateConversation(id, existing => existing.request?.id === requestId && existing.request.status === "generating"
+          ? { ...existing, status: "draft", request: { ...existing.request, status: "failed", errorCode: error instanceof AnnotationContextError ? error.code : "annotation-context-unavailable", updatedAt: nowIso() }, updatedAt: nowIso() } : null);
+        throw error;
+      }
+      return this.mutateConversation(id, existing => {
+        if (existing.status === "archived" || existing.status === "source_missing" || existing.request?.id !== requestId || existing.request.status !== "generating" || existing.userNote !== current.userNote
+          || JSON.stringify(existing.branch) !== JSON.stringify(current.branch)) return null;
+        if (!stillCurrent()) throw new AnnotationContextError("annotation-context-changed");
+        const at = nowIso(), review = parseAgentReview(reply.trim(), at) ?? undefined;
+        const tracking = existing.tracking === "excluded" || options?.tracking === "excluded" ? "excluded"
+          : existing.tracking === "private" || options?.tracking === "private" ? "private" : options?.tracking ?? existing.tracking;
+        return { ...existing, ...(tracking ? { tracking } : {}), reviewText: reply.trim(), review, status: review ? "reviewed" : "reviewed_unstructured",
+          request: { ...existing.request, status: "completed", updatedAt: at }, updatedAt: at };
+      });
+    });
+  }
+
+  public failConversationRequest(id: string, requestId: string, status: "failed" | "cancelled" | "interrupted" = "failed", errorCode?: string): Promise<Annotation | null> {
+    return this.queueConversation(id, async () => this.mutateConversation(id, existing => {
+      if (existing.request?.id !== requestId || existing.request.status !== "generating") return null;
+      const at = nowIso();
+      return { ...existing, status: existing.status === "archived" || existing.status === "source_missing" ? existing.status : "draft", request: { ...existing.request, status, ...(errorCode ? { errorCode } : {}), updatedAt: at }, updatedAt: at };
+    }));
+  }
+
+  /** Persist same-card follow-up separately from the original annotation and answer. */
+  public saveDialogueDraft(id: string, question: string): Promise<Annotation | null> {
+    return this.queueConversation(id, async () => this.mutateConversation(id, existing => {
+      if (!this.canContinueAnnotation(existing) || existing.dialogueRequest?.status === "generating") return null;
+      const at = nowIso(), previous = existing.dialogueRequest;
+      return { ...existing, dialogueRequest: { id: previous && previous.status !== "completed" ? previous.id : crypto.randomUUID(),
+        status: "draft", question, updatedAt: at }, updatedAt: at };
+    }));
+  }
+
+  public beginDialogueRequest(id: string, question: string, requestId: string = crypto.randomUUID()): Promise<Annotation | null> {
+    return this.queueConversation(id, async () => {
+      const current = await this.mutateConversation(id, existing => {
+        if (!question.trim() || !this.canContinueAnnotation(existing) || existing.dialogueRequest?.status === "generating"
+          || existing.dialogue?.some(turn => turn.id === `${requestId}-user` || turn.id === `${requestId}-agent`)) return null;
+        const at = nowIso();
+        return { ...existing, dialogueRequest: { id: requestId, status: "draft", question, updatedAt: at }, updatedAt: at };
+      });
+      if (!current) return null;
+      try {
+        const sourceVersion = sha256(await this.readConversationSource(current));
+        const stillCurrent = await this.validateConversationContext(current);
+        return await this.mutateConversation(id, existing => {
+          if (!this.canContinueAnnotation(existing) || existing.dialogueRequest?.id !== requestId
+            || existing.dialogueRequest.status !== "draft" || this.dialogueContextVersion(existing) !== this.dialogueContextVersion(current)) return null;
+          if (!stillCurrent()) throw new AnnotationContextError("annotation-context-changed");
+          const at = nowIso();
+          return { ...existing, dialogueRequest: { id: requestId, status: "generating", question,
+            contextVersion: this.dialogueContextVersion(current), sourceVersion, startedAt: at, updatedAt: at }, updatedAt: at };
+        });
+      } catch (error) {
+        await this.mutateConversation(id, existing => existing.dialogueRequest?.id !== requestId ? null
+          : { ...existing, dialogueRequest: { ...existing.dialogueRequest, status: "failed",
+            errorCode: error instanceof AnnotationContextError ? error.code : "annotation-context-unavailable", updatedAt: nowIso() }, updatedAt: nowIso() });
+        throw error;
+      }
+    });
+  }
+
+  public completeDialogueRequest(id: string, requestId: string, reply: string, options?: { tracking?: Annotation["tracking"] }): Promise<Annotation | null> {
+    return this.queueConversation(id, async () => {
+      if (!reply.trim()) return null;
+      const current = await this.readAnnotation(id), request = current?.dialogueRequest;
+      if (!current || request?.id !== requestId || request.status !== "generating") return null;
+      try {
+        if (!this.canContinueAnnotation(current) || request.contextVersion !== this.dialogueContextVersion(current))
+          throw new AnnotationContextError("annotation-context-changed");
+        if (request.sourceVersion !== sha256(await this.readConversationSource(current))) throw new AnnotationContextError("annotation-source-changed");
+        const stillCurrent = await this.validateConversationContext(current);
+        return await this.mutateConversation(id, existing => {
+          if (!this.canContinueAnnotation(existing) || existing.dialogueRequest?.id !== requestId || existing.dialogueRequest.status !== "generating") return null;
+          if (!stillCurrent() || this.dialogueContextVersion(existing) !== request.contextVersion) throw new AnnotationContextError("annotation-context-changed");
+          const at = nowIso(), tracking = existing.tracking === "excluded" || options?.tracking === "excluded" ? "excluded"
+            : existing.tracking === "private" || options?.tracking === "private" ? "private" : options?.tracking ?? existing.tracking;
+          return { ...existing, ...(tracking ? { tracking } : {}), dialogue: [...(existing.dialogue ?? []),
+            { id: `${requestId}-user`, role: "user", text: request.question, at }, { id: `${requestId}-agent`, role: "agent", text: reply.trim(), at }],
+            dialogueRequest: { ...existing.dialogueRequest, status: "completed", updatedAt: at }, updatedAt: at };
+        });
+      } catch (error) {
+        await this.mutateConversation(id, existing => existing.dialogueRequest?.id !== requestId || existing.dialogueRequest.status !== "generating" ? null
+          : { ...existing, dialogueRequest: { ...existing.dialogueRequest, status: "failed",
+            errorCode: error instanceof AnnotationContextError ? error.code : "annotation-context-unavailable", updatedAt: nowIso() }, updatedAt: nowIso() });
+        throw error;
+      }
+    });
+  }
+
+  public failDialogueRequest(id: string, requestId: string, status: "failed" | "cancelled" | "interrupted" = "failed", errorCode?: string): Promise<Annotation | null> {
+    return this.queueConversation(id, async () => this.mutateConversation(id, existing => {
+      if (existing.dialogueRequest?.id !== requestId || existing.dialogueRequest.status !== "generating") return null;
+      const at = nowIso();
+      return { ...existing, dialogueRequest: { ...existing.dialogueRequest, status, ...(errorCode ? { errorCode } : {}), updatedAt: at }, updatedAt: at };
+    }));
+  }
+
+  private canContinueAnnotation(annotation: Annotation): boolean {
+    return annotation.status !== "archived" && annotation.status !== "source_missing" && annotation.status !== "agent_requested" && annotation.request?.status !== "generating"
+      && (!annotation.branch || annotation.request?.status === "completed" || !!annotation.reviewText?.trim());
+  }
+
+  private dialogueContextVersion(annotation: Annotation): string {
+    return sha256(JSON.stringify({ sourceFile: annotation.sourceFile, anchor: annotation.anchor, userNote: annotation.userNote,
+      reviewText: annotation.reviewText, dialogue: annotation.dialogue, branch: annotation.branch }));
+  }
+
+  /** Explicit user action: repin a stale direct parent without losing the question. */
+  public refreshConversationParent(id: string): Promise<Annotation | null> {
+    return this.queueConversation(id, async () => {
+      const current = await this.readAnnotation(id);
+      if (!current?.branch || current.request?.status === "generating" || current.request?.status === "completed") return null;
+      const parent = await this.readAnnotation(current.branch.parentAnnotationId);
+      if (!parent) throw new AnnotationContextError("annotation-parent-missing");
+      const parentReply = replySnapshot(parent, current.branch.parentReply.kind === "review" ? { kind: "review" } : { kind: "dialogue", turnId: current.branch.parentReply.id });
+      const sourceVersion = sha256(await this.readConversationSource(current));
+      return this.mutateConversation(id, existing => existing.request?.status === "generating" || existing.request?.status === "completed" ? null
+        : { ...existing, branch: { ...current.branch!, parentReply, sourceVersion }, request: existing.request ? { ...existing.request, status: "draft", errorCode: undefined, updatedAt: nowIso() } : undefined, updatedAt: nowIso() });
+    });
+  }
+
+  public async interruptConversationRequests(): Promise<Annotation[]> {
+    const interrupted: Annotation[] = [];
+    for (const file of await this.listAnnotationFiles()) {
+      const annotation = parseAnnotationFile(file.content);
+      if (!annotation) continue;
+      let next: Annotation | null = null;
+      if (annotation.request?.status === "generating") next = await this.failConversationRequest(annotation.id, annotation.request.id, "interrupted", "annotation-request-interrupted");
+      if (annotation.dialogueRequest?.status === "generating") next = await this.failDialogueRequest(annotation.id, annotation.dialogueRequest.id, "interrupted", "annotation-request-interrupted");
+      if (next) interrupted.push(next);
+    }
+    return interrupted;
+  }
+
+  /** Upgrade/unload barrier after the UI has flushed its debounced draft editors. */
+  public async drainConversationWrites(): Promise<void> {
+    let firstFailure: unknown;
+    while (true) {
+      const creations = [...this.pendingBranchCreations];
+      const operations = [...this.conversationOperations.values()];
+      const results = await Promise.allSettled([...creations, ...operations]);
+      firstFailure ??= results.find((result): result is PromiseRejectedResult => result.status === "rejected")?.reason;
+      // Finalizers remove settled queue entries in the same microtask turn.
+      await Promise.resolve();
+      if (this.pendingBranchCreations.size === 0 && this.conversationOperations.size === 0) break;
+    }
+    if (firstFailure !== undefined) throw firstFailure;
+  }
+
+  private queueConversation<T>(id: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.conversationOperations.get(id) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(operation);
+    this.conversationOperations.set(id, next);
+    void next.finally(() => { if (this.conversationOperations.get(id) === next) this.conversationOperations.delete(id); }).catch(() => undefined);
+    return next;
+  }
+
+  /** Guard the async read -> synchronous vault.process window against host and external edits. */
+  private async validateConversationContext(annotation: Annotation): Promise<() => boolean> {
+    const guards = new Map<string, () => boolean>();
+    const guard = (path: string): void => {
+      if (guards.has(path)) return;
+      const signature = (): string => {
+        const file = this.fileAt(path);
+        return JSON.stringify({ exists: !!file, mtime: file?.stat?.mtime, size: file?.stat?.size,
+          own: this.ownWrites.get(path)?.generation, dirty: this.dirtyLibraryPaths.get(path) });
+      };
+      const before = signature();
+      guards.set(path, () => signature() === before);
+    };
+    guard(annotation.sourceFile);
+    const sourceText = await this.readConversationSource(annotation);
+    await assembleAnnotationContext(annotation.id, async id => {
+      guard(this.annotationPath(id));
+      return this.readAnnotation(id);
+    }, { sourceText });
+    const stillCurrent = (): boolean => [...guards.values()].every(check => check());
+    if (!stillCurrent()) throw new AnnotationContextError("annotation-context-changed");
+    return stillCurrent;
+  }
+
+  private async mutateConversation(id: string, mutate: (existing: Annotation) => Annotation | null): Promise<Annotation | null> {
+    const file = this.fileAt(this.annotationPath(id));
+    if (!file) return null;
+    let result: Annotation | null = null;
+    await this.processVaultFile(file, data => {
+      const existing = parseAnnotationFile(data);
+      if (!existing) return data;
+      const next = mutate(existing);
+      if (!next) return data;
+      const out = serializeAnnotation(next, this.memoryRoot());
+      result = parseAnnotationFile(out);
+      return out;
+    });
+    return result;
+  }
+
   public async updateAnnotation(
     id: string,
     patch: AnnotationPatch
@@ -425,6 +718,8 @@ export class VaultStore {
   }
 
   public async deleteAnnotation(id: string): Promise<void> {
+    const hasChildren = (await this.listAnnotationFiles()).some(item => parseAnnotationFile(item.content)?.branch?.parentAnnotationId === id);
+    if (hasChildren) { await this.updateAnnotation(id, { status: "archived" }); return; }
     const file = this.fileAt(this.annotationPath(id));
     if (file) await this.deleteVaultFile(file);
   }

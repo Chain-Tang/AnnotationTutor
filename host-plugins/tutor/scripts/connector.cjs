@@ -18219,8 +18219,15 @@ var import_node_os = require("node:os");
 var import_node_path = require("node:path");
 async function main() {
   const home = (0, import_node_path.join)((0, import_node_os.homedir)(), ".local", "share", "tutor");
-  let selected = process.env.TUTOR_INSTANCE_ID, remote, remotePort;
+  const instancePattern = "^[a-f0-9]{24}$";
+  const routingProperty = { type: "string", pattern: instancePattern, description: "Route this call to this paired local Tutor instance, without changing the default vault." };
+  let selected = process.env.TUTOR_INSTANCE_ID;
+  const connections = /* @__PURE__ */ new Map(), liveConnections = /* @__PURE__ */ new Set();
   const read = async (path) => JSON.parse(await (0, import_promises.readFile)(path, "utf8"));
+  const validateInstanceId = (id) => {
+    if (id !== void 0 && (typeof id !== "string" || !new RegExp(instancePattern).test(id))) throw new Error("Invalid instanceId");
+    return id;
+  };
   async function instances() {
     let names = [];
     try {
@@ -18240,82 +18247,158 @@ async function main() {
     }
     return result;
   }
-  async function instance(id) {
+  async function instance(id = selected) {
+    validateInstanceId(id);
     const list = await instances();
-    const result = list.find((i) => i.id === (id ?? selected)) ?? (!id && !selected && list.length === 1 ? list[0] : void 0);
-    if (!result) throw new Error(list.length ? "Choose an instanceId with tutor_connect." : "Tutor unavailable: open Obsidian and enable Tutor MCP.");
-    return result;
+    const entry = list.find((i) => i.id === id) ?? (id === void 0 && list.length === 1 ? list[0] : void 0);
+    if (!entry) throw new Error(list.length ? "Choose an instanceId with tutor_connect or on this tool call." : "Tutor unavailable: open Obsidian and enable Tutor MCP.");
+    return entry;
   }
-  async function connect() {
-    const entry = await instance(), record2 = await read((0, import_node_path.join)(home, "clients", `codex-${entry.id}.json`)).catch(() => null);
-    if (!record2?.token) throw new Error("Tutor is not paired. Call tutor_connect and select the permitted scope in Obsidian.");
-    if (remote && remotePort === entry.port) return remote;
-    await remote?.close();
-    remote = void 0;
-    remotePort = void 0;
-    const client = new Client({ name: "tutor-codex", version: "0.3.0" });
-    await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${entry.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${record2.token}` } } }));
-    remote = client;
-    remotePort = entry.port;
-    return client;
+  function closeConnection(connection, force = false) {
+    if (connection.closing || !force && connection.active) return;
+    connection.closing = true;
+    if (connections.get(connection.id) === connection) connections.delete(connection.id);
+    void connection.client.then((client) => client.close()).catch(() => {
+    }).finally(() => liveConnections.delete(connection));
+  }
+  function retire(connection) {
+    connection.retired = true;
+    if (connections.get(connection.id) === connection) connections.delete(connection.id);
+    closeConnection(connection);
+  }
+  async function withRemote(entry, operation) {
+    const record2 = await read((0, import_node_path.join)(home, "clients", `codex-${entry.id}.json`)).catch(() => null);
+    if (typeof record2?.token !== "string" || !/^[a-f0-9]{64}$/.test(record2.token)) throw new Error("Tutor is not paired. Call tutor_connect and select the permitted scope in Obsidian.");
+    let connection = connections.get(entry.id);
+    if (connection && (connection.port !== entry.port || connection.token !== record2.token)) {
+      retire(connection);
+      connection = void 0;
+    }
+    if (!connection) {
+      const client = new Client({ name: "tutor-codex", version: "0.5.0" });
+      const ready = (async () => {
+        try {
+          await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${entry.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${record2.token}` } } }));
+          return client;
+        } catch (error2) {
+          await client.close().catch(() => {
+          });
+          throw error2;
+        }
+      })();
+      connection = { id: entry.id, port: entry.port, token: record2.token, client: ready, active: 0, retired: false, closing: false };
+      connections.set(entry.id, connection);
+      liveConnections.add(connection);
+    }
+    connection.active++;
+    try {
+      return await operation(await connection.client);
+    } catch (error2) {
+      retire(connection);
+      throw error2;
+    } finally {
+      connection.active--;
+      if (connection.retired) closeConnection(connection);
+    }
   }
   const tools = [
     { name: "tutor_instances", description: "Find running local Obsidian Tutor vaults. This contains no credentials.", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
-    { name: "tutor_connect", description: "Request pairing with one local vault. Choose the authorized documents, canvases and selected objects in the Obsidian dialog. Existing pairing can be reused; re-pair only to change scope.", inputSchema: { type: "object", properties: { instanceId: { type: "string", pattern: "^[a-f0-9]{24}$" }, repair: { type: "boolean" } }, additionalProperties: false } },
-    { name: "tutor_diagnose", description: "Check local service and pairing without printing credentials.", inputSchema: { type: "object", properties: {}, additionalProperties: false } }
+    { name: "tutor_connect", description: "Request pairing with one local vault and set the default. Choose the authorized documents, canvases and selected objects in the Obsidian dialog. Existing pairing can be reused; re-pair only to change scope. Other calls may use instanceId to target a vault without changing this default.", inputSchema: { type: "object", properties: { instanceId: routingProperty, repair: { type: "boolean" } }, additionalProperties: false } },
+    { name: "tutor_diagnose", description: "Check one local service and pairing without printing credentials or changing the default vault.", inputSchema: { type: "object", properties: { instanceId: routingProperty }, additionalProperties: false } }
   ];
-  const server = new Server({ name: "tutor-connector", version: "0.3.0" }, { capabilities: { tools: { listChanged: true } } });
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
-    try {
-      return { tools: [...tools, ...(await (await connect()).listTools()).tools] };
-    } catch {
-      return { tools };
+  const localNames = new Set(tools.map((tool) => tool.name));
+  const server = new Server({ name: "tutor-connector", version: "0.5.0" }, { capabilities: { tools: { listChanged: true } } });
+  async function forwardedTools() {
+    const preferred = selected;
+    const entries = (await instances()).sort((a, b) => a.id === preferred ? -1 : b.id === preferred ? 1 : a.id.localeCompare(b.id));
+    const lists = await Promise.allSettled(entries.map((entry) => withRemote(entry, (client) => client.listTools())));
+    const grouped = /* @__PURE__ */ new Map();
+    for (let index = 0; index < lists.length; index++) {
+      const list = lists[index];
+      if (list.status !== "fulfilled") continue;
+      for (const tool of list.value.tools) {
+        if (!tool.name.startsWith("tutor_") || localNames.has(tool.name)) continue;
+        const variants = grouped.get(tool.name) ?? [];
+        variants.push({ tool, instanceId: entries[index].id });
+        grouped.set(tool.name, variants);
+      }
     }
-  });
+    return [...grouped.values()].map((variants) => {
+      const tool = { ...variants[0].tool };
+      const schemas = [...new Map(variants.map(({ tool: tool2 }) => {
+        const schema = { ...tool2.inputSchema, properties: { ...tool2.inputSchema.properties, instanceId: routingProperty } };
+        return [JSON.stringify(schema), schema];
+      })).values()];
+      tool.inputSchema = schemas.length === 1 ? schemas[0] : { type: "object", properties: { instanceId: routingProperty }, anyOf: schemas };
+      tool.description = `${tool.description ?? tool.name}
+Paired local instances: ${variants.map((variant) => variant.instanceId).join(", ")}. Use optional instanceId to route this call; otherwise the tutor_connect default is used.`;
+      if (variants.some((variant) => JSON.stringify(variant.tool.outputSchema) !== JSON.stringify(tool.outputSchema))) delete tool.outputSchema;
+      if (variants.length > 1) {
+        tool.annotations = {
+          ...tool.annotations,
+          readOnlyHint: variants.every((variant) => variant.tool.annotations?.readOnlyHint === true),
+          destructiveHint: variants.some((variant) => variant.tool.annotations?.destructiveHint !== false),
+          idempotentHint: variants.every((variant) => variant.tool.annotations?.idempotentHint === true),
+          openWorldHint: variants.some((variant) => variant.tool.annotations?.openWorldHint !== false)
+        };
+      }
+      return tool;
+    });
+  }
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [...tools, ...await forwardedTools()] }));
   server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const name = request.params.name, args = request.params.arguments ?? {};
     const result = (data) => ({ content: [{ type: "text", text: JSON.stringify(data) }], structuredContent: data });
     try {
       if (name === "tutor_instances") return result({ instances: await instances() });
+      validateInstanceId(args.instanceId);
+      const targetId = validateInstanceId(args.instanceId === void 0 ? selected : args.instanceId);
       if (name === "tutor_connect") {
-        if (args.instanceId !== void 0 && !/^[a-f0-9]{24}$/.test(args.instanceId)) throw new Error("Invalid instanceId");
-        const entry = await instance(args.instanceId);
-        selected = entry.id;
+        const entry2 = await instance(targetId);
         if (!args.repair) {
           try {
-            await connect();
-            return result({ connected: true, instanceId: entry.id });
+            await withRemote(entry2, async () => {
+            });
+            selected = entry2.id;
+            await server.sendToolListChanged();
+            return result({ connected: true, instanceId: entry2.id });
           } catch {
           }
         }
-        const response = await fetch(`http://127.0.0.1:${entry.port}/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Codex Tutor plugin" }), signal: AbortSignal.any([extra.signal, AbortSignal.timeout(125e3)]) });
+        const response = await fetch(`http://127.0.0.1:${entry2.port}/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Codex Tutor plugin" }), signal: AbortSignal.any([extra.signal, AbortSignal.timeout(125e3)]) });
         if (!response.ok) throw new Error("Pairing declined, busy, or unavailable. Check Obsidian.");
         const data = await response.json();
-        if (!/^[a-f0-9]{64}$/.test(data.token)) throw new Error("Invalid pairing response");
+        if (typeof data.token !== "string" || !/^[a-f0-9]{64}$/.test(data.token)) throw new Error("Invalid pairing response");
         const dir = (0, import_node_path.join)(home, "clients");
         await (0, import_promises.mkdir)(dir, { recursive: true, mode: 448 });
-        const path = (0, import_node_path.join)(dir, `codex-${entry.id}.json`);
+        const path = (0, import_node_path.join)(dir, `codex-${entry2.id}.json`);
         await (0, import_promises.writeFile)(path + ".tmp", JSON.stringify({ token: data.token, clientId: data.clientId }), { mode: 384 });
         await (0, import_promises.rename)(path + ".tmp", path);
-        await remote?.close();
-        remote = void 0;
-        await connect();
+        await withRemote(entry2, async () => {
+        });
+        selected = entry2.id;
         await server.sendToolListChanged();
-        return result({ connected: true, instanceId: entry.id });
+        return result({ connected: true, instanceId: entry2.id });
       }
+      const entry = await instance(targetId);
       if (name === "tutor_diagnose") {
-        const entry = await instance();
-        await connect();
+        await withRemote(entry, async () => {
+        });
         return result({ available: true, instanceId: entry.id, name: entry.name });
       }
-      return await (await connect()).callTool(request.params, void 0, { signal: extra.signal, timeout: 12e4 });
+      if (!name.startsWith("tutor_")) throw new Error("Unknown Tutor tool");
+      const { instanceId: _route, ...remoteArgs } = args;
+      return await withRemote(entry, (client) => client.callTool({ ...request.params, arguments: remoteArgs }, void 0, { signal: extra.signal, timeout: 12e4 }));
     } catch (error2) {
       return { isError: true, content: [{ type: "text", text: String(error2.message ?? "Tutor connection failed").replace(/Bearer\s+\S+/gi, "Bearer [redacted]") }] };
     }
   });
   await server.connect(new StdioServerTransport());
   process.on("SIGTERM", () => {
-    void remote?.close();
+    for (const connection of liveConnections) {
+      retire(connection);
+      closeConnection(connection, true);
+    }
     void server.close();
   });
 }

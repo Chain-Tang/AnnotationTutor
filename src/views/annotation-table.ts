@@ -1,4 +1,5 @@
-import { setIcon, setTooltip } from "obsidian";
+import { setTooltip } from "obsidian";
+import { ANNOTATION_REVIEW_ICON, setAnnotationIcon } from "../annotation-icons.js";
 import type AnnotationTutorLitePlugin from "../main.js";
 import type { IndexQuery } from "../index-table.js";
 import { annotationStatuses, type IndexRecord } from "../model.js";
@@ -190,7 +191,7 @@ export class AnnotationTable {
     this.action(actions, "corner-up-right", t("action.jump"), () =>
       this.plugin.openAnnotation(record)
     );
-    this.action(actions, "sparkles", t("action.ask"), () =>
+    this.action(actions, ANNOTATION_REVIEW_ICON, t("action.ask"), () =>
       this.plugin.askAgent(record)
     );
     this.action(actions, "clipboard-copy", t("action.copyPrompt"), () =>
@@ -241,7 +242,7 @@ export class AnnotationTable {
     const button = container.createEl("button", {
       cls: danger ? "atl-iconbtn atl-iconbtn--danger" : "atl-iconbtn"
     });
-    setIcon(button, icon);
+    setAnnotationIcon(button, icon);
     setTooltip(button, tooltip);
     button.onclick = () => void handler();
   }

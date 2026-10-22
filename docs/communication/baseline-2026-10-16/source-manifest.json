@@ -1,0 +1,20 @@
+{
+  "imported_on": "2026-10-16",
+  "documents": [
+    {
+      "file": "implementation-audit.md",
+      "source": "/Volumes/KESU/所作/哲学学习/技术附录/通信实现核查.md",
+      "sha256": "ff53eae876d95aa589accbea1b7be1a07f9d037538686c61419f7c98df0b04f2"
+    },
+    {
+      "file": "collaboration-contract.md",
+      "source": "/Volumes/KESU/所作/哲学学习/技术附录/协作契约草案.md",
+      "sha256": "c648d5fbc2eb2bf5298c089c90dbae3ea0c43afa7ef2c7be74f13e24965ab936"
+    },
+    {
+      "file": "user-workflow.md",
+      "source": "/Volumes/KESU/所作/哲学学习/04_Tutor与Codex协作说明.md",
+      "sha256": "384f3a8ac804f38a42c6f157f2f60daef776ffdac73e3adf448505455a14b307"
+    }
+  ]
+}

@@ -15,9 +15,11 @@ import {
 import { annotationLocations } from "./decorations-plan.js";
 import { TableHighlighter } from "./table-highlighter.js";
 import { CardPool } from "./card-pool.js";
+import { InlineAnnotationWorkflow } from "./inline-annotation-workflow.js";
 import {
   clearChildren,
   drawConnector,
+  getMarginCardHandlers,
   lastLineRect,
   loadCardGeom,
   placeCards,
@@ -40,6 +42,7 @@ class MarginRail {
   private readonly onScroll: () => void;
   private readonly geom = new Map<string, Geom>();
   private readonly cards = new CardPool();
+  private readonly workflow: InlineAnnotationWorkflow;
   private readonly tables: TableHighlighter;
   private frame = 0;
   private fallback = 0;
@@ -51,6 +54,9 @@ class MarginRail {
     this.cardsEl.className = "atl-rail";
     view.dom.appendChild(this.svg);
     view.dom.appendChild(this.cardsEl);
+    this.workflow = new InlineAnnotationWorkflow(
+      this.cardsEl, this.svg, () => this.editorRect(), () => this.schedule()
+    );
     this.tables = new TableHighlighter(view.dom, view.contentDOM,
       id => view.dispatch({ effects: toggleMarginCard.of(id) }),
       () => this.schedule());
@@ -85,6 +91,7 @@ class MarginRail {
     this.view.scrollDOM.removeEventListener("scroll", this.onScroll);
     if (this.frame) cancelAnimationFrame(this.frame);
     clearTimeout(this.fallback);
+    this.workflow.destroy();
     this.cards.clear();
     this.tables.destroy();
     this.svg.remove();
@@ -109,7 +116,10 @@ class MarginRail {
     const config = this.view.state.field(markerConfigField);
     const expanded = this.view.state.field(marginExpandedField);
     this.cards.retain(config.marginComments ? expanded : new Set());
-    if (!config.marginComments || expanded.size === 0) return;
+    if (!config.marginComments || expanded.size === 0) {
+      this.workflow.render([], { skin: config.skin, showReview: config.inlineReview });
+      return;
+    }
 
     const doc = this.view.state.doc;
     const locations = annotationLocations(doc, config.marks);
@@ -120,8 +130,17 @@ class MarginRail {
     const railWidth = this.cardsEl.clientWidth;
 
     const placed: PlacedCard[] = [];
-    for (const mark of config.marks) {
-      if (!expanded.has(mark.id)) continue;
+    const roots: { mark: (typeof config.marks)[number]; card: HTMLElement }[] = [];
+    // Keep the source location plan from the editor state, but resolve card
+    // contents from the committed conversation snapshot on every render.
+    const currentById = new Map((getMarginCardHandlers()?.graphCards?.([...expanded][0] ?? "") ?? [])
+      .filter(mark => !mark.branch).map(mark => [mark.id, mark]));
+    for (const sourceMark of config.marks) {
+      if (!expanded.has(sourceMark.id)) continue;
+      const current = currentById.get(sourceMark.id);
+      const mark = current && (!sourceMark.sourceFile || !current.sourceFile || sourceMark.sourceFile === current.sourceFile)
+        ? { ...current, blockId: sourceMark.blockId, selectedText: sourceMark.selectedText, sourceFile: sourceMark.sourceFile ?? current.sourceFile }
+        : sourceMark;
       const end = locations.spanById.get(mark.id)?.to ?? locations.blockEndById.get(mark.id) ?? null;
       const anchor = this.anchorFor(mark.id, end, editorRect);
       if (!anchor) continue; // off-screen — no card
@@ -134,9 +153,13 @@ class MarginRail {
         showReview: config.inlineReview,
         onCollapse: () =>
           this.view.dispatch({ effects: toggleMarginCard.of(mark.id) }),
-        onDragMove: (el) => updateConnector(this.svg, el, this.editorRect())
+        onDragMove: (el) => {
+          updateConnector(this.svg, el, this.editorRect());
+          this.workflow.updateConnections();
+        }
       });
       if (card.parentElement !== this.cardsEl) this.cardsEl.appendChild(card);
+      roots.push({ mark, card });
       placed.push({
         card,
         anchorX: anchor.x,
@@ -150,6 +173,7 @@ class MarginRail {
       if (hideLink) return;
       drawConnector(this.svg, this.cardsEl, id, anchorX, anchorMidY, editorRect);
     });
+    this.workflow.render(roots, { skin: config.skin, showReview: config.inlineReview });
   }
 
   private editorRect(): DOMRect {
@@ -169,10 +193,10 @@ class MarginRail {
     editorRect: DOMRect
   ): { x: number; midY: number; top: number } | null {
     const content = this.view.dom;
-    const spans = content.querySelectorAll<HTMLElement>(
+    const spans = [...content.querySelectorAll<HTMLElement>(
       `[data-atl-id="${CSS.escape(id)}"]:not(.atl-marker):not(.atl-rail-card):not(.atl-rail-link)`
-    );
-    const span = spans.item(spans.length - 1);
+    )].filter(element => !this.cardsEl.contains(element));
+    const span = spans[spans.length - 1];
     const marker = content.querySelector<HTMLElement>(
       `.atl-marker[data-atl-id="${CSS.escape(id)}"]`
     );

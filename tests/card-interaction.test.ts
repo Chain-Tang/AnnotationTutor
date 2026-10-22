@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("obsidian", () => ({ Notice: class {}, setIcon: () => {}, setTooltip: () => {} }));
 import { PdfRail } from "../src/pdf-rail.js";
 import { setCardGeomStore, setMarginCardHandlers } from "../src/margin-card.js";
-import { enableCardDrag } from "../src/card-drag.js";
+import { enableCardDrag, isCardResizeHandle } from "../src/card-drag.js";
 
 const box = (x: number, y: number, width = 800, height = 600) => new DOMRect(x, y, width, height);
 const mark = { id: "ANN-test", blockId: "pdf-test", selectedText: "quoted", note: "saved note" };
@@ -103,5 +103,106 @@ describe("PDF card interaction lifecycle", () => {
     expect(geom).toEqual({ dx: 100, dy: 50 });
     document.dispatchEvent(event("pointercancel", 200, 100));
     expect(end).toHaveBeenCalledOnce(); stop();
+  });
+});
+
+describe("card edge dragging", () => {
+  function fixture() {
+    const card = document.createElement("div"), head = document.createElement("div");
+    card.style.left = "20px"; card.style.top = "-80px";
+    card.dataset["baseLeft"] = "20"; card.dataset["baseTop"] = "-80";
+    card.append(head); document.body.append(card);
+    // The top is beyond the viewport; the lower side/bottom padding is visible.
+    vi.spyOn(card, "getBoundingClientRect").mockReturnValue(box(20, -80, 224, 120));
+    const geom = { dx: 0, dy: 0 }, move = vi.fn(), end = vi.fn();
+    const stop = enableCardDrag(card, head, geom, move, end);
+    return { card, head, geom, move, end, stop };
+  }
+
+  it.each([[21, 5], [120, 38]])("drags from visible blank side/bottom padding at (%s,%s) when the header is obscured", (x, y) => {
+    const { card, geom, move, end, stop } = fixture();
+    const down = event("pointerdown", x, y); card.dispatchEvent(down);
+    expect(down.defaultPrevented).toBe(false);
+    document.dispatchEvent(event("pointermove", x + 40, y + 20));
+    expect(card.dataset["dragging"]).toBe("true");
+    expect(card.style.left).toBe("60px"); expect(card.style.top).toBe("-60px");
+    expect(geom).toEqual({ dx: 40, dy: 20 }); expect(move).toHaveBeenCalledOnce();
+    document.dispatchEvent(event("pointerup", x + 40, y + 20));
+    expect(end).toHaveBeenCalledOnce(); expect(card.dataset["dragging"]).toBeUndefined(); stop();
+  });
+
+  it("does not move or persist a card for a click or small pointer jitter", () => {
+    const { card, geom, move, end, stop } = fixture();
+    card.dispatchEvent(event("pointerdown", 21, 5));
+    document.dispatchEvent(event("pointermove", 23, 6));
+    document.dispatchEvent(event("pointerup", 23, 6));
+    expect(card.dataset["dragging"]).toBeUndefined();
+    expect(geom).toEqual({ dx: 0, dy: 0 }); expect(move).not.toHaveBeenCalled(); expect(end).not.toHaveBeenCalled(); stop();
+  });
+
+  it("keeps card edge dragging available inside an editable source document", () => {
+    const { card, move, stop } = fixture();
+    const source = document.createElement("div"); source.contentEditable = "true";
+    document.body.append(source); source.append(card); card.contentEditable = "false";
+    card.dispatchEvent(event("pointerdown", 21, 5));
+    document.dispatchEvent(event("pointermove", 61, 25));
+    expect(move).toHaveBeenCalledOnce(); stop();
+  });
+
+  it("leaves replies, text selection and interactive children to their normal handlers", () => {
+    const { card, head, move, end, stop } = fixture();
+    card.insertAdjacentHTML("beforeend", '<div><p>Reply <strong>selectable text</strong></p></div><textarea></textarea><input><a href="#">source</a><select></select><details><summary>more</summary></details>');
+    head.innerHTML = '<button><span>tool</span></button><span role="button">action</span>';
+    for (const child of card.querySelectorAll("p, strong, textarea, input, a, select, summary, button, button span, [role=button]")) {
+      const down = event("pointerdown", 80, 5); child.dispatchEvent(down);
+      const selectionMove = event("pointermove", 140, 10); document.dispatchEvent(selectionMove);
+      document.dispatchEvent(event("pointerup", 140, 10));
+      expect(down.defaultPrevented).toBe(false); expect(selectionMove.defaultPrevented).toBe(false);
+    }
+    expect(move).not.toHaveBeenCalled(); expect(end).not.toHaveBeenCalled(); stop();
+  });
+
+  it("preserves native scrollbars and bottom-right resize gestures", () => {
+    const { card, move, end, stop } = fixture();
+    vi.spyOn(card, "clientWidth", "get").mockReturnValue(208);
+    vi.spyOn(card, "clientHeight", "get").mockReturnValue(120);
+    for (const [x, y] of [[240, 5], [240, 37]]) {
+      const down = event("pointerdown", x!, y!); card.dispatchEvent(down);
+      document.dispatchEvent(event("pointermove", x! + 40, y! + 20));
+      document.dispatchEvent(event("pointerup", x! + 40, y! + 20));
+      expect(down.defaultPrevented).toBe(false);
+    }
+    expect(isCardResizeHandle(card, event("pointerdown", 240, 37))).toBe(true);
+    expect(isCardResizeHandle(card, event("pointerdown", 245, 41))).toBe(false);
+    expect(move).not.toHaveBeenCalled(); expect(end).not.toHaveBeenCalled(); stop();
+  });
+
+  it("moves only the grabbed card and restores selection styles after cancellation", () => {
+    const { card, geom, end, stop } = fixture();
+    const child = document.createElement("div"); child.style.left = "400px"; child.style.top = "200px"; document.body.append(child);
+    card.style.setProperty("user-select", "text", "important");
+    card.dispatchEvent(event("pointerdown", 21, 5));
+    document.dispatchEvent(event("pointermove", 61, 25));
+    expect(card.style.getPropertyValue("user-select")).toBe("none");
+    document.dispatchEvent(event("pointercancel", 61, 25));
+    expect(child.style.left).toBe("400px"); expect(child.style.top).toBe("200px");
+    expect(geom).toEqual({ dx: 40, dy: 20 }); expect(end).toHaveBeenCalledOnce();
+    expect(card.style.getPropertyValue("user-select")).toBe("text");
+    expect(card.style.getPropertyPriority("user-select")).toBe("important");
+    const left = card.style.left;
+    document.dispatchEvent(event("pointermove", 150, 100)); expect(card.style.left).toBe(left); stop();
+  });
+
+  it("cleans up pending and active gestures when the window loses focus", () => {
+    const { card, move, end, stop } = fixture();
+    card.dispatchEvent(event("pointerdown", 21, 5));
+    window.dispatchEvent(new Event("blur"));
+    document.dispatchEvent(event("pointermove", 61, 25));
+    expect(move).not.toHaveBeenCalled(); expect(end).not.toHaveBeenCalled();
+    card.dispatchEvent(event("pointerdown", 21, 5));
+    document.dispatchEvent(event("pointermove", 61, 25));
+    window.dispatchEvent(new Event("blur"));
+    expect(end).toHaveBeenCalledOnce(); expect(card.dataset["dragging"]).toBeUndefined();
+    document.dispatchEvent(event("pointermove", 150, 100)); expect(move).toHaveBeenCalledOnce(); stop();
   });
 });

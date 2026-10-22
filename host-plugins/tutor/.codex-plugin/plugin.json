@@ -1,6 +1,6 @@
 {
   "name": "tutor",
-  "version": "0.4.4",
+  "version": "0.5.0",
   "description": "独立 Tutor 教学与精准共画，通过本机 MCP 连接 Obsidian。",
   "author": {
     "name": "Tutor contributors"

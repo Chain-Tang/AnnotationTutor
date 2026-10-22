@@ -36,4 +36,42 @@ describe("annotation appearance", () => {
     expect(getComputedStyle(document.getElementById("pdf")!).backgroundColor).toContain("0.25");
     expect(getComputedStyle(document.querySelector(".atl-pdf-highlights")!).pointerEvents).toBe("none");
   });
+  it("reveals external workflow ports only while their card group is hovered", () => {
+    document.body.innerHTML = '<div class="atl-rail-card" data-chrome-visible="true"><textarea></textarea></div><div class="atl-workflow-ports"><button class="atl-branch-port" data-direction="right">+</button></div>';
+    const ports = document.querySelector<HTMLElement>(".atl-workflow-ports")!;
+    const button = ports.querySelector<HTMLButtonElement>("button")!;
+    document.querySelector("textarea")!.focus();
+    button.disabled = true;
+    expect(getComputedStyle(button).opacity).toBe("0");
+    expect(getComputedStyle(button).pointerEvents).toBe("none");
+    ports.classList.add("is-hovered");
+    expect(getComputedStyle(button).opacity).toBe(".65");
+    expect(getComputedStyle(button).pointerEvents).toBe("auto");
+    button.disabled = false;
+    expect(getComputedStyle(button).opacity).toBe("1");
+    ports.classList.remove("is-hovered");
+    expect(getComputedStyle(button).opacity).toBe("0");
+    expect(getComputedStyle(button).pointerEvents).toBe("none");
+  });
+  it("positions the three ports beyond the card bounds without clipping card content", () => {
+    document.body.innerHTML = '<div class="atl-rail-card"></div><div class="atl-workflow-ports"><button class="atl-branch-port" data-direction="left">+</button><button class="atl-branch-port" data-direction="right">+</button><button class="atl-branch-port" data-direction="bottom">+</button></div>';
+    const ports = document.querySelector<HTMLElement>(".atl-workflow-ports")!;
+    expect(getComputedStyle(ports).overflow).toBe("visible");
+    expect(getComputedStyle(ports).pointerEvents).toBe("none");
+    const left = getComputedStyle(ports.children[0]!);
+    const right = getComputedStyle(ports.children[1]!);
+    const bottom = getComputedStyle(ports.children[2]!);
+    expect(left.width).toBe("24px");
+    expect(left.left).toBe("-32px");
+    expect(right.right).toBe("-32px");
+    expect(bottom.bottom).toBe("-32px");
+    expect(bottom.top).toBe("auto");
+    const card = getComputedStyle(document.querySelector(".atl-rail-card")!);
+    expect(card.overflowY).toBe("auto");
+    expect(card.resize).toBe("both");
+  });
+  it("hides ports for a collapsed branch even if the group had been hovered", () => {
+    document.body.innerHTML = '<div class="atl-workflow-ports is-hovered" hidden><button class="atl-branch-port" data-direction="right">+</button></div>';
+    expect(getComputedStyle(document.querySelector(".atl-workflow-ports")!).display).toBe("none");
+  });
 });

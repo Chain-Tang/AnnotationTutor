@@ -77,6 +77,28 @@ describe("streaming chat transport", () => {
     expect(await streamChatCompletion(opts(), mockStream('{"error":{"message":"Image unsupported"}}', 400, "application/json"))).toMatchObject({ ok: false, status: 400, error: "Image unsupported" });
     expect(await streamChatCompletion(opts(), mockStream('data: {"error":{"message":"quota"}}\n\n'))).toMatchObject({ ok: false, error: "quota" });
   });
+  it("reports malformed SSE JSON with a finite code while preserving prior deltas", async () => {
+    const onDelta = vi.fn();
+    const result = await streamChatCompletion({ ...opts(), onDelta }, mockStream(chunk("prefix") + 'data: {PRIVATE_INVALID_EVENT}\n\n'));
+    expect(result).toMatchObject({ ok: false, status: 200, text: "prefix", error: "api-stream-json-invalid" });
+    expect(onDelta).toHaveBeenCalledExactlyOnceWith("prefix");
+    expect(result.error).not.toContain("PRIVATE");
+  });
+  it("reports malformed complete JSON with a finite code before presenting anything", async () => {
+    const onDelta = vi.fn();
+    const result = await streamChatCompletion({ ...opts(), onDelta }, mockStream('{PRIVATE_INVALID_RESPONSE}', 200, "application/json"));
+    expect(result).toMatchObject({ ok: false, status: 200, text: "", error: "api-response-json-invalid" });
+    expect(onDelta).not.toHaveBeenCalled(); expect(result.error).not.toContain("PRIVATE");
+  });
+  it.each(["stream", "complete"] as const)("preserves parser and consumer exceptions outside the %s JSON decode", async delivery => {
+    for (const error of [new Error("teaching-reply-string-required"), new SyntaxError("PRIVATE_CONSUMER_SYNTAX")]) {
+      const onDelta = vi.fn(() => { throw error; });
+      const response = JSON.stringify({ choices: [{ message: { content: "valid transport content" }, finish_reason: "stop" }] });
+      const transport = delivery === "stream" ? mockStream(chunk("valid transport content") + end) : mockStream(response, 200, "application/json");
+      expect(await streamChatCompletion({ ...opts(), onDelta }, transport)).toMatchObject({ ok: false, text: "valid transport content", error: error.message });
+      expect(onDelta).toHaveBeenCalledExactlyOnceWith("valid transport content");
+    }
+  });
   it("accepts gateways returning complete JSON without inventing token-sized chunks", async () => {
     const onDelta = vi.fn();
     const response = JSON.stringify({ choices: [{ message: { content: "full reply" }, finish_reason: "stop" }] });

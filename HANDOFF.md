@@ -12,13 +12,16 @@ resurfaces them on a spaced-repetition schedule (SM-2), and weaves them into a r
 **notebook** — plus inline / full-document **translation**. Learning memory is Markdown in the user's Vault. Private support data and credentials
 use separate protected storage; no API key is baked into the code.
 
-- **Repo:** `Chain-Tang/AnnotationTutor`, branch `main` (this repo *is* the plugin — it was a
+- **Repo:** `Chain-Tang/AnnotationTutor` (this repo *is* the plugin — it was a
   monorepo until the standalone restructure; the old full project is only in git history).
-- **Current local source:** `manifest.json` / `package.json` are **0.5.4** (2026-10-14).
-  The source baseline comes from the workspace above `3dd08bd`; the local
-  optimization branch is `codex/optimization-20261014`. Remote release status
-  must be checked separately.
-  The current code is a development candidate, not complete commercial acceptance.
+- **Current local source:** `manifest.json` / `package.json` are **0.7.7** (2026-10-22).
+  Recovery reconstructs the engineering baseline at `95ffe399` and its saved
+  0.7.7 working files; it does not publish a release or update installed Vaults.
+  Check the actual branch and working-tree status before making changes. See the
+  [recovery report](docs/project-recovery-2026-10-22.md) for verification results and
+  the [assessment](docs/project-assessment-2026-10-22.md) for the pre-recovery state.
+  Remote release status must be checked separately. This remains a development
+  candidate, not complete commercial acceptance.
   See [implementation status](docs/qa/implementation-status-20261012/report.md) and
   [optimization verification](docs/optimization-verification-2026-10-14.md) and
   [second-stage/source archive](docs/optimization-stage2-2026-10-14.md).
@@ -39,12 +42,12 @@ use separate protected storage; no API key is baked into the code.
 ├── .github/workflows/ci.yml   # CI: pnpm install/typecheck/test/build on Win+macOS+Linux
 ├── docs/guide.md              # deep learning-model reference (linked from README)
 ├── PrivTutor Lite MVP Design Spec.md   # original product baseline (historical)
-├── README.md                  # English (restyled: header + live badges; no images yet)
-├── README.zh-CN.md            # Simplified Chinese (plain; not yet restyled to match)
+├── README.md                  # English usage, development and installation guide
+├── README.zh-CN.md            # Simplified Chinese guide
 ├── scripts/
-│   ├── build.mjs              # esbuild bundle → dist/main.js (`--watch` for dev)
-│   ├── package.mjs            # build + stage dist/release/<id>/ + write the release ZIP
-│   └── install-dev-plugin.mjs # copy built files into a Vault's plugins folder (--vault)
+│   ├── build.mjs              # platform entry + desktop/mobile bundles (`--watch` for dev)
+│   ├── package.mjs            # build plugin/extension + seal complete release folder/ZIP
+│   └── install-dev-plugin.mjs # verify, back up, install and check one explicit Vault
 ├── src/
 │   ├── (pure, unit-tested — no `obsidian`/`@codemirror/view` runtime import)
 │   │   model.ts, ids.ts, anchors.ts, srs.ts, memory-derive.ts, learning.ts,
@@ -84,6 +87,7 @@ use separate protected storage; no API key is baked into the code.
 - `dist/` — **build output, including the compiled `main.js` and the release ZIP.** These
   are NOT in the repo; they ship via GitHub Releases only.
 - `*.tsbuildinfo`.
+- `coverage/` and machine-local audit/recovery outputs listed in `.gitignore`.
 - `Tutor/` — a **local dev Vault** (test data + an installed copy of the plugin). It may
   exist on the current machine; it must not enter the repo.
 
@@ -111,16 +115,34 @@ git clone https://github.com/Chain-Tang/AnnotationTutor.git
 cd AnnotationTutor
 pnpm install --frozen-lockfile
 npm --prefix extension ci
-pnpm typecheck && pnpm test && pnpm package  # package/extension/release checks: see CI
+pnpm typecheck
+pnpm test                 # CI uses test:coverage on Linux
+pnpm test:release
+pnpm package              # builds plugin and extension, then seals the release
+pnpm package:verify
 ```
+
+Passing a previous dated report is not acceptance of the recovered tree. Record
+the commands, results, build identity and remaining host checks in the recovery
+report. `pnpm typecheck` also checks production sources, extension types, scripts
+and interface-language parity.
 
 Run it in a real Vault and smoke-test:
 
 ```bash
-pnpm install:vault -- --vault "/path/to/a/test/Vault"   # build + copy + enable
+pnpm install:vault -- --vault "/absolute/path/to/a/test/Vault"
 ```
 
-Then in Obsidian (reload with `Ctrl/Cmd+R`):
+The default online installer currently uses the macOS Obsidian CLI. It verifies
+the program and credential compatibility, asks the running plugin to save and
+stop, backs up the installation, replaces it transactionally, then reloads the
+plugin and checks its version. A busy task or failed save blocks the upgrade.
+Keep the printed backup path. For offline installation, fully exit Obsidian
+first, add `--offline`, then start Obsidian and check loading manually; offline
+success only confirms filesystem checks. Other platforms need this offline path
+or a separately validated host entry. See [upgrade and rollback](docs/tutor-learning-upgrade.md).
+
+Then in the test Vault:
 1. Confirm an `Agent Memory/` folder + `AGENTS.md` were auto-created in the Vault.
 2. Settings → pick an engine (Direct API + a key is the zero-dependency path).
 3. Select text → `Ctrl/Cmd+Shift+L` → write a note → ask the tutor to review.
@@ -130,29 +152,35 @@ Then in Obsidian (reload with `Ctrl/Cmd+R`):
 
 ## 5. How to cut a release
 
+Work on a reviewed branch and explicit commit/tag. Do not publish while restoring
+the repository, and do not assume local validation has run merely because these
+commands are documented.
+
 ```bash
 # 1. Bump the version in BOTH manifest.json and package.json (keep them in sync).
-# 2. Commit + push the bump.
-git commit -am "chore: release vX.Y.Z" && git push origin main
-# 3. Build the assets (pure-Node ZIP with forward slashes — works on macOS/Linux).
+# 2. Review changes and run every acceptance command in section 4.
+# 3. Commit the reviewed changes on the working branch; verify CI for that commit.
+# 4. Build and verify the complete assets (portable ZIP paths).
 pnpm package          # → dist/annotation-tutor-lite-X.Y.Z.zip + dist/release/<id>/*
-# 4. Publish (gh is NOT on PATH on the current Windows machine — use the full path):
-"C:\Program Files\GitHub CLI\gh.exe" release create vX.Y.Z \
-  --repo Chain-Tang/AnnotationTutor --target main --title "Annotation Tutor Lite vX.Y.Z" \
-  --notes-file <notes.md> \
+pnpm package:verify   # → dist/package-verification.json
+# 5. When publishing is intended, replace REVIEWED_COMMIT and notes.md explicitly.
+gh release create vX.Y.Z --draft \
+  --repo Chain-Tang/AnnotationTutor --target REVIEWED_COMMIT \
+  --title "Annotation Tutor Lite vX.Y.Z" --notes-file notes.md \
   dist/annotation-tutor-lite-X.Y.Z.zip \
-  dist/release/annotation-tutor-lite/main.js \
-  dist/release/annotation-tutor-lite/manifest.json \
-  dist/release/annotation-tutor-lite/styles.css
-# 5. Verify: gh release view vX.Y.Z --json tagName,assets ; gh release list
+  dist/package-verification.json
+# 6. Verify the draft tag, commit, release notes and assets before publication.
+gh release view vX.Y.Z --repo Chain-Tang/AnnotationTutor --json tagName,isDraft,assets
 ```
-`gh` is authenticated as `Chain-Tang` (token in the OS keyring; `gh auth login` needs a
-real interactive terminal — a non-interactive shell cannot drive the browser flow).
+Check the current `gh` authentication and target repository instead of assuming a
+machine-specific executable path or signed-in account. The sealed ZIP is the
+installation unit; three standalone conventional plugin files are incomplete.
 
 ## 6. Conventions & gotchas (don't regress these)
 
 - **Commit identity:** `Chain <chain2423408957@gmail.com>`. **Never** add a Claude
-  co-author trailer. Direct commits to `main` (no PR) is the owner's convention.
+  co-author trailer. Use a `codex/` working branch and review the complete diff;
+  do not infer permission to push `main` from this handoff.
 - **Run pnpm at the repo ROOT** (this used to be a monorepo subdir — it isn't anymore).
 - **Tests:** pure modules use normal Vitest tests. Board DOM tests use `happy-dom`
   with a scoped Obsidian mock; editor tests use real CM6 states, views and
@@ -167,7 +195,11 @@ real interactive terminal — a non-interactive shell cannot drive the browser f
   PATH). CI runs Win/macOS/Linux; keep it green.
 - Strict TS; UI strings go through `t()` in `i18n.ts` (en / zh-cn / zh-tw / ja).
 
-## 7. Open items / next steps
+## 7. Historical implementation notes / open items
+
+The dated results below describe their original snapshots. They are not test or
+desktop-acceptance results for the recovered 0.7.7 tree; consult the recovery
+report for the current verification record.
 
 - **2026-09-12 inspiration board v3:** vertical drawing rail and tool property
   popover; one plugin-owned Tutor conversation for sidebar and board, sharing the
@@ -208,10 +240,8 @@ real interactive terminal — a non-interactive shell cannot drive the browser f
   learner, or co-created; both minimal and fixed original styles are supported directions.
   This records the original design proposal; the board implementation is described above. Read current code and the
   manifest for implementation/version status; older snapshots in this handoff are historical.
-- **README images:** the owner will add their own screenshots; the placeholder hero/grid
-  and `docs/images/` were removed. Add a clean Screenshots section once images exist.
-- **`README.zh-CN.md`** is the plain version — mirror the English README's header/badges if
-  bilingual parity is wanted.
+- **README images:** the current hero is an AI-generated concept illustration,
+  not a desktop acceptance screenshot. Keep that distinction when adding images.
 - **`LICENSE`** — MIT (`Copyright (c) 2026 Chain`); `package.json` carries `"license": "MIT"`. The project is open source.
 - **No `CLAUDE.md`** (the monorepo one was removed). Run `/init` to regenerate a
   Lite-focused one if desired.

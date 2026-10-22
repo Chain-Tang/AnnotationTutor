@@ -1,9 +1,9 @@
 # Annotation Tutor Lite Pad Handwriting — Product & Technical Spec
 
-> Status: Draft v0.3  
-> Date: 2026-08-09  
-> Product: Annotation Tutor Lite  
-> Delivery order: Android Pad first, iPad second  
+> Status: Draft v0.3<br>
+> Date: 2026-08-09<br>
+> Product: Annotation Tutor Lite<br>
+> Delivery order: Android Pad first, iPad second<br>
 > Source of truth: this document for Pad-specific requirements; see the dated update below for the expanded direction.
 
 > **2026-09-11 direction update:** [Pad & collaborative drawing](next-development-plan.md)

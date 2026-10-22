@@ -607,6 +607,8 @@ export type BoardAgentRequest = {
   instruction: string;
   context: string;
   learningSummary?: string;
+  /** Optional independent, fallible qualitative observations for teaching. */
+  learningInsightSummary?: string;
   /** Selects the bounded prompt/tool policy without changing the transport. */
   purpose?: "teaching" | "artist";
   /** Visual-feedback round for staged artist sessions (1..3). */

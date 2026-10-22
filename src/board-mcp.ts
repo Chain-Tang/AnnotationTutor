@@ -9,6 +9,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 import type { BoardMcpAdapter, BoardToolEvent, BoardToolRuntime, BoardVectorAsset } from "./board-types.js";
 import { ServiceWork } from "./service-work.js";
+import { communicationIdentitySchema, type CommunicationIdentity } from "./tutor-communication.js";
 
 type JsonRpcRequest = { jsonrpc: "2.0"; id?: string | number | null; method: string; params?: Record<string, unknown> };
 type JsonRpcResponse = { jsonrpc: "2.0"; id: string | number | null; result?: unknown; error?: { code: number; message: string } };
@@ -39,7 +40,7 @@ export class LocalBoardMcpAdapter implements BoardMcpAdapter {
       tutor?:TutorMcpTools;
       a2a?:TutorA2AService;
       authenticate?:(token:string)=>TutorClientGrant|undefined;
-      pair?:(name:string,signal:AbortSignal)=>Promise<{token:string;clientId:string}>;
+      pair?:(name:string,signal:AbortSignal,identity?:CommunicationIdentity)=>Promise<{token:string;clientId:string}>;
     } = {},
   ) {}
   public get running(): boolean { return !!this.server?.listening; }
@@ -165,7 +166,8 @@ export class LocalBoardMcpAdapter implements BoardMcpAdapter {
         if(!this.options.pair || typeof parsed.name!=="string" || !parsed.name.trim() || parsed.name.length>80)throw new Error("Pairing requires a client name");
         const abort=new AbortController();const disconnected=()=>abort.abort();result.once("close",disconnected);signal.addEventListener("abort",disconnected,{once:true});
         try{
-          const paired=await this.options.pair(parsed.name,abort.signal);
+          const identity=parsed.communicationIdentity===undefined?undefined:communicationIdentitySchema.parse(parsed.communicationIdentity);
+          const paired=await this.options.pair(parsed.name,abort.signal,identity);
           if(!abort.signal.aborted){result.writeHead(200,{"content-type":"application/json","cache-control":"no-store"});result.end(JSON.stringify(paired));}
         }finally{result.off("close",disconnected);signal.removeEventListener("abort",disconnected);}return;
       }

@@ -97,7 +97,7 @@ function fixture(options: { holdSettings?: boolean } = {}) {
     AnnotationTutorLiteSettingTab: class { refresh = settingRefresh; },
     configureBoardFonts: noOp, normalizePath: (path: string) => path,
     annotationDecorations: {}, marginRailExtension: {}, setMarkerClickHandler: noOp, setMarginCardHandlers: noOp, setCardGeomStore: noOp,
-    DASHBOARD_VIEW_TYPE: "dashboard", CHAT_VIEW_TYPE: "chat", BOARD_VIEW_TYPE: "studio",
+    DASHBOARD_VIEW_TYPE: "dashboard", CHAT_VIEW_TYPE: "chat", BOARD_VIEW_TYPE: "studio", ANNOTATION_GRAPH_VIEW_TYPE: "annotation-graph", AnnotationGraphView: Stub,
     DefaultBoardToolRuntime: Stub, TranslationController: class { dispose = translationDispose; }, NotebookController: Stub, ReviewController: Stub,
     PAPER_TEXTURE: "synthetic-paper", LEAF_TEXTURE: "synthetic-leaf",
     boardConnectionKey: () => "connection", MarkdownView: Stub,
@@ -111,12 +111,12 @@ function fixture(options: { holdSettings?: boolean } = {}) {
       on: (event: string) => { if (event === "layout-change") supportListeners(); }, onLayoutReady: (run: () => void) => layouts.push(run),
     } },
     manifest: { id: "tutor-test", dir: "synthetic-plugin" }, customSkins: [], customSkinRefresh: null, pluginUnloaded: false,
-    startupTimings: new StartupTimings(), startupIdle: new StartupIdleTasks(), startupLifetime: new StartupLifetime(), pluginLoading: null,
+    annotationGraphListeners: new Set(), startupTimings: new StartupTimings(), startupIdle: new StartupIdleTasks(), startupLifetime: new StartupLifetime(), pluginLoading: null,
     applyLocale: noOp, applyHighlightColor: noOp, sharedTutorSettingsKey: () => "settings", initializeLearningDialogue: noOp,
     initialize, recoveredExpertRoots: new Set(), supportComposition: new Set(), supportPointers: new Map(), supportInputAt: 0,
     addCommand: noOp, addRibbonIcon: noOp, addSettingTab: noOp, registerEditorExtension: noOp,
     registerMarkdownPostProcessor: noOp, registerView: (type: string) => registeredViews.push(type), registerObsidianProtocolHandler: noOp,
-    applyWebBridge: ready, applyBoardMcp: ready, addStatusBarItem: () => ({ addClass: noOp }), registerCommands: noOp,
+    applyWebBridge: ready, applyBoardMcp: ready, stopTutorCommunication: ready, addStatusBarItem: () => ({ addClass: noOp }), registerCommands: noOp,
     registerEvent: noOp, register: (cleanup: () => void) => registeredCleanups.push(cleanup), registerDomEvent: noOp, applyDisplaySettings: displayRefresh,
     externalGenerations: { close: ready }, learningRuns: new Map(), learningReaders: { clear: noOp }, learningCommitSubscriptions: [],
     clipperGeneration: 0, officialClipTimers: new Map(), readingRail: { detach: noOp }, pdfHighlighter: { detach: noOp },
@@ -201,7 +201,7 @@ describe("production startup lifecycle", () => {
     await vi.waitFor(() => expect(r.host.startupDiagnostics()).toContainEqual(expect.objectContaining({ stage: "tutor-results", status: "ready" })));
     expect(r.registeredViews).toEqual([]); expect(r.layouts).toEqual([]);
     r.supportSummaries.resolve([]); await loading;
-    expect(r.registeredViews).toEqual(["dashboard", "chat", "studio"]);
+    expect(r.registeredViews).toEqual(["dashboard", "chat", "annotation-graph", "studio"]);
     expect(r.host.activeRailSkin().id).toBe("flat"); expect(r.scan).not.toHaveBeenCalled();
     r.layouts[0]!();
     expect(r.initialize).toHaveBeenCalledOnce(); expect(r.syncBoards).toHaveBeenCalledOnce();
@@ -234,7 +234,7 @@ describe("production startup lifecycle", () => {
     if (stage === "support") r.supportSummaries.resolve([]);
     if (stage === "results") r.results.resolve();
     await loading;
-    expect(r.registeredViews).toEqual(["dashboard", "chat", "studio"]);
+    expect(r.registeredViews).toEqual(["dashboard", "chat", "annotation-graph", "studio"]);
     r.host.onunload();
   });
 
@@ -297,7 +297,7 @@ describe("production startup lifecycle", () => {
     r.credentials.resolve({ state: "ready" }); r.journal.resolve(); r.supportSummaries.resolve([]); r.results.resolve();
     await r.host.onload();
     expect(r.learningLoad).not.toHaveBeenCalled();
-    expect(r.registeredViews).toEqual(["dashboard", "chat", "studio"]);
+    expect(r.registeredViews).toEqual(["dashboard", "chat", "annotation-graph", "studio"]);
     r.host.onunload();
   });
 

@@ -26,6 +26,10 @@ import { runLearningTurnV3 } from "../src/learning-runner-v3.js";
 import { completeRecordReadResult, combineRecordReadResults, type LearningIO, type RecordReadResult } from "../src/learning-record-read.js";
 import type { ProtectionSnapshot } from "../src/learning-protection.js";
 import { classifyIntent } from "../src/intent.js";
+import { assembleAnnotationContext } from "../src/annotation-branches.js";
+import { ConversationRecovery } from "../src/conversation-recovery.js";
+import { ConversationTransportError } from "../src/conversation-diagnostics.js";
+import { SocketTransportError, streamChatCompletion } from "../src/api-stream.js";
 
 class TFile {path="evidence.md";extension="md";stat={mtime:1,size:4};}
 
@@ -39,7 +43,7 @@ const module = { exports: {} };
 const annotationStart=source.indexOf("  public async replyInAnnotation("),annotationEnd=source.indexOf("\n  /** System prompt for an in-annotation dialogue",annotationStart);
 if(annotationStart<0||annotationEnd<0)throw new Error("Annotation host fixture needs updated method boundaries");
 const dependencies={contextVersion,opencodePreamble,t,permitsLearningControl,localLearnerAuthority,runLearningTurnV3,runSupportResponse,resolveSupportStorageContext,supportsLearningReplyTool,learningContext,
-  LearningV3Store,LearningV2Store,LearningDialogueV3,LearningCommandsV3,LearningLegacyV3,LearningCardV3,combineRecordReadResults,TFile,classifyIntent,
+  LearningV3Store,LearningV2Store,LearningDialogueV3,LearningCommandsV3,LearningLegacyV3,LearningCardV3,combineRecordReadResults,TFile,classifyIntent,assembleAnnotationContext,ConversationRecovery,
   // This suite isolates evidence/transport invalidation. Actual view identity
   // and split-buffer reads run separately in learning-source-version-host.
   readStudySource:(host:{tutorContext:(path:string)=>Promise<unknown>},path:string)=>host.tutorContext(path),
@@ -87,6 +91,7 @@ function fixture(notePath = "evidence.md", episodeId?: string) {
   });
   Object.assign(host, {
     settings: { chatEngine: "opencode", reviewLanguage: "Chinese", apiKey: "", teachingMode: "guide" },
+    chatTimeoutMs:()=>180_000,
     tutorLearningReferences: new LearningSessionReferences(), learningReaders: new LearningInvalidation(),
     tutorSessionGeneration: 0, tutorSession: null, tutorSessionKey: "", tutorSessionHistoryLength: 0, tutorSessionStream: null,
     learningRuns:new Map(),tutorTransportRequestId:undefined,tutorResetAfterTransport:false,
@@ -207,6 +212,39 @@ describe("plugin learning evidence invalidation", () => {
 });
 
 describe("main v3 learning host integration",()=>{
+  it("recovers a zero-byte connection once under the same request and records related help only once",async()=>{
+    const f=learningFixture(),episode=await f.seed(),reserve=vi.fn(),progress=vi.fn(),lease=vi.fn(async()=>{}),present=vi.fn(()=>true),calls:TutorRunnerInput[]=[];
+    const failure=await streamChatCompletion({baseUrl:"https://test.example",model:"test",apiKey:"test",messages:[],timeoutMs:1000},async()=>{throw new SocketTransportError("reset");});
+    const input=f.input({consumeAdditionalModelCall:reserve,beforeAdditionalModelCall:lease,onConnectionRetry:progress,onReply:present,options:{metadata:{learningEpisodeId:episode.id},learningTurn:{entry:"sidebar",kind:"conversation",authority:f.authority},context:{chat:{notePath:f.file.path,content:"note",observation:{source:f.file.path,version:"v1",scope:"document-excerpt",hasImage:false}}}}});
+    const result=await f.host.runTutorConversation(input,f.conversationId,async value=>{
+      calls.push(value);if(calls.length===1)throw new ConversationTransportError(failure);
+      const text=JSON.stringify({control:{action:{type:"none"},replyRelation:"current-question"},reply:"接续原问题。"});value.onReply(text);return {text};
+    });
+    expect(result.text).toBe("接续原问题。");expect(calls).toHaveLength(2);
+    expect(calls.map(call=>call.options.learningRequestId)).toEqual([input.options.learningRequestId,input.options.learningRequestId]);
+    expect(calls.map(call=>call.apiTransport?.freshConnection)).toEqual([false,true]);
+    expect(calls[1]!.apiTransport!.timeoutMs).toBeLessThan(calls[0]!.apiTransport!.timeoutMs);
+    expect(reserve).toHaveBeenCalledOnce();expect(lease).toHaveBeenCalledOnce();expect(progress).toHaveBeenCalledOnce();
+    expect((await f.host.learningV3.list())[0]!.help).toHaveLength(1);expect(present.mock.calls.flat().join("")).toBe("接续原问题。");
+  });
+
+  it.each(["network-first","format-first"])("shares the two-call limit between connection and format recovery: %s",async order=>{
+    const f=learningFixture(),reserve=vi.fn(),present=vi.fn(()=>true),failure=await streamChatCompletion({baseUrl:"https://test.example",model:"test",apiKey:"test",messages:[],timeoutMs:1000},async()=>{throw new SocketTransportError("reset");});
+    let calls=0;const transport=vi.fn(async(value:TutorRunnerInput)=>{
+      calls++;if((order==="network-first")===(calls===1))throw new ConversationTransportError(failure);
+      value.onReply('{"control":{"action":{"type":"none"},"replyRelation":"unrelated"},"reply":null}');return {text:""};
+    });
+    await expect(f.host.runTutorConversation(f.input({consumeAdditionalModelCall:reserve,onReply:present}),f.conversationId,transport)).rejects.toThrow(order==="network-first"?"teaching-reply-string-required":"api-connection-failed");
+    expect(transport).toHaveBeenCalledTimes(2);expect(reserve).toHaveBeenCalledOnce();expect(present).not.toHaveBeenCalled();expect(f.files.size).toBe(0);
+  });
+
+  it("checks the additional-call association lease before reserving retry budget",async()=>{
+    const f=learningFixture(),reserve=vi.fn(),lease=vi.fn(async()=>{throw new Error("annotation-parent-reply-changed");});
+    const failure=await streamChatCompletion({baseUrl:"https://test.example",model:"test",apiKey:"test",messages:[],timeoutMs:1000},async()=>{throw new SocketTransportError("reset");});
+    const transport=vi.fn(async()=>{throw new ConversationTransportError(failure);});
+    await expect(f.host.runTutorConversation(f.input({consumeAdditionalModelCall:reserve,beforeAdditionalModelCall:lease}),f.conversationId,transport)).rejects.toThrow("annotation-parent-reply-changed");
+    expect(transport).toHaveBeenCalledOnce();expect(lease).toHaveBeenCalledOnce();expect(reserve).not.toHaveBeenCalled();expect(f.files.size).toBe(0);
+  });
   it("reserves the original task budget before a format correction and never persists a rejected invitation",async()=>{
     const f=learningFixture(),present=vi.fn(()=>true),offer=vi.spyOn(f.host.learningDialogue,"offer"),calls:string[]=[];
     const reserve=vi.fn(()=>{expect(calls).toHaveLength(1);expect(offer).not.toHaveBeenCalled();expect(f.files.size).toBe(0);});
@@ -327,7 +365,7 @@ describe("main v3 learning host integration",()=>{
   it.each(["success","failed","deleted","confirm-failed"] as const)("confirms annotation help only after the actual append (%s)",async outcome=>{
     const f=learningFixture(),annotationId=crypto.randomUUID(),episode=await f.seed(annotationId),conversationId=crypto.randomUUID();
     await f.host.learningDialogue.prepare({entry:"annotation",kind:"conversation",authority:f.authority,conversationId,requestId:crypto.randomUUID(),source:episode.source,episodeId:episode.id,text:""});
-    const record={annotationId,sourceFile:f.file.path,selectedText:"selected math",dialogue:[]},upsert=vi.fn();
+    const record={id:annotationId,annotationId,sourceFile:f.file.path,selectedText:"selected math",anchor:{blockId:"math",selectedText:"selected math"},userNote:"Original learner note",reviewText:"Prior Tutor review",dialogue:[]},upsert=vi.fn();
     const append=vi.fn(async()=>{
       expect((await f.host.learningV3.list())[0]!.help[0]!.state).toBe("unknown");
       if(outcome==="failed")throw new Error("annotation-write-failed");
@@ -339,7 +377,7 @@ describe("main v3 learning host integration",()=>{
       return confirm(ticket,authority,state);
     });
     Object.assign(f.host,{annotationLearningSessions:new Map([[annotationId,conversationId]]),annotationLearningBusy:new Set(),
-      indexTable:{get:(id:string)=>id===annotationId?record:undefined,upsert},store:{appendDialogueTurns:append,annotationPath:()=>"annotation.json"},
+      indexTable:{get:(id:string)=>id===annotationId?record:undefined,upsert},store:{readAnnotation:async()=>record,readConversationSource:async()=>"note",appendDialogueTurns:append,annotationPath:()=>"annotation.json"},publishAnnotationInsight:vi.fn(),
       runIsolatedTutorTurn:async(input:TutorRunnerInput)=>{const raw=JSON.stringify({control:{action:{type:"hint",questionId:episode.currentQuestionId},replyRelation:"current-question"},reply:""});input.onReply(raw);return {text:raw};}});
     const result=await f.host.replyInAnnotation(annotationId,"请给这道题一个提示");
     expect(result.ok).toBe(outcome==="success"||outcome==="confirm-failed");
@@ -352,9 +390,9 @@ describe("main v3 learning host integration",()=>{
   it("drains an annotation append and confirms its real late success before directory shutdown can finish",async()=>{
     const f=learningFixture(),annotationId=crypto.randomUUID(),episode=await f.seed(annotationId),conversationId=crypto.randomUUID();
     await f.host.learningDialogue.prepare({entry:"annotation",kind:"conversation",authority:f.authority,conversationId,requestId:crypto.randomUUID(),source:episode.source,episodeId:episode.id,text:""});
-    const record={annotationId,sourceFile:f.file.path,selectedText:"selected math",dialogue:[]},entered=deferred<void>(),release=deferred<void>();
+    const record={id:annotationId,annotationId,sourceFile:f.file.path,selectedText:"selected math",anchor:{blockId:"math",selectedText:"selected math"},userNote:"Original learner note",reviewText:"Prior Tutor review",dialogue:[]},entered=deferred<void>(),release=deferred<void>();
     Object.assign(f.host,{annotationLearningSessions:new Map([[annotationId,conversationId]]),annotationLearningBusy:new Set(),
-      indexTable:{get:()=>record,upsert:vi.fn()},store:{appendDialogueTurns:async()=>{entered.resolve();await release.promise;return record;},annotationPath:()=>"annotation.json"},
+      indexTable:{get:()=>record,upsert:vi.fn()},store:{readAnnotation:async()=>record,readConversationSource:async()=>"note",appendDialogueTurns:async()=>{entered.resolve();await release.promise;return record;},annotationPath:()=>"annotation.json"},publishAnnotationInsight:vi.fn(),
       runIsolatedTutorTurn:async(input:TutorRunnerInput)=>{const raw=JSON.stringify({control:{action:{type:"hint",questionId:episode.currentQuestionId},replyRelation:"current-question"},reply:""});input.onReply(raw);return {text:raw};}});
     const annotation=f.host.replyInAnnotation(annotationId,"请给这道题一个提示");await entered.promise;
     expect((await f.host.learningV3.list())[0]!.help[0]!.state).toBe("unknown");

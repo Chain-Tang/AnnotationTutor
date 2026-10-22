@@ -120,7 +120,7 @@ export async function runSupportResponse(options:{text:string;signal:AbortSignal
   storageContext?:()=>SupportStorageContext;
   transport(instructions:string,onDelta:(delta:string)=>void):Promise<{text:string}>;
   present(delta:string):boolean|void;ensureCurrent():Promise<void>;
-}):Promise<{text:string}> {
+}):Promise<{text:string;tracking?:"private"}> {
   let text="",accepting=true;
   const storage=supportStorageLease(options.storageContext);
   const check=async()=>{if(options.signal.aborted)throw new DOMException("Cancelled","AbortError");storage.assertCurrent();await options.ensureCurrent();storage.assertCurrent();if(options.signal.aborted)throw new DOMException("Cancelled","AbortError");};
@@ -135,6 +135,6 @@ export async function runSupportResponse(options:{text:string;signal:AbortSignal
     const envelope=stream.finish();await gate.finish();await check();
     const fixed=hostSupportReply(envelope.control.action,options.text,options.priorReplies,storage.context);
     if(fixed){options.present(fixed);text=fixed;await check();}
-    if(!text.trim())throw Error("support-empty-reply");return {text};
+    if(!text.trim())throw Error("support-empty-reply");return {text,...(envelope.control.action.type!=="none"?{tracking:"private" as const}:{})};
   }catch(error){accepting=false;gate.abort(error);await gate.finish().catch(()=>{});throw error;}
 }

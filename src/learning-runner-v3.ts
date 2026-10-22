@@ -26,7 +26,7 @@ type Options = {
   resumeLegacy?(episodeId:string):Promise<{result?:LearningCommandResult;message?:string;needsNewQuestion?:boolean}>;
   expert?(input:{episode:EpisodeV3;kind:"explanation"|"diagram"|"research";signal:AbortSignal}):Promise<string|{text:string;commit?:LearningCommandResult}>;
 };
-export type LearningRunResultV3={text:string;/** Annotation append must call this only after real presentation. */confirmProvided():Promise<void>};
+export type LearningRunResultV3={text:string;/** Trusted executed support decisions stay outside qualitative learning analysis. */tracking?:"private";/** Annotation append must call this only after real presentation. */confirmProvided():Promise<void>};
 const formatQuestion=(e:EpisodeV3)=>{const q=renderQuestionV3(e.questions.find(q=>q.id===e.currentQuestionId)!);return q.prompt+(q.choices?"\n"+q.choices.map((c,i)=>`${String.fromCharCode(65+i)}. ${c}`).join("\n"):"");};
 // Only syntax, pure schema structure and the captured invitation availability can be corrected here. Rejected permissions/bindings, consumer
 // failures, resource limits and transport failures must retain their cause.
@@ -38,7 +38,7 @@ const protocolCorrection="\nFORMAT CORRECTION (the one allowed retry): The previ
 export async function runLearningTurnV3(options:Options):Promise<LearningRunResultV3>{
   const {turn,dialogue,signal}=options,commands=dialogue.commands;
   if(!turn.eligible||!turn.authority)throw new Error("learning-local-conversation-required");
-  let current=turn.active,text="";
+  let current=turn.active,text="",privateSupport=false;
   const storage=supportStorageLease(options.storageContext);
   const tickets=new Map<string,LearningHelpTicket>();
   const offered=new Set<string>(),confirmations=new Map<string,LearningPresentationObservation["state"]>();
@@ -127,7 +127,9 @@ export async function runLearningTurnV3(options:Options):Promise<LearningRunResu
           issue==="reply-relation"?'\nThe rejected field is control.replyRelation. Include it as a sibling of action, not inside action; its value must be exactly one JSON string: "unrelated", "current-question", or "uncertain". For resuming the specified exercise, use "current-question".':
           issue==="question-id"?'\nThe rejected field is control.action.questionId. Include the exact UUID from the activeQuestion or explicitly requested resume candidate in Host state. Do not use an episode ID, placeholder or omit it.':
           issue==='invitation-id'?'\nThe rejected field is control.action.invitationId. Use the exact listed pending invitation UUID only for explicit acceptance or decline; if none is available, use action none.':
-          issue?'\nThe control schema was rejected. Recheck the exact action fields in Allowed action shapes against Host state; do not add any unlisted fields.':"";
+          issue?'\nThe control schema was rejected. Recheck the exact action fields in Allowed action shapes against Host state; do not add any unlisted fields.':
+          parserFailure.message==="teaching-reply-string-required"?'\nThe rejected field is reply. It must be one JSON string, never an object, array, number, boolean or null. Put the entire learner-facing explanation, including Markdown, inside that string. Escape line breaks as \\n and quotation marks as \\". Do not change the permitted action or invent evidence to fix a formatting error.':
+          ["teaching-reply-escape-invalid","teaching-reply-unicode-invalid","teaching-reply-control-character"].includes(parserFailure.message)?'\nThe reply string contains invalid JSON escaping. Encode line breaks as \\n, quotation marks as \\" and backslashes as \\\\. Keep Markdown inside the single reply string; do not emit raw line breaks inside a quoted JSON string.':"";
         await check();await options.onProtocolCorrection?.({attempt:1,errorCode:parserFailure.message});await check();
       }finally{accepting=false;}
     }
@@ -139,7 +141,7 @@ export async function runLearningTurnV3(options:Options):Promise<LearningRunResu
     try{host.acceptControl(undefined);host.enqueue((text?"\n\n":"")+value);await host.finish();}
     catch(error){host.abort(error);await host.finish().catch(()=>{});throw error;}
   };
-  const completed=():LearningRunResultV3=>({text,confirmProvided:async()=>{for(const ticket of tickets.values())if(offered.has(ticket.presentationId))await confirm(ticket,{state:"provided",presentationId:ticket.presentationId});}});
+  const completed=():LearningRunResultV3=>({text,...(privateSupport?{tracking:"private" as const}:{}),confirmProvided:async()=>{for(const ticket of tickets.values())if(offered.has(ticket.presentationId))await confirm(ticket,{state:"provided",presentationId:ticket.presentationId});}});
   const emptyReply="这次没有收到可显示的回复。你可以再说一下希望我解释或继续哪一部分。";
   const offerLegacy=async(episodeId:string,message?:string)=>{
     await check();
@@ -158,6 +160,7 @@ export async function runLearningTurnV3(options:Options):Promise<LearningRunResu
     const envelope=await generateEnvelope();
     if(!envelope){await hostText(emptyReply);return completed();}
     const action=envelope.control.action;
+    privateSupport=!!envelope.control.support||["immediate-support","support-boundary","memory-clarification","capability-info"].includes(action.type);
     if(!["accept","invite","explain-and-invite","invite-from-legacy","resume-legacy"].includes(action.type))dialogue.settle(turn,envelope);
     if(action.type==="none"&&envelope.control.support){
       await hostText(hostSupportReply(envelope.control.support,turn.text,options.priorReplies,options.storageContext?.())!);

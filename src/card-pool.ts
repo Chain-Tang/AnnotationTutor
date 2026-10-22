@@ -8,7 +8,7 @@ export class CardPool {
   public get(mark: AnchorMark, options: Parameters<typeof buildMarginCard>[1]): HTMLElement {
     const signature = JSON.stringify([mark, options.skin, options.showReview]);
     const old = this.entries.get(mark.id);
-    if (old && (old.signature === signature || old.card.dataset["dragging"] ||
+    if (old && (old.signature === signature || old.card.dataset["dragging"] || old.card.dataset["localRequest"] ||
       old.card.contains(old.card.ownerDocument.activeElement))) {
       old.card.hidden = false;
       return old.card;

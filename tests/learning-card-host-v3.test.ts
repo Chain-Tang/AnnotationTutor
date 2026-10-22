@@ -77,8 +77,9 @@ async function fixture(start = true) {
     learning: new LearningFlow(new LearningEpisodeStore(io, "learning/learning/v1/episodes")), learningRuns: new Map(), learningCommitSubscriptions: [],
     learningCardConversationId: crypto.randomUUID(), learningReaders: new LearningInvalidation(), tutorLearningReferences: new LearningSessionReferences(),
     tutorConversation: { cancel: vi.fn(), flush: vi.fn(async () => {}), reset: vi.fn(), tasks: { cancelAll: vi.fn() } },
+    stopBoardMcp: vi.fn(async () => {}), stopTutorCommunication: vi.fn(async () => {}),
     tutorSessionGeneration: 0, tutorSession: null, expertWrites: new Set(), boards,
-    initializeTutorResults: vi.fn(async () => {}), persistSettings: vi.fn(async () => {}), store: { ensureScaffold: vi.fn(async () => {}) }, rebuildIndex: vi.fn(async () => {}), refreshChatViews: vi.fn() });
+    initializeLearningInsights: vi.fn(async () => {}), initializeTutorResults: vi.fn(async () => {}), persistSettings: vi.fn(async () => {}), store: { ensureScaffold: vi.fn(async () => {}) }, rebuildIndex: vi.fn(async () => {}), refreshChatViews: vi.fn() });
   host.initializeLearningDialogue(); await host.learningCard.load();
   const shown: string[] = [], present = (text: string) => { shown.push(text); return true; };
   const run = (action: CardAction, options?: CardOptions, presenter = present) => host.runLearningCard(action, presenter, options);

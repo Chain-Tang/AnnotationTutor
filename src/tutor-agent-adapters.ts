@@ -34,7 +34,7 @@ export class AcpTutorAdapter implements AgentAdapter {
   constructor(private readonly config:{command:string;model:string;cwd:string;env?:NodeJS.ProcessEnv}){}
   async capabilities(){return {vision:false,tools:false,streaming:true};}
   async run(input:Parameters<AgentAdapter["run"]>[0]):Promise<TaskArtifact[]>{
-    const handle=await startAcpSession({...this.config,signal:input.signal,denyTools:true,strictModelSelection:true,onUpdate:event=>{if(event.type==="message")input.emit({type:"text",data:{text:event.text}});}});
+    const handle=await startAcpSession({...this.config,signal:input.signal,denyTools:true,toolFreeRole:"conversation",strictModelSelection:true,onUpdate:event=>{if(event.type==="message")input.emit({type:"text",data:{text:event.text}});}});
     input.emit({type:"status",data:{route:{engine:"opencode",model:this.config.model}}});
     this.stop=()=>handle.dispose();input.signal.addEventListener("abort",this.stop,{once:true});
     try{const result=await handle.session.prompt(teachingInstructions()+"\n"+prompt(input.prompt,input.context));if(input.signal.aborted)throw new DOMException("Cancelled","AbortError");if(!result.ok||!result.text.trim())throw new Error(result.error||"tutor-empty-output");return [{id:crypto.randomUUID(),type:"text",data:{text:result.text}}];}

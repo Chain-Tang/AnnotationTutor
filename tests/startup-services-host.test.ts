@@ -29,7 +29,7 @@ function fixture() {
   const stop = vi.fn(async () => {}), closeTools = vi.fn(async () => {}), makeServer = vi.fn(), makeTools = vi.fn();
   const start = vi.fn(() => listener.promise), publish = vi.fn(() => discovery.promise), remove = vi.fn(async () => {});
   const readPolicy = vi.fn(() => policy.promise), readClipperState = vi.fn(() => clipperState.promise), makeWeb = vi.fn();
-  const saveSettings = vi.fn(async () => {}), pair = vi.fn(async () => ({})), notice = vi.fn();
+  const saveSettings = vi.fn(async () => {}), pair = vi.fn(async () => ({})), notice = vi.fn(), stopCommunication = vi.fn(async () => {});
   let serverOptions: { authenticate(token: string): unknown; pair(name: string, signal: AbortSignal): Promise<unknown> } | undefined;
   class Adapter { getBasePath() { return "/synthetic-vault"; } }
   const noOp = () => {}, ready = async () => {};
@@ -52,19 +52,20 @@ function fixture() {
   new Function("module", ...Object.keys(deps), code)(module, ...Object.values(deps));
   const Host = module.exports as { new(): Host }, host = new Host();
   Object.assign(host, {
-    startupLifetime: startup, startupIdle: new StartupIdleTasks(), pluginUnloaded: false, pluginLoading: null,
+    annotationGraphListeners: new Set(), startupLifetime: startup, startupIdle: new StartupIdleTasks(), pluginUnloaded: false, pluginLoading: null,
     mcpApply: Promise.resolve(), clipperApply: Promise.resolve(), clipperGeneration: 0,
     app: { vault: { adapter: new Adapter(), getName: () => "Synthetic" } },
     settings: { boardMcpEnabled: true, boardMcpReadOnly: false, tutorPairings: [], webEnabled: true, webBridgePort: 3100 },
     upgrading: false, boardMcp: null, boardMcpEndpoint: null, tutorTools: undefined, webBridge: null,
     tutorConversation: { dispose: noOp, tasks: { dispose: noOp } }, boardToolRuntime: {},
+    stopTutorCommunication: stopCommunication,
     pairTutorClient: pair, externalGenerations: { close: ready }, learningRuns: new Map(), learningReaders: { clear: noOp },
     learningCommitSubscriptions: [], officialClipTimers: new Map(), readingRail: { detach: noOp }, pdfHighlighter: { detach: noOp },
     pdfSelection: { detach: noOp }, pdfRail: { detach: noOp },
     desktopState: { read: readPolicy }, webCaptureDir: () => "Synthetic capture", saveSettingsSecurely: saveSettings,
   });
   return { host, startup, listener, discovery, policy, clipperState, stop, closeTools, makeServer, makeTools, start, publish, remove,
-    readPolicy, readClipperState, makeWeb, saveSettings, pair, notice, serverOptions: () => serverOptions! };
+    readPolicy, readClipperState, makeWeb, saveSettings, pair, notice, stopCommunication, serverOptions: () => serverOptions! };
 }
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 function useHostDocument() { vi.stubGlobal("document", { body: { style: { removeProperty() {} } } }); }
@@ -112,6 +113,7 @@ describe("production startup service cancellation", () => {
     expect(r.host.boardMcpEndpoint).toEqual(endpoint); expect(r.host.tutorDiscoveryPath).toBe("/synthetic-private/instance.json");
     r.host.onunload(); expect(r.remove).toHaveBeenCalledWith("/synthetic-private/instance.json");
     expect(r.stop).toHaveBeenCalledOnce(); expect(r.closeTools).toHaveBeenCalledOnce();
+    expect(r.stopCommunication).toHaveBeenCalledOnce();
   });
 
   it("drops a late Clipper policy read without changing settings or showing a notice", async () => {

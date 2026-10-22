@@ -4,6 +4,14 @@ All notable changes to **Annotation Tutor Lite** and its companion **Web Clipper
 are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## 0.7.8 — 2026-10-23
+
+- Reorganize Tutor settings into focused categories with search, a connection list/detail workspace, and independent feature routing.
+- Keep credentials bound to their endpoint and retain unfinished editors, focus and advanced-group state through background refreshes.
+- Preserve the existing memory library, privacy controls and model configuration; use the active connection to discover models.
+- Fix native settings-host method shadowing and preserve focus and completion events in Obsidian popout windows.
+- Make communication test fixtures portable across Windows and POSIX without weakening directory-setup checks; coordinate SDK cancellation tests with explicit model barriers.
+
 ## [Unreleased]
 
 ### Added

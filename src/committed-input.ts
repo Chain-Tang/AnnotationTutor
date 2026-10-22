@@ -11,6 +11,11 @@ export type CommittedInputOptions<Value> = {
 };
 const commits = new WeakMap<Input, () => Promise<boolean>>();
 
+function announceCommitted(input: Input): void {
+  const OwnerEvent = input.ownerDocument.defaultView?.Event ?? Event;
+  input.dispatchEvent(new OwnerEvent("atl-settings-committed"));
+}
+
 export function bindCommittedInput<Value>(input: Input, options: CommittedInputOptions<Value>): void {
   const format = options.format ?? String;
   const equal = options.equal ?? Object.is;
@@ -37,7 +42,7 @@ export function bindCommittedInput<Value>(input: Input, options: CommittedInputO
       input.removeAttribute("aria-invalid");
       delete input.dataset["atlCommitState"];
       if (input.value === raw) input.value = format(value);
-      input.dispatchEvent(new Event("atl-settings-committed"));
+      announceCommitted(input);
       return true;
     }
     input.dataset["atlCommitState"] = "pending";
@@ -48,7 +53,7 @@ export function bindCommittedInput<Value>(input: Input, options: CommittedInputO
       delete input.dataset["atlCommitState"];
       if (input.value === raw) {
         input.value = format(value);
-        input.dispatchEvent(new Event("atl-settings-committed"));
+        announceCommitted(input);
       }
       return true;
     }, error => {

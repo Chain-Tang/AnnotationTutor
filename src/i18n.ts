@@ -1,5 +1,6 @@
 import { upgradeLocaleTables } from "./upgrade-i18n.js";
 import { learningInsightLocaleTables } from "./learning-insight-i18n.js";
+import { settingsLocaleTables } from "./settings-i18n.js";
 // Minimal i18n. The plugin UI is translated; generated agent files (AGENTS.md,
 // overview) stay in English since they are a machine protocol. The active locale
 // is resolved from Obsidian's own language setting (localStorage "language"),
@@ -2422,6 +2423,7 @@ const DICTS: Record<Locale, Dict> = {
 for (const locale of Object.keys(DICTS) as Locale[]) {
   Object.assign(DICTS[locale], upgradeLocaleTables[locale]);
   Object.assign(DICTS[locale], learningInsightLocaleTables[locale]);
+  Object.assign(DICTS[locale], settingsLocaleTables[locale]);
   for (const [key, value] of Object.entries(boardLocaleTables[locale])) DICTS[locale][`board.${key}`] = value;
 }
 

@@ -14,9 +14,13 @@ use separate protected storage; no API key is baked into the code.
 
 - **Repo:** `Chain-Tang/AnnotationTutor` (this repo *is* the plugin — it was a
   monorepo until the standalone restructure; the old full project is only in git history).
-- **Current local source:** `manifest.json` / `package.json` are **0.7.7** (2026-10-22).
-  Recovery reconstructs the engineering baseline at `95ffe399` and its saved
-  0.7.7 working files; it does not publish a release or update installed Vaults.
+- **Current local source:** `manifest.json` / `package.json` are **0.7.8** (2026-10-23).
+  This candidate adds the settings redesign to the recovered 0.7.7 baseline.
+  See [native settings QA](docs/settings-design-qa-2026-10-23.md) for the selected
+  design, actual captures, intentional adaptations and the 3670-test validation.
+  The 2026-10-22 recovery reconstructed engineering commit `95ffe399` and its
+  saved 0.7.7 working files; that recovery record remains historical. Source
+  changes alone do not publish a release or update installed Vaults.
   Check the actual branch and working-tree status before making changes. See the
   [recovery report](docs/project-recovery-2026-10-22.md) for verification results and
   the [assessment](docs/project-assessment-2026-10-22.md) for the pre-recovery state.

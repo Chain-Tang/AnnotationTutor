@@ -1,6 +1,6 @@
 # Annotation Tutor Lite
 
-> 当前本地源码候选 **0.7.7**（2026-10-22 恢复）。验证结果见 [恢复记录](docs/project-recovery-2026-10-22.md)，恢复前状态见 [项目评估](docs/project-assessment-2026-10-22.md)。恢复工程不等于发布版本，也不会更新已安装的库。全部商业与桌面验收仍未完成；学习、主动关怀和专家核对仍默认关闭。[使用与回退](docs/tutor-learning-upgrade.md)。
+> 当前本地源码候选 **0.7.8**（2026-10-23 设置重设计）。本版本基于 [0.7.7 恢复记录](docs/project-recovery-2026-10-22.md) 中的工程基线；[恢复前项目评估](docs/project-assessment-2026-10-22.md)作为历史快照保留。源码变更本身不等于发布版本，也不会自动更新已安装的库。全部商业与桌面验收仍未完成；学习、主动关怀和专家核对仍默认关闭。[使用与回退](docs/tutor-learning-upgrade.md)。
 
 
 **读到重要的地方，留下自己的理解。**
@@ -58,7 +58,8 @@ PDF 批注使用与 Markdown 一致的高亮颜色变量和样式设置。独立
 ## 阅读之外，也能连接你的学习材料
 
 - **灵感画板**：Markdown 实时预览、源码模式、阅读视图共用画板，继续支持 PDF。左侧竖栏用于画笔迹、写文字和绘制图形；画板与右侧对话共用模型、API 和历史，Tutor 流式回复、逐步画图。关闭右侧时，画板只展示最新的临时手写回复，画作保留。上传和双方共创的表情素材独立于当前 Tutor 角色。[画板使用指南 →](docs/inspiration-board.md)
-- **网页剪藏**：默认使用官方 [Obsidian Web Clipper](https://github.com/obsidianmd/obsidian-clipper) 的跨浏览器界面；在 **设置 → TutorWeb** 导入 Tutor 版本化模板后，剪藏可通过 Direct API 或 OpenCode 分析。仓库内 Chromium 扩展保留为可选的 **Tutor 高级网页插件**，继续提供页内问答、逐条高亮备注和原始 HTML 快照。[查看高级扩展说明 →](extension/README.md)
+- **设置工作区（0.7.8）**：按分类搜索设置，在连接列表与详情区中配置模型，并集中查看各功能的路由。后台刷新时保留输入草稿和焦点。[原生预览与验收记录 →](docs/settings-design-qa-2026-10-23.md)
+- **网页剪藏**：默认使用官方 [Obsidian Web Clipper](https://github.com/obsidianmd/obsidian-clipper) 的跨浏览器界面；在 **设置 → Annotation Tutor Lite → 网页采集** 导入 Tutor 版本化模板后，剪藏可通过 Direct API 或 OpenCode 分析。仓库内 Chromium 扩展保留为可选的 **Tutor 高级网页插件**，继续提供页内问答、逐条高亮备注和原始 HTML 快照。[查看高级扩展说明 →](extension/README.md)
 - **阅读辅助**：为支持的 Markdown 工作流提供行内释义和整篇笔记预翻译；不包含整份 PDF 正文抽取。
 - **学习笔记本**：把批注、原文和概念连起来，回顾时不必重新寻找上下文。
 - **四种界面语言**：English、简体中文、繁體中文、日本語。
@@ -70,7 +71,7 @@ PDF 批注使用与 Markdown 一致的高亮颜色变量和样式设置。独立
 
 ### 安装当前源码版本
 
-本页介绍的是本地源码候选 **0.7.7**；远端 Git 分支可能仍落后于本地工作区，克隆后请核对 `manifest.json` 和当前提交。GitHub 最新发行版可能早于源码，请先核对版本号。开发需要 **Node 22.13+** 和 **pnpm 10**：
+本页介绍的是本地源码候选 **0.7.8**；远端 Git 分支可能仍落后于本地工作区，克隆后请核对 `manifest.json` 和当前提交。GitHub 最新发行版可能早于源码，请先核对版本号。开发需要 **Node 22.13+** 和 **pnpm 10**：
 
 ```bash
 git clone https://github.com/Chain-Tang/AnnotationTutor.git
@@ -110,7 +111,7 @@ pnpm install:vault -- --vault "/path/to/YourVault"
 
 ## 连接你的导师
 
-在 **设置 → Annotation Tutor Lite → General** 中选择引擎：
+在 **设置 → Annotation Tutor Lite → AI 连接** 中选择引擎：
 
 - **Direct API**：填写自己的 OpenAI 兼容端点、模型与 API 密钥。当前候选使用 Vault 外的系统加密凭据存储，插件配置只保存引用；系统存储不可用时，新凭据仅保留在当前会话。历史配置可能仍含旧明文。
 - **OpenCode**：自行安装并登录 CLI，再选择该引擎。“设置 OpenCode”现在会依次验证可执行文件、模型目录、ACP 握手、所选模型和一次最小真实模型往返，不再只凭模型列表报告连接成功。

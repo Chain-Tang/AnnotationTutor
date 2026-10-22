@@ -57,7 +57,8 @@ vi.mock("obsidian", () => {
   return {
     Setting,
     ItemView: class { contentEl = document.createElement("div"); constructor(_leaf: unknown) {} },
-    PluginSettingTab: class { containerEl = document.createElement("div"); constructor(readonly app: unknown) {} },
+    // Obsidian 1.14 owns an undocumented `setting` instance property.
+    PluginSettingTab: class { containerEl = document.createElement("div"); setting = {}; constructor(readonly app: unknown) {} },
     Modal: class {},
     Notice: class { constructor(_text: string) {} },
     setIcon: () => {}, setTooltip: () => {}
@@ -84,6 +85,7 @@ beforeEach(() => {
   const methods = {
     createEl: create,
     createDiv(this: HTMLElement, options?: { cls?: string; text?: string }) { return create.call(this, "div", options); },
+    createSpan(this: HTMLElement, options?: { cls?: string; text?: string }) { return create.call(this, "span", options); },
     empty(this: HTMLElement) { this.replaceChildren(); },
     addClass(this: HTMLElement, value: string) { this.classList.add(value); },
     setText(this: HTMLElement, value: string) { this.textContent = value; },
@@ -102,7 +104,7 @@ async function fixture(overrides: Record<string, unknown> = {}) {
     settings, manifest: { id: "annotation-tutor-lite", version: "test" },
     librarySnapshot: { annotations: [], cells: [], scenes: [], proposals: [], diagnostics: [] },
     availableApiModels: [] as string[], apiModelsLoaded: true,
-    availableModels: [] as Array<{ id: string; name: string }>, modelsLoaded: true,
+    availableModels: [] as string[], modelsLoaded: true,
     allSkins: vi.fn(() => [{ id: "flat", builtin: true, name: "Flat" }]),
     libraryPaths: () => ({ overview: "Overview.md" }),
     persistSettings: vi.fn(async () => { await session.save(); }),
@@ -134,14 +136,82 @@ function select(tab: AnnotationTutorLiteSettingTab, key: string) { return row(ta
 function draft(element: HTMLInputElement | HTMLTextAreaElement, value: string) { element.value = value; element.dispatchEvent(new Event("input")); }
 function change(element: HTMLSelectElement, value: string) { element.value = value; element.dispatchEvent(new Event("change")); }
 function toggle(element: HTMLInputElement, value: boolean) { element.checked = value; element.dispatchEvent(new Event("change")); }
-function page(tab: AnnotationTutorLiteSettingTab, name: string) {
-  Array.from(tab.containerEl.querySelectorAll<HTMLButtonElement>("[role=tab]")).find(button => button.textContent === t(`settings.tab.${name}`))!.click();
+async function page(tab: AnnotationTutorLiteSettingTab, name: string) {
+  const library = ["annotations", "cells", "scenes", "profile", "proposals"].includes(name);
+  if (library && !tab.containerEl.querySelector(`[data-atl-settings-page="${name}"]`)) {
+    tab.containerEl.querySelector<HTMLButtonElement>('[data-atl-settings-page="library"]')!.click();
+    await vi.waitFor(() => expect(tab.containerEl.querySelector(`[data-atl-settings-page="${name}"]`)).not.toBeNull());
+  }
+  tab.containerEl.querySelector<HTMLButtonElement>(`[data-atl-settings-page="${name}"]`)!.click();
+  await vi.waitFor(() => expect((tab as unknown as { activePage: string }).activePage).toBe(name));
 }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; }
+
+describe("settings workspace navigation", () => {
+  it("groups connections and independent routes without starting hidden model discovery", async () => {
+    const { tab, plugin } = await fixture({ apiModel: "example-model", chatEngine: "api", reviewEngine: "opencode" });
+    expect(tab.containerEl.querySelectorAll('.atl-settings-panel:not([hidden])')).toHaveLength(1);
+    expect(tab.containerEl.querySelector('.atl-settings-panel:not([hidden])')?.getAttribute("id")).toBe("atl-settings-panel-general");
+    expect(plugin.refreshAvailableModels).not.toHaveBeenCalled(); expect(plugin.refreshApiModels).not.toHaveBeenCalled();
+    await page(tab, "connections");
+    const connections = tab.containerEl.querySelectorAll<HTMLButtonElement>("[data-atl-settings-connection]");
+    expect(connections).toHaveLength(3);
+    expect(tab.containerEl.querySelectorAll('.atl-settings-connection-detail:not([hidden])')).toHaveLength(1);
+    expect(tab.containerEl.querySelectorAll('.atl-settings-routes > .setting-item')).toHaveLength(4);
+    expect(row(tab, "set.chatEngine").querySelector(".atl-settings-route-model")?.textContent).toBe("example-model");
+    expect(tab.containerEl.querySelectorAll('[data-atl-settings-id="setting:set.web.engine"]')).toHaveLength(1);
+    expect(plugin.persistSettings).not.toHaveBeenCalled();
+  });
+
+  it("searches settings in other categories and keeps the editor focused through refresh", async () => {
+    const { tab, plugin } = await fixture();
+    const search = tab.containerEl.querySelector<HTMLInputElement>("input.atl-settings-search")!;
+    draft(search, t("set.memoryFolder"));
+    const memory = input(tab, "set.memoryFolder"); memory.focus(); draft(memory, "Pending/Memory"); memory.setSelectionRange(2, 6);
+    expect(memory.closest<HTMLElement>(".atl-settings-panel")?.hidden).toBe(false);
+    tab.refresh();
+    expect(input(tab, "set.memoryFolder")).toBe(memory); expect(document.activeElement).toBe(memory);
+    expect([memory.selectionStart, memory.selectionEnd]).toEqual([2, 6]);
+    expect(plugin.changeMemoryRoot).not.toHaveBeenCalled();
+    await page(tab, "reading");
+    expect(tab.containerEl.querySelector<HTMLInputElement>("input.atl-settings-search")!.value).toBe("");
+    expect(tab.containerEl.querySelectorAll('.atl-settings-panel:not([hidden])')).toHaveLength(1);
+  });
+
+  it("temporarily opens matching advanced groups without persisting the search expansion", async () => {
+    const { tab, plugin } = await fixture(); await page(tab, "connections");
+    const search = tab.containerEl.querySelector<HTMLInputElement>("input.atl-settings-search")!;
+    const group = tab.containerEl.querySelector<HTMLDetailsElement>('[data-atl-settings-disclosure="opencode-options"]')!;
+    expect(group.open).toBe(false);
+    draft(search, t("set.mcpServers")); expect(group.open).toBe(true);
+    search.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); expect(group.open).toBe(false);
+    expect(plugin.persistSettings).not.toHaveBeenCalled();
+  });
+
+  it("keeps the active category and failed draft when navigation cannot save it", async () => {
+    const { tab, plugin } = await fixture(); await page(tab, "privacy");
+    plugin.changeMemoryRoot.mockResolvedValueOnce({ ok: false });
+    const memory = input(tab, "set.memoryFolder"); draft(memory, "Unwritable/Memory");
+    tab.containerEl.querySelector<HTMLButtonElement>('[data-atl-settings-page="reading"]')!.click();
+    await vi.waitFor(() => expect(memory.getAttribute("aria-invalid")).toBe("true"));
+    expect((tab as unknown as { activePage: string }).activePage).toBe("privacy");
+    expect(memory.value).toBe("Unwritable/Memory"); expect(memory.closest<HTMLElement>(".atl-settings-panel")?.hidden).toBe(false);
+  });
+
+  it("updates the credential row identity when an unedited editor binds a new endpoint", async () => {
+    const { tab, plugin } = await fixture(); await page(tab, "connections");
+    plugin.settings.apiBaseUrl = "https://new.example/v1";
+    const credential = input(tab, "set.apiKey"); credential.focus(); draft(credential, "pending-new-endpoint-key");
+    tab.refresh();
+    expect(input(tab, "set.apiKey")).toBe(credential); expect(credential.value).toBe("pending-new-endpoint-key");
+    expect(plugin.settings.apiKey).toBe("");
+  });
+});
 
 describe("settings DOM updates", () => {
   it("limits highlight and board mode changes to their dependent rows", async () => {
     const { tab, plugin, scroll } = await fixture({ boardConnectionMode: "inherit" });
+    await page(tab, "privacy");
     const memory = input(tab, "set.memoryFolder"), apiKey = input(tab, "set.apiKey");
     draft(memory, "Pending folder"); memory.focus(); memory.setSelectionRange(2, 6);
     tab.containerEl.scrollTop = 300; scroll.scrollTop = 620;
@@ -176,7 +246,7 @@ describe("settings DOM updates", () => {
     toggle(autoRun, !plugin.settings.autoRunAgent);
     await vi.waitFor(() => expect(plugin.applyDisplaySettings).toHaveBeenCalled());
     expect(input(tab, "set.memoryFolder")).toBe(memory); expect(input(tab, "set.autoRunAgent")).toBe(autoRun);
-    page(tab, "feedback");
+    await page(tab, "feedback");
     const duration = input(tab, "upgrade.dailyMinutes");
     const create = vi.spyOn(HTMLElement.prototype, "createDiv");
     for (const [label, key] of [["upgrade.learningFlowEnabled", "learningFlowEnabled"], ["upgrade.supportCheckinEnabled", "supportCheckinEnabled"], ["upgrade.learningExpertsEnabled", "learningExpertsEnabled"]] as const) {
@@ -211,6 +281,7 @@ describe("settings DOM updates", () => {
 
   it("keeps an uncommitted editor, focus, caret and ancestor scroll during model/skin refresh", async () => {
     const { tab, plugin, scroll } = await fixture();
+    await page(tab, "privacy");
     const editor = input(tab, "set.memoryFolder");
     draft(editor, "Uncommitted/Notes"); editor.focus(); editor.setSelectionRange(4, 12, "backward");
     tab.containerEl.scrollTop = 300; scroll.scrollTop = 620;
@@ -228,8 +299,55 @@ describe("settings DOM updates", () => {
     editor.blur(); await vi.waitFor(() => expect(plugin.changeMemoryRoot).toHaveBeenCalledWith("Uncommitted/Notes"));
   });
 
+  it.each(["api", "opencode"] as const)("preserves and commits a custom %s model draft when background discovery populates the picker", async engine => {
+    const { tab, plugin } = await fixture({ apiModel: "saved-api-model", agentModel: "saved-agent-model" });
+    const discovered = deferred<void>();
+    if (engine === "api") {
+      plugin.settings.apiKey = "session-only-test-key"; plugin.apiModelsLoaded = false;
+      plugin.refreshApiModels.mockImplementationOnce(async () => {
+        await discovered.promise; plugin.availableApiModels = ["discovered-api-model"]; plugin.apiModelsLoaded = true;
+      });
+    } else {
+      plugin.modelsLoaded = false;
+      plugin.refreshAvailableModels.mockImplementationOnce(async () => {
+        await discovered.promise; plugin.availableModels = ["discovered-agent-model"]; plugin.modelsLoaded = true;
+      });
+    }
+    await page(tab, "connections");
+    if (engine === "opencode") tab.containerEl.querySelector<HTMLButtonElement>('[data-atl-settings-connection="opencode"]')!.click();
+    await vi.waitFor(() => expect(engine === "api" ? plugin.refreshApiModels : plugin.refreshAvailableModels).toHaveBeenCalledOnce());
+    const modelKey = engine === "api" ? "apiModel" : "agentModel", label = engine === "api" ? "set.apiModel" : "set.agentModel";
+    const model = input(tab, label), modelRow = row(tab, label), refresh = vi.spyOn(tab, "refresh");
+    model.focus(); draft(model, "custom-model-in-progress"); model.setSelectionRange(2, 10, "backward");
+
+    discovered.resolve();
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+
+    expect(row(tab, label)).toBe(modelRow); expect(input(tab, label)).toBe(model);
+    expect(modelRow.dataset.atlSettingsId).toBe(`setting:${modelKey}`);
+    expect(model.value).toBe("custom-model-in-progress"); expect(document.activeElement).toBe(model);
+    expect([model.selectionStart, model.selectionEnd, model.selectionDirection]).toEqual([2, 10, "backward"]);
+    expect(plugin.settings[modelKey]).toBe(engine === "api" ? "saved-api-model" : "saved-agent-model");
+    expect(plugin.persistSettings).not.toHaveBeenCalled();
+
+    model.blur();
+    await vi.waitFor(() => expect(plugin.settings[modelKey]).toBe("custom-model-in-progress"));
+    await vi.waitFor(() => expect(model.dataset.atlCommitState).toBeUndefined());
+    expect(plugin.persistSettings).toHaveBeenCalledOnce();
+    expect(plugin.settings[engine === "api" ? "agentModel" : "apiModel"]).toBe(engine === "api" ? "saved-agent-model" : "saved-api-model");
+
+    // Once the draft is durable and no editor is active, the discovered picker
+    // may replace it while keeping the custom, unlisted model selected.
+    tab.refresh();
+    expect(row(tab, label).dataset.atlSettingsId).toBe(`setting:${modelKey}`);
+    expect(select(tab, label).value).toBe("custom-model-in-progress");
+    expect(select(tab, label).selectedOptions[0]?.textContent).toContain(t("set.modelUnavailable"));
+    expect(plugin.persistSettings).toHaveBeenCalledOnce();
+  });
+
   it("retains credential draft listeners and their original endpoint binding", async () => {
     const { tab, plugin } = await fixture();
+    await page(tab, "connections");
     let editor = input(tab, "set.apiKey");
     editor.focus(); draft(editor, "pending-key"); tab.refresh();
     expect(input(tab, "set.apiKey")).toBe(editor);
@@ -237,13 +355,14 @@ describe("settings DOM updates", () => {
     editor.blur(); await vi.waitFor(() => expect(plugin.settings.apiKey).toBe("pending-key"));
     editor = input(tab, "set.apiKey"); editor.focus(); draft(editor, "other-endpoint-key");
     plugin.settings.apiBaseUrl = "https://different.example/v1"; tab.refresh();
-    expect(input(tab, "set.apiKey")).toBe(editor);
-    editor.blur(); await new Promise(resolve => setTimeout(resolve, 0));
+    expect(input(tab, "set.apiKey")).not.toBe(editor);
+    editor.dispatchEvent(new FocusEvent("blur")); await new Promise(resolve => setTimeout(resolve, 0));
     expect(plugin.settings.apiKey).toBe("");
   });
 
   it("suppresses relocation blur but commits on the next user blur, including after a failed DOM replacement", async () => {
     const { tab, plugin } = await fixture();
+    await page(tab, "privacy");
     const editor = input(tab, "set.memoryFolder"); editor.focus(); draft(editor, "Pending folder");
     const replace = HTMLElement.prototype.replaceWith;
     vi.spyOn(HTMLElement.prototype, "replaceWith").mockImplementation(function(this: HTMLElement, ...nodes) {
@@ -263,7 +382,7 @@ describe("settings DOM updates", () => {
   });
 
   it("preserves annotation filters, toolbar identity and connected handlers during snapshot refresh", async () => {
-    const { tab, plugin } = await fixture(); page(tab, "annotations");
+    const { tab, plugin } = await fixture(); await page(tab, "annotations");
     const editor = tab.containerEl.querySelector<HTMLInputElement>(".atl-toolbar input")!;
     const status = tab.containerEl.querySelector<HTMLSelectElement>(".atl-toolbar select")!;
     draft(editor, "existing filter"); change(status, "reviewed"); editor.focus();
@@ -305,7 +424,7 @@ describe("settings DOM updates", () => {
   });
 
   it("toggles and exports the official Clipper locally while retaining the capture/template editors", async () => {
-    const { tab, plugin } = await fixture({ webEnabled: true }); page(tab, "web");
+    const { tab, plugin } = await fixture({ webEnabled: true }); await page(tab, "web");
     const capture = input(tab, "set.web.captureDir");
     const template = row(tab, "set.web.template").querySelector<HTMLTextAreaElement>("textarea")!;
     draft(capture, "Uncommitted capture dir"); draft(template, "{{content}} draft");
@@ -326,26 +445,27 @@ describe("settings DOM updates", () => {
     const old = deferred<string>(), latest = deferred<string>();
     plugin.librarySnapshot.proposals = [{ id: "P-1", operation: "replace", targetKind: "cell", targetPath: "cell.md" }] as never[];
     plugin.proposalDiff.mockImplementationOnce(() => old.promise).mockImplementationOnce(() => latest.promise);
-    page(tab, "proposals"); const oldPreview = tab.containerEl.querySelector("pre")!;
+    await page(tab, "proposals"); const oldPreview = tab.containerEl.querySelector("pre")!;
     tab.refresh(); const latestPreview = tab.containerEl.querySelector("pre")!;
     old.resolve("stale diff"); await new Promise(resolve => setTimeout(resolve, 0));
     expect(oldPreview.textContent).toBe(t("settings.loadingDiff"));
     expect(oldPreview.parentElement?.querySelector("button")).toBeNull();
-    page(tab, "web"); latest.resolve("another stale diff"); await new Promise(resolve => setTimeout(resolve, 0));
+    await page(tab, "web"); latest.resolve("another stale diff"); await new Promise(resolve => setTimeout(resolve, 0));
     expect(latestPreview.textContent).toBe(t("settings.loadingDiff"));
     expect(latestPreview.parentElement?.querySelector("button")).toBeNull();
     expect(tab.containerEl.querySelector(".atl-proposal-card")).toBeNull();
-    page(tab, "proposals");
+    await page(tab, "proposals");
     await vi.waitFor(() => expect(tab.containerEl.querySelector("pre")?.textContent).toBe("difference"));
     expect(tab.containerEl.querySelectorAll(".atl-proposal-card button")).toHaveLength(2);
   });
 
-  it("fully translates the page on explicit language change", async () => {
+  it("translates labels while retaining a stable uncommitted editor on language change", async () => {
     const { tab } = await fixture(); const editor = input(tab, "set.memoryFolder");
     draft(editor, "Unsaved locale draft"); change(select(tab, "set.language"), "zh-cn");
-    await vi.waitFor(() => expect(input(tab, "set.memoryFolder")).not.toBe(editor));
+    await vi.waitFor(() => expect(row(tab, "set.language").querySelector(".setting-item-name")?.textContent).toBe("语言"));
     expect(row(tab, "set.language").querySelector(".setting-item-name")?.textContent).toBe("语言");
-    expect(input(tab, "set.memoryFolder")).not.toBe(editor);
+    expect(input(tab, "set.memoryFolder")).toBe(editor);
+    expect(editor.value).toBe("Unsaved locale draft");
     expect(Array.from(tab.containerEl.querySelectorAll("[role=tab]")).some(button => button.textContent === "General")).toBe(false);
   });
 });
@@ -373,7 +493,7 @@ describe("bounded settings lists and drafts", () => {
       const table = new IndexTable(annotationRows as never[]);
       (result.plugin as unknown as { indexTable: typeof table }).indexTable = table;
     }
-    page(result.tab, kind);
+    await page(result.tab, kind);
     return { ...result, items };
   }
   function next(tab: AnnotationTutorLiteSettingTab) { tab.containerEl.querySelector<HTMLButtonElement>(".atl-pagination-next")!.click(); }
@@ -403,7 +523,7 @@ describe("bounded settings lists and drafts", () => {
     expect(groups(tab, kind)[0]!.textContent).toContain("ID-09999");
     expect(previous(tab).disabled).toBe(true);
     // Each list retains its own filter/page through tab navigation.
-    page(tab, "feedback"); page(tab, kind);
+    await page(tab, "feedback"); await page(tab, kind);
     expect(tab.containerEl.querySelector<HTMLInputElement>(".atl-toolbar input")!.value).toBe("中文目标");
     expect(groups(tab, kind)).toHaveLength(1);
     expect(plugin.persistSettings).not.toHaveBeenCalled();
@@ -448,6 +568,7 @@ describe("bounded settings lists and drafts", () => {
 
   it("retains failed ordinary drafts through background refresh and retries without an input event", async () => {
     const { tab, plugin } = await fixture();
+    await page(tab, "connections");
     const model = input(tab, "set.apiModel"); model.focus(); draft(model, "draft-model");
     plugin.persistSettings.mockRejectedValueOnce(new Error("disk busy")); model.blur();
     await vi.waitFor(() => expect(model.getAttribute("aria-invalid")).toBe("true"));
@@ -469,7 +590,7 @@ describe("bounded settings lists and drafts", () => {
     command.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" })); command.dispatchEvent(new FocusEvent("blur"));
     await vi.waitFor(() => expect(plugin.persistSettings).toHaveBeenCalledTimes(1));
     expect(plugin.settings.tutorCodexCommand).toBe("c".repeat(20));
-    page(tab, "feedback"); const duration = input(tab, "upgrade.dailyMinutes");
+    await page(tab, "feedback"); const duration = input(tab, "upgrade.dailyMinutes");
     draft(duration, "120"); expect(plugin.persistSettings).toHaveBeenCalledTimes(1);
     duration.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" })); duration.dispatchEvent(new FocusEvent("blur"));
     await vi.waitFor(() => expect(plugin.persistSettings).toHaveBeenCalledTimes(2));
@@ -499,7 +620,7 @@ it("applies the new locale before persistence refreshes dependent views", async 
   plugin.persistSettings.mockImplementation(async () => { order.push("persist"); expect(t("list.next")).toBe("下一页"); });
   change(select(tab, "set.language"), "zh-cn");
   await vi.waitFor(() => expect(order).toEqual(["locale", "persist"]));
-  expect(tab.containerEl.querySelector("h2")!.textContent).toBe(t("settings.title"));
+  expect(tab.containerEl.querySelector("h2")!.textContent).toBe(t("settings.design.title"));
 });
 
 
@@ -535,7 +656,7 @@ it("caches tag catalogs for one snapshot and refreshes them on replacement", asy
     type: "understanding", status: "active", path: "cell.md", updatedAt: "2026-10-16" }] as never[];
   plugin.librarySnapshot = { ...plugin.librarySnapshot, cells };
   const scans = vi.spyOn(cells, "flatMap");
-  page(tab, "cells"); const initial = scans.mock.calls.length;
+  await page(tab, "cells"); const initial = scans.mock.calls.length;
   const search = tab.containerEl.querySelector<HTMLInputElement>(".atl-toolbar input")!;
   draft(search, "Concept"); tab.refresh(); tab.refresh();
   expect(scans).toHaveBeenCalledTimes(initial);
@@ -610,5 +731,51 @@ describe("ordinary settings transaction ordering", () => {
     draft(model, "retry-model"); model.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
     await vi.waitFor(() => expect(plugin.settings.boardApiModel).toBe("retry-model"));
     expect(write).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("settings tab focus and overflow navigation", () => {
+  it("keeps repeated library arrow navigation inside its own tablist", async () => {
+    const { tab } = await fixture();
+    await page(tab, "cells");
+    let selected = tab.containerEl.querySelector<HTMLButtonElement>('[data-atl-settings-page="cells"]')!;
+    expect(document.activeElement).toBe(selected);
+    selected.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
+    await vi.waitFor(() => {
+      selected = tab.containerEl.querySelector<HTMLButtonElement>('[data-atl-settings-page="scenes"]')!;
+      expect(selected.getAttribute("aria-selected")).toBe("true");
+      expect(document.activeElement).toBe(selected);
+    });
+    selected.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }));
+    await vi.waitFor(() => {
+      const cells = tab.containerEl.querySelector<HTMLButtonElement>('[data-atl-settings-page="cells"]')!;
+      expect(cells.getAttribute("aria-selected")).toBe("true");
+      expect(document.activeElement).toBe(cells);
+      expect(tab.containerEl.querySelector('.atl-settings-panel:not([hidden])')?.getAttribute("id")).toBe("atl-settings-panel-library");
+    });
+  });
+
+  it("requests visibility of the active tab after replacing a horizontally scrolled navigation", async () => {
+    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+    const scrolled: Array<{ element: HTMLElement; options: ScrollIntoViewOptions }> = [];
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value(this: HTMLElement, options: ScrollIntoViewOptions) { scrolled.push({ element: this, options }); }
+    });
+    try {
+      const { tab } = await fixture();
+      const previousList = tab.containerEl.querySelector<HTMLElement>(".atl-settings-tabs")!;
+      previousList.scrollLeft = 500;
+      await page(tab, "annotations");
+      const category = tab.containerEl.querySelector<HTMLButtonElement>('[data-atl-settings-page="library"]')!;
+      const child = tab.containerEl.querySelector<HTMLButtonElement>('[data-atl-settings-page="annotations"]')!;
+      expect(tab.containerEl.querySelector(".atl-settings-tabs")).not.toBe(previousList);
+      expect(scrolled).toContainEqual({ element: category, options: { block: "nearest", inline: "nearest" } });
+      expect(scrolled).toContainEqual({ element: child, options: { block: "nearest", inline: "nearest" } });
+      expect(document.activeElement).toBe(child);
+    } finally {
+      if (original) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", original);
+      else Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+    }
   });
 });

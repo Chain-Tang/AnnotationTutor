@@ -1,6 +1,6 @@
 # Annotation Tutor Lite
 
-> Current local source candidate: **0.7.7** (recovery dated 2026-10-22). See the [recovery verification record](docs/project-recovery-2026-10-22.md) and [pre-recovery assessment](docs/project-assessment-2026-10-22.md). Recovery does not publish a release or update installed Vaults. Full commercial and desktop acceptance remain open; learning, check-ins and expert features are opt-in. [Usage and rollback](docs/tutor-learning-upgrade.md).
+> Current local source candidate: **0.7.8** (settings redesign dated 2026-10-23). It builds on the [0.7.7 recovery verification record](docs/project-recovery-2026-10-22.md); the [pre-recovery assessment](docs/project-assessment-2026-10-22.md) remains a historical snapshot. Source changes do not by themselves publish a release or update installed Vaults. Full commercial and desktop acceptance remain open; learning, check-ins and expert features are opt-in. [Usage and rollback](docs/tutor-learning-upgrade.md).
 
 
 **Read closely. Think in the margins. Remember what matters.**
@@ -55,8 +55,9 @@ AI features are not an included model service or a guarantee of correct feedback
 
 ## More than a highlighter
 
+- **Settings workspace (0.7.8):** search across categories, configure connections in a list/detail view, and inspect each feature’s route. Editors retain drafts and focus through background refreshes. [Native settings preview and QA →](docs/settings-design-qa-2026-10-23.md)
 - **Inspiration board:** draw over Markdown Live Preview, source mode, reading view, and PDFs; Markdown modes share the same board. Use the vertical tool rail for handwriting, text, and shapes. The board and sidebar share the model, API connection, and conversation; replies and drawings stream as they arrive. Closing the sidebar moves the latest reply into a temporary handwritten caption while preserving artwork. Includes uploaded and co-created sticker assets independent of the current Tutor character. [Board guide →](docs/inspiration-board.md)
-- **Web capture:** the official [Obsidian Web Clipper](https://github.com/obsidianmd/obsidian-clipper) is the default cross-browser capture UI. Import Tutor's versioned template from **Settings → TutorWeb** so saved Markdown can be analyzed through either Direct API or OpenCode. The bundled Chromium extension remains an optional **Tutor Advanced Clipper** for in-page Tutor Q&A, per-highlight notes, and raw HTML snapshots. [Advanced extension setup →](extension/README.md)
+- **Web capture:** the official [Obsidian Web Clipper](https://github.com/obsidianmd/obsidian-clipper) is the default cross-browser capture UI. Import Tutor's versioned template from **Settings → Annotation Tutor Lite → Web capture** so saved Markdown can be analyzed through either Direct API or OpenCode. The bundled Chromium extension remains an optional **Tutor Advanced Clipper** for in-page Tutor Q&A, per-highlight notes, and raw HTML snapshots. [Advanced extension setup →](extension/README.md)
 - **Reading assistance:** inline glosses and whole-note pre-translation for supported Markdown workflows. PDF whole-document text extraction is not included.
 - **Connected learning:** generated notebooks link back to annotations and source material; scenes and profiles retain context.
 - **Four interface languages:** English, 简体中文, 繁體中文, 日本語.
@@ -68,7 +69,7 @@ AI features are not an included model service or a guarantee of correct feedback
 
 ### Build the current source
 
-This page describes local source candidate **0.7.7**. The remote Git branch may lag behind this workspace; check `manifest.json` and the checked-out commit after cloning. The latest GitHub Release may be older; check its version before installing. Development requires **Node 22.13+** and **pnpm 10**:
+This page describes local source candidate **0.7.8**. The remote Git branch may lag behind this workspace; check `manifest.json` and the checked-out commit after cloning. The latest GitHub Release may be older; check its version before installing. Development requires **Node 22.13+** and **pnpm 10**:
 
 ```bash
 git clone https://github.com/Chain-Tang/AnnotationTutor.git
@@ -108,7 +109,7 @@ On first run, TutorLite creates its memory folder (default `Agent Memory/`) and,
 
 ## Connect your tutor
 
-Choose an engine in **Settings → Annotation Tutor Lite → General**:
+Choose an engine in **Settings → Annotation Tutor Lite → AI connections**:
 
 - **Direct API:** supply your own OpenAI-compatible endpoint, model, and API key. The current candidate uses system-encrypted credential storage outside the Vault; plugin configuration stores references. When secure storage is unavailable, new credentials are session-only. Historical configurations may still contain old plaintext.
 - **OpenCode:** install and authenticate the CLI yourself, then select it as the engine. **Set up OpenCode** now validates the executable, model catalog, ACP handshake, selected model, and a minimal real model round-trip instead of reporting success from the catalog alone.

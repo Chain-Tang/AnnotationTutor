@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { Window } from "happy-dom";
 import { bindCommittedInput, bindSearchInput, commitSettingsInputs } from "../src/committed-input.js";
 
 afterEach(() => { document.body.replaceChildren(); });
@@ -15,6 +16,29 @@ function enter(input: HTMLInputElement, isComposing = false) {
 }
 
 describe("committed ordinary settings inputs", () => {
+  it.each([false, true])("dispatches completion in a popout input's own realm (saved: %s)", async changed => {
+    const popout = new Window();
+    try {
+      const ownerDocument = popout.document as unknown as Document, view = ownerDocument.defaultView!;
+      // Happy DOM shares Event across Window instances; assign this owner an
+      // independent constructor brand, as real browser windows have.
+      const OwnerEvent = class extends view.Event {};
+      Object.defineProperty(view, "Event", { value: OwnerEvent, configurable: true, writable: true });
+      expect(view.Event).not.toBe(Event); expect(ownerDocument).not.toBe(document);
+      const input = ownerDocument.createElement("input"); input.value = "before"; ownerDocument.body.append(input);
+      const save = vi.fn(async (_value: string) => {}), events: Event[] = [];
+      input.addEventListener("atl-settings-committed", event => events.push(event));
+      bindCommittedInput(input, { read: () => "before", parse: value => value.trim(), save });
+      input.value = changed ? " after " : " before ";
+
+      expect(await commitSettingsInputs(ownerDocument.body)).toBe(true);
+
+      expect(input.value).toBe(changed ? "after" : "before");
+      expect(save).toHaveBeenCalledTimes(changed ? 1 : 0);
+      expect(events).toHaveLength(1); expect(events[0]).toBeInstanceOf(view.Event);
+    } finally { popout.close(); }
+  });
+
   it("saves twenty characters once and deduplicates Enter followed by blur", async () => {
     const { input, save } = fixture();
     for (let char = 1; char <= 20; char++) { input.value = "x".repeat(char); input.dispatchEvent(new Event("input")); }

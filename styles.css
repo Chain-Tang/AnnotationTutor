@@ -1197,41 +1197,633 @@
 
 /* --- settings memory library --------------------------------------------- */
 
-.atl-settings-tabs {
+.atl-settings .atl-settings-tabs {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--size-2-2);
-  margin-bottom: var(--size-4-4);
+  flex-wrap: nowrap;
+  gap: var(--size-4-1);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  margin-bottom: var(--size-4-6);
   border-bottom: 1px solid var(--background-modifier-border);
 }
 
-.atl-settings-tab {
+.atl-settings .atl-settings-tab {
+  flex: 0 0 auto;
   margin: 0;
-  padding: var(--size-2-3) var(--size-4-3);
+  min-height: 42px;
+  padding: var(--size-4-2) var(--size-4-4);
   border: none;
-  border-bottom: 2px solid transparent;
+  border-bottom: 3px solid transparent;
   border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-weight: var(--font-medium);
+}
+
+.atl-settings .atl-settings-tab:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.atl-settings .atl-settings-tab.is-active {
+  color: var(--text-accent);
+  background: transparent;
+  border-bottom-color: var(--interactive-accent);
+}
+
+.atl-settings .atl-settings-body {
+  min-width: 0;
+}
+
+.atl-settings .atl-settings-actions {
+  margin: 0 0 var(--size-4-4);
+}
+
+/* Tutor settings: a flat, theme-native workspace. These rules are scoped to
+   the plugin tab so Obsidian's own settings and other plugins keep their skin. */
+.atl-settings {
+  --atl-settings-control-share: 64%;
+  /* Scale with the host's UI font preference; dense connection forms still
+     need a readable label hierarchy at the selected workspace width. */
+  --font-ui-small: calc(var(--font-ui-medium) * 1.067);
+  --font-ui-smaller: calc(var(--font-ui-medium) * 0.933);
+  font-size: var(--font-ui-small);
+  container-type: inline-size;
+}
+
+/* Obsidian 1.14 centers ordinary settings in a 700px column. This
+   master/detail workspace needs the available panel width. */
+.modal.mod-settings .vertical-tab-content.atl-settings {
+  padding: var(--size-4-6) var(--size-4-8) var(--size-4-10);
+}
+
+.atl-settings > :is(.atl-settings-header, .atl-settings-tabs, .atl-settings-body, .atl-settings-footer) {
+  max-width: 1100px;
+  margin-inline: auto;
+}
+
+.atl-settings [hidden] {
+  display: none !important;
+}
+
+.atl-settings .atl-settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--size-4-3) var(--size-4-6);
+  margin-bottom: var(--size-4-3);
+}
+
+.atl-settings .atl-settings-heading {
+  margin: 0;
+  padding: 0;
+  color: var(--text-normal);
+  font-size: calc(var(--font-ui-medium) * 2);
+  font-weight: var(--font-semibold);
+  line-height: 1.3;
+}
+
+.atl-settings .atl-settings-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 1 260px;
+  max-width: 100%;
+  color: var(--text-muted);
+}
+
+.atl-settings .atl-settings-search > svg,
+.atl-settings .atl-settings-search > .search-icon {
+  position: absolute;
+  left: var(--size-4-2);
+  width: var(--icon-s);
+  height: var(--icon-s);
+  pointer-events: none;
+}
+
+.atl-settings .atl-settings-search input[type="search"],
+.atl-settings .atl-settings-search input[type="text"] {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  padding-inline: var(--size-4-8) var(--size-4-2);
+}
+
+.atl-settings input.atl-settings-search {
+  display: block;
+  width: 260px;
+  min-width: 0;
+  min-height: 34px;
+  padding-inline: var(--size-4-3);
+  color: var(--text-normal);
+}
+
+.atl-settings .atl-settings-page-heading {
+  margin-bottom: var(--size-4-5);
+}
+
+.atl-settings .atl-settings-page-heading h3,
+.atl-settings .atl-settings-section-title {
+  padding: 0;
+  margin: 0 0 var(--size-4-1);
+  color: var(--text-normal);
+  font-size: calc(var(--font-ui-medium) * 1.6);
+  font-weight: var(--font-semibold);
+  line-height: 1.4;
+}
+
+.atl-settings .atl-settings-page-heading p,
+.atl-settings .atl-settings-section > p,
+.atl-settings .atl-settings-section-description {
+  margin: 0 0 var(--size-4-3);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+}
+
+.atl-settings .atl-settings-section {
+  min-width: 0;
+  padding-block: var(--size-4-5);
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.atl-settings .atl-settings-section:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* Recent Obsidian versions wrap each Setting in a raised group. Keep the
+   existing controls while returning this tab to quiet divider rows. */
+.atl-settings .setting-item {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-5);
+  margin: 0;
+  padding: var(--size-4-3) 0;
+  border: 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.atl-settings .setting-item:last-child {
+  border-bottom: 0;
+}
+
+.atl-settings .setting-group,
+.atl-settings .setting-items {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.atl-settings .setting-item-info {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+}
+
+.atl-settings .setting-item-name {
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+.atl-settings .setting-item-description {
+  font-size: var(--font-ui-smaller);
+  margin-top: var(--size-2-1);
+  color: var(--text-muted);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.atl-settings .setting-item-control {
+  display: flex;
+  flex: 0 1 var(--atl-settings-control-share);
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+  min-width: 0;
+  padding: 0;
+}
+
+.atl-settings .setting-item-control > :is(input[type="text"], input[type="password"], input[type="number"], textarea, select) {
+  flex: 1 1 160px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Keep selectors visibly editable under Obsidian's fitted, borderless
+   dropdown skin without replacing the host's native icon assets. */
+.atl-settings .setting-item-control select.dropdown {
+  border: 1px solid var(--background-modifier-border);
+  background-color: var(--background-primary);
+  background-position: right 6px center, right 6px center;
+  padding-inline: var(--size-4-3) var(--size-4-8);
+  text-align: start;
+}
+
+.atl-settings .setting-item-control textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.atl-settings .setting-item-control button {
+  flex: 0 0 auto;
+  max-width: 100%;
+  white-space: normal;
+}
+
+.atl-settings .atl-settings-connections {
+  display: grid;
+  grid-template-columns: minmax(170px, 24%) minmax(0, 1fr);
+  gap: 0 var(--size-4-6);
+  margin-block: var(--size-4-4) var(--size-4-6);
+}
+
+.atl-settings .atl-settings-connection-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+  min-width: 0;
+  padding-right: var(--size-4-4);
+  border-right: 1px solid var(--background-modifier-border);
+}
+
+.atl-settings .atl-settings-connection {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: var(--size-2-1) var(--size-4-3);
+  width: 100%;
+  height: auto;
+  min-height: 74px;
+  padding: var(--size-4-3);
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 0 var(--radius-s) var(--radius-s) 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--text-normal);
+  text-align: left;
+  white-space: normal;
+}
+
+.atl-settings .atl-settings-connection:hover {
+  background: var(--background-modifier-hover);
+}
+
+.atl-settings .atl-settings-connection.is-active {
+  border-left-color: var(--interactive-accent);
+  background: var(--background-modifier-active-hover);
+}
+
+.atl-settings .atl-settings-connection-icon {
+  grid-column: 1;
+  grid-row: 1 / 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.atl-settings .atl-settings-connection-icon svg {
+  width: 21px;
+  height: 21px;
+  stroke-width: 1.7;
+}
+
+.atl-settings .atl-settings-connection.is-active .atl-settings-connection-icon {
+  color: var(--text-accent);
+}
+
+.atl-settings .atl-settings-connection-name {
+  grid-column: 2;
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.atl-settings .atl-settings-connection-state {
+  grid-column: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-2);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-normal);
+  line-height: 1.5;
+}
+
+.atl-settings .atl-settings-connection-state::before {
+  content: "";
+  flex: 0 0 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.atl-settings .atl-settings-connection-state.is-configured::before,
+.atl-settings .atl-settings-connection-state[data-state="configured"]::before {
+  background: var(--text-success);
+}
+
+.atl-settings .atl-settings-connection-detail {
+  min-width: 0;
+}
+
+.atl-settings .atl-settings-connection-detail > h4 {
+  padding: 0;
+  margin: 0 0 var(--size-4-1);
+  font-size: var(--font-ui-large);
+  font-weight: var(--font-semibold);
+}
+
+.atl-settings .atl-settings-connection-detail .setting-item {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--size-4-1);
+  padding-block: var(--size-4-2);
+  border-bottom: 0;
+}
+
+.atl-settings .atl-settings-connection-detail .setting-item-info,
+.atl-settings .atl-settings-connection-detail .setting-item-control {
+  flex: initial;
+  width: 100%;
+}
+
+.atl-settings .atl-settings-connection-detail .setting-item-name {
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+}
+
+.atl-settings .atl-settings-connection-detail .setting-item-control {
+  justify-content: flex-start;
+}
+
+.atl-settings .atl-settings-connection-detail .setting-item-control > :is(input[type="text"], input[type="password"], input[type="number"], select) {
+  min-height: 34px;
+}
+
+.atl-settings .atl-settings-connection-detail button.mod-cta {
+  min-height: 34px;
+  padding-inline: var(--size-4-5);
+}
+
+.atl-settings .atl-settings-credential-state {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+  min-width: 0;
+  margin-top: var(--size-4-1);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.5;
+}
+
+.atl-settings .atl-settings-credential-state svg {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  color: var(--text-success);
+}
+
+.atl-settings .atl-settings-advanced {
+  margin-top: var(--size-4-3);
+  padding: var(--size-4-2) 0;
+}
+
+.atl-settings .atl-settings-advanced > summary {
+  padding: var(--size-4-1) 0;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+}
+
+.atl-settings .atl-settings-advanced > summary::marker {
+  color: var(--text-muted);
+}
+
+.atl-settings .atl-settings-advanced[open] > summary {
+  margin-bottom: var(--size-4-2);
+}
+
+.atl-settings .atl-settings-routes {
+  min-width: 0;
+  margin-top: var(--size-4-6);
+  padding-top: var(--size-4-5);
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.atl-settings .atl-settings-route-row,
+.atl-settings .atl-settings-route-header {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(140px, 1.2fr) minmax(140px, 1.5fr);
+  align-items: center;
+  gap: var(--size-4-3);
+  min-width: 0;
+  padding: var(--size-4-2) var(--size-4-3);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.atl-settings .atl-settings-route-header {
+  border-radius: var(--radius-s) var(--radius-s) 0 0;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.atl-settings .atl-settings-route-row:last-child {
+  border-bottom: 0;
+}
+
+.atl-settings .atl-settings-route-row > *,
+.atl-settings .atl-settings-route-row .setting-item-info,
+.atl-settings .atl-settings-route-row .setting-item-control {
+  min-width: 0;
+}
+
+.atl-settings .atl-settings-route-row .setting-item-description {
+  display: none;
+}
+
+.atl-settings .atl-settings-route-row .setting-item-control {
+  display: contents;
+}
+
+.atl-settings .atl-settings-route-row :is(select, input),
+.atl-settings .atl-settings-route-model {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.atl-settings .atl-settings-route-model {
+  text-align: start;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.atl-settings .atl-settings-route-row .setting-item-name {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+}
+
+.atl-settings .atl-settings-route-icon {
+  display: inline-flex;
+  flex: 0 0 18px;
+  color: var(--text-muted);
+}
+
+.atl-settings .atl-settings-route-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.atl-settings .atl-settings-subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+  margin: 0 0 var(--size-4-4);
+}
+
+.atl-settings .atl-settings-subtab {
+  min-height: 32px;
+  padding-inline: var(--size-4-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
   box-shadow: none;
   background: transparent;
   color: var(--text-muted);
 }
 
-.atl-settings-tab:hover,
-.atl-settings-tab.is-active {
-  color: var(--text-normal);
-  background: var(--background-modifier-hover);
+.atl-settings .atl-settings-subtab.is-active {
+  border-color: var(--interactive-accent);
+  background: var(--background-modifier-active-hover);
+  color: var(--text-accent);
 }
 
-.atl-settings-tab.is-active {
-  border-bottom-color: var(--interactive-accent);
+.atl-settings .atl-settings-footer {
+  margin-top: var(--size-4-5);
+  padding-block: var(--size-4-2);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.5;
 }
 
-.atl-settings-body {
-  min-width: 0;
+.atl-settings .atl-settings-search-empty {
+  padding-block: var(--size-4-6);
+  color: var(--text-muted);
+  line-height: 1.5;
 }
 
-.atl-settings-actions {
-  margin: 0 0 var(--size-4-4);
+.atl-settings :is(.atl-settings-tab, .atl-settings-subtab, .atl-settings-connection):focus-visible,
+.atl-settings .atl-settings-advanced > summary:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: -2px;
+}
+
+@container (max-width: 680px) {
+  .atl-settings .atl-settings-connections {
+    grid-template-columns: minmax(140px, 27%) minmax(0, 1fr);
+    gap: var(--size-4-3);
+  }
+
+  .atl-settings .atl-settings-connection-list {
+    padding-right: var(--size-4-2);
+  }
+
+  .atl-settings .atl-settings-connection {
+    grid-template-columns: 20px minmax(0, 1fr);
+    gap: var(--size-2-1) var(--size-4-2);
+    padding-inline: var(--size-4-2);
+  }
+
+  .atl-settings .atl-settings-route-row,
+  .atl-settings .atl-settings-route-header {
+    grid-template-columns: minmax(110px, 1fr) minmax(125px, 1fr) minmax(100px, 1.1fr);
+    gap: var(--size-4-2);
+    padding-inline: var(--size-4-2);
+  }
+}
+
+@container (max-width: 500px) {
+  .atl-settings .atl-settings-header {
+    align-items: stretch;
+    gap: var(--size-4-3);
+  }
+
+  .atl-settings .atl-settings-search {
+    flex: 1 1 100%;
+  }
+
+  .atl-settings .atl-settings-tab {
+    padding-inline: var(--size-4-3);
+  }
+
+  .atl-settings .setting-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--size-4-2);
+  }
+
+  .atl-settings .setting-item-control {
+    flex-basis: auto;
+    justify-content: flex-start;
+  }
+
+  .atl-settings .atl-settings-connections {
+    display: block;
+  }
+
+  .atl-settings .atl-settings-connection-list {
+    flex-direction: row;
+    gap: var(--size-4-1);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    margin-bottom: var(--size-4-4);
+    padding: 0 0 var(--size-4-2);
+    border-right: 0;
+    border-bottom: 1px solid var(--background-modifier-border);
+  }
+
+  .atl-settings .atl-settings-connection {
+    flex: 0 0 155px;
+    min-height: 66px;
+  }
+
+  .atl-settings .atl-settings-route-header {
+    display: none;
+  }
+
+  .atl-settings .atl-settings-route-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    padding: var(--size-4-3) 0;
+  }
+
+  .atl-settings .atl-settings-route-row > :first-child {
+    grid-column: 1 / -1;
+  }
 }
 
 .atl-library-stats,

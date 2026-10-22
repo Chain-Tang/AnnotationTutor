@@ -1,17 +1,22 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { statSync } from "node:fs";
+import { chmod, mkdtemp, readdir, rm } from "node:fs/promises";
+import { lstatSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CommunicationTutorCodexRunner, type CommunicationTutorRunnerChannel } from "../src/tutor-communication-runner.js";
 import type { DurableCodexChannelOptions, TutorCodexBinding } from "../src/tutor-codex-channel.js";
 import type { CommunicationIdentity } from "../src/tutor-communication.js";
 
+vi.mock("node:fs/promises", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual, chmod: vi.fn(actual.chmod) };
+});
+
 const identity: CommunicationIdentity = { agentId: "local-tutor", vaultId: "local-vault", kind: "tutor" };
 const scope = { hostKey: "trusted-host", spaceId: "learning" };
 const path = "communication-tutor-bindings.json";
 const cleanup: (() => Promise<void>)[] = [];
-afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
+afterEach(async () => { try { for (const close of cleanup.splice(0).reverse()) await close(); } finally { vi.mocked(chmod).mockReset(); } });
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "tutor-runner-test-"));
@@ -28,9 +33,15 @@ async function fixture() {
   let threadCount = 0, turnCount = 0;
   let reply = async (input: { prompt: string; context?: string; signal?: AbortSignal }) => `Tutor: ${input.prompt}`;
   const makeChannel = (options: DurableCodexChannelOptions): CommunicationTutorRunnerChannel => {
-    // The directory must exist with owner-only access before a runtime starts.
-    expect(statSync(options.cwd).isDirectory()).toBe(true);
-    expect(statSync(options.cwd).mode & 0o777).toBe(0o700);
+    const info = lstatSync(options.cwd);
+    expect(info.isDirectory()).toBe(true);
+    expect(info.isSymbolicLink()).toBe(false);
+    expect(dirname(options.cwd)).toBe(root);
+    expect(basename(options.cwd)).toMatch(new RegExp(`^${options.workspaceId}-[A-Za-z0-9]+$`));
+    // The real chmod must run before the runtime starts on every platform.
+    // Windows stat exposes synthesized mode bits, not the directory's ACL.
+    expect(chmod).toHaveBeenCalledWith(options.cwd, 0o700);
+    if (process.platform !== "win32") expect(info.mode & 0o777).toBe(0o700);
     let binding = options.binding;
     const entry = { options, channel: undefined as unknown as CommunicationTutorRunnerChannel, disposed: false, sends: [] as { prompt: string; context?: string; signal?: AbortSignal }[] };
     const channel: CommunicationTutorRunnerChannel = {
@@ -58,6 +69,15 @@ async function fixture() {
 const signal = () => new AbortController().signal;
 
 describe("independent Tutor conversations using existing Codex authentication", () => {
+  it("never starts a runtime or saves bindings when private directory setup fails", async () => {
+    const f = await fixture(), runner = f.runner();
+    vi.mocked(chmod).mockRejectedValueOnce(new Error("private-directory-setup-failed"));
+    await expect(runner.run("Do not send", "", signal(), scope)).rejects.toThrow("private-directory-setup-failed");
+    expect(f.channels).toEqual([]); expect(f.state.compareWrite).not.toHaveBeenCalled();
+    await runner.close();
+    expect(await readdir(f.root)).toEqual([]);
+  });
+
   it("restores the exact persisted binding and keeps public material out of binding state", async () => {
     const f = await fixture(), first = f.runner();
     expect(await first.run("First", "shared-context-only", signal(), scope)).toBe("Tutor: First");

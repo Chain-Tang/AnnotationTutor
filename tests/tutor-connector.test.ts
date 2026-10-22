@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { build } from "esbuild";
 import { createServer, type Server as HttpServer } from "node:http";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -11,6 +12,16 @@ import { CallToolRequestSchema, ListToolsRequestSchema, type Tool } from "@model
 
 const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
+let connectorDirectory: string | undefined, connector: string;
+beforeAll(async () => {
+  connectorDirectory = await mkdtemp(join(tmpdir(), "tutor-connector-build-"));
+  connector = join(connectorDirectory, "connector.cjs");
+  // Exercise the current source through the same bundled Node entry as the
+  // shipped connector, without reparsing the entire SDK graph in every child.
+  await build({ entryPoints: [join(process.cwd(), "host-plugins/tutor/scripts/connector-source.mjs")],
+    outfile: connector, platform: "node", target: "node22", format: "cjs", bundle: true, logLevel: "silent" });
+});
+afterAll(async () => { if (connectorDirectory) await rm(connectorDirectory, { recursive: true, force: true }); });
 const idA = "a".repeat(24), idB = "b".repeat(24), idC = "c".repeat(24);
 const tokenA = "1".repeat(64), tokenB = "2".repeat(64), tokenC = "3".repeat(64);
 const schema = { type: "object" as const, properties: {}, additionalProperties: false };
@@ -24,19 +35,30 @@ async function fixture(selected?: string) {
   const root = join(home, ".local", "share", "tutor");
   await mkdir(join(root, "instances"), { recursive: true });
   await mkdir(join(root, "clients"), { recursive: true });
+  const published = new Map<string, { id: string; port: number; pid: number; name: string }>();
   const publish = async (id: string, port: number, token?: string) => {
-    await writeFile(join(root, "instances", `${id}.json`), JSON.stringify({ id, port, pid: process.pid, name: `vault-${id[0]}` }));
+    const instance = { id, port, pid: process.pid, name: `vault-${id[0]}` };
+    await writeFile(join(root, "instances", `${id}.json`), JSON.stringify(instance));
+    published.set(id, instance);
     if (token) await writeFile(join(root, "clients", `codex-${id}.json`), JSON.stringify({ token, clientId: id }));
   };
   const connect = async () => {
-    const env: Record<string, string> = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined));
+    const env: Record<string, string> = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] =>
+      entry[1] !== undefined && !["HOME", "USERPROFILE"].includes(entry[0].toUpperCase())));
+    // os.homedir() uses HOME on POSIX and USERPROFILE on Windows. Both must
+    // point at the fixture so discovery never reads the runner's real profile.
     env.HOME = home;
+    env.USERPROFILE = home;
     delete env.TUTOR_INSTANCE_ID;
     if (selected) env.TUTOR_INSTANCE_ID = selected;
-    const transport = new StdioClientTransport({ command: process.execPath, args: [join(process.cwd(), "host-plugins/tutor/scripts/connector-source.mjs")], env, stderr: "pipe" });
+    const transport = new StdioClientTransport({ command: process.execPath, args: [connector], env, stderr: "pipe" });
     const client = new Client({ name: "connector-test", version: "1" });
     await client.connect(transport);
     cleanup.push(() => client.close());
+    const discovered = await client.callTool({ name: "tutor_instances", arguments: {} });
+    expect(discovered.isError).not.toBe(true);
+    expect(data(discovered).instances).toHaveLength(published.size);
+    expect(data(discovered).instances).toEqual(expect.arrayContaining([...published.values()]));
     return client;
   };
   return { root, publish, connect };

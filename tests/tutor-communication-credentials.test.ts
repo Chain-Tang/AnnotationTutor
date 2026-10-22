@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { PrivateTutorCommunicationPeers } from "../src/tutor-communication-credentials.js";
 import type { TutorCommunicationPeerCredential } from "../src/tutor-communication-peer.js";
@@ -29,7 +29,9 @@ describe("encrypted private Tutor peer credentials", () => {
     expect(await store.list()).toEqual([{ instanceId: idA, name: "Alpha" }]);
     expect(await store.read(idA)).toEqual(credential);
     const file = await fileUnder(appData), raw = await readFile(file, "utf8");
-    expect(file).toContain("Tutor/private-communication-peers/");
+    expect(relative(appData, file).split(sep)).toEqual([
+      "Tutor", "private-communication-peers", expect.stringMatching(/^[a-f0-9]{32}$/), "peers.json",
+    ]);
     expect(raw).not.toContain(credential.token); expect(raw).not.toContain("host-alpha");
     expect(JSON.parse(raw).entries[0]).toEqual({ instanceId: idA, name: "Alpha", encrypted: expect.any(String) });
     if (process.platform !== "win32") expect((await stat(file)).mode & 0o777).toBe(0o600);

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "tutor": {
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/scripts/connector.cjs"
+      ]
+    }
+  }
+}

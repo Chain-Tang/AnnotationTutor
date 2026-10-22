@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { deriveScenes } from "../src/memory-derive.js";
+import { deriveScenes, sceneIdFromTitle } from "../src/memory-derive.js";
+import { sceneSchema } from "../src/schemas.js";
+import { parseSceneFile, serializeScene } from "../src/markdown/scene-file.js";
 import type { MemoryCell } from "../src/model.js";
 
 function cell(overrides: Partial<MemoryCell> = {}): MemoryCell {
@@ -21,6 +23,22 @@ function cell(overrides: Partial<MemoryCell> = {}): MemoryCell {
 const at = "2026-06-14T12:00:00.000Z";
 
 describe("deriveScenes", () => {
+  it.each(["注意力", "学習", "Café", "a".repeat(200)])("persists schema-valid scenes for %s", concept => {
+    const scene = deriveScenes([cell({ id: "MEM-1", concept }), cell({ id: "MEM-2", concept })], at)[0]!;
+    expect(sceneSchema.safeParse(scene).success).toBe(true);
+    expect(scene.id).toBe(sceneIdFromTitle(concept));
+    expect(parseSceneFile(serializeScene(scene, "Agent Memory"))).toEqual(scene);
+    expect(scene.title).toBe(concept);
+  });
+
+  it("uses distinct stable Unicode ids while preserving existing ASCII ids", () => {
+    expect(sceneIdFromTitle("Attention")).toBe("SCENE-Attention");
+    expect(sceneIdFromTitle("C++ & templates")).toBe("SCENE-C-templates");
+    expect(sceneIdFromTitle("注意力")).not.toBe(sceneIdFromTitle("投射"));
+    expect(sceneIdFromTitle("投射，")).toBe(sceneIdFromTitle("投射"));
+    expect(sceneIdFromTitle("CAFÉ")).toBe(sceneIdFromTitle("cafe\u0301"));
+  });
+
   it("groups two or more cells sharing a concept into one scene", () => {
     const scenes = deriveScenes(
       [

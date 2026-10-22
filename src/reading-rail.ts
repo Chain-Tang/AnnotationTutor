@@ -8,9 +8,11 @@
 import type { MarkdownView } from "obsidian";
 import type { AnchorMark } from "./decorations-plan.js";
 import { CardPool } from "./card-pool.js";
+import { InlineAnnotationWorkflow } from "./inline-annotation-workflow.js";
 import {
   clearChildren,
   drawConnector,
+  getMarginCardHandlers,
   lastLineRect,
   loadCardGeom,
   placeCards,
@@ -29,6 +31,7 @@ export class ReadingRail {
   private readonly expanded = new Set<string>();
   private readonly geom = new Map<string, Geom>();
   private readonly cards = new CardPool();
+  private workflow: InlineAnnotationWorkflow | null = null;
   private hostObserver: ResizeObserver | null = null;
   private marks: AnchorMark[] = [];
   private skin: RailSkin = { id: "flat", quiet: false, tilt: null };
@@ -59,6 +62,9 @@ export class ReadingRail {
     this.overlay.className = "atl-rail atl-rail--reading";
     host.appendChild(this.svg);
     host.appendChild(this.overlay);
+    this.workflow = new InlineAnnotationWorkflow(
+      this.overlay, this.svg, () => host.getBoundingClientRect(), () => this.schedule()
+    );
     scroller.addEventListener("scroll", this.onScroll, { passive: true });
     this.hostObserver = new ResizeObserver(() => this.schedule());
     this.hostObserver.observe(host);
@@ -70,6 +76,8 @@ export class ReadingRail {
     this.host?.classList.remove("atl-reading-host");
     this.hostObserver?.disconnect();
     this.hostObserver = null;
+    this.workflow?.destroy();
+    this.workflow = null;
     this.cards.clear();
     if (this.frame) {
       cancelAnimationFrame(this.frame);
@@ -123,7 +131,10 @@ export class ReadingRail {
     if (!svg.isConnected) host.appendChild(svg);
     this.cards.retain(this.expanded);
     clearChildren(svg);
-    if (this.expanded.size === 0) return;
+    if (this.expanded.size === 0) {
+      this.workflow?.render([], { skin: this.skin, showReview: this.showReview });
+      return;
+    }
 
     const hostRect = host.getBoundingClientRect();
     svg.setAttribute("width", `${hostRect.width}`);
@@ -131,10 +142,19 @@ export class ReadingRail {
     const railWidth = host.clientWidth;
 
     const byId = new Map(this.marks.map((mark) => [mark.id, mark]));
+    // Conversation commits can update the index without reconfiguring source
+    // decorations. Refresh card contents while keeping the source anchor fixed.
+    const currentById = new Map((getMarginCardHandlers()?.graphCards?.([...this.expanded][0] ?? "") ?? [])
+      .filter(mark => !mark.branch).map(mark => [mark.id, mark]));
     const placed: PlacedCard[] = [];
+    const roots: { mark: AnchorMark; card: HTMLElement }[] = [];
     for (const id of this.expanded) {
-      const mark = byId.get(id);
-      if (!mark) continue;
+      const sourceMark = byId.get(id);
+      if (!sourceMark) continue;
+      const current = currentById.get(id);
+      const mark = current && (!sourceMark.sourceFile || !current.sourceFile || sourceMark.sourceFile === current.sourceFile)
+        ? { ...current, blockId: sourceMark.blockId, selectedText: sourceMark.selectedText, sourceFile: sourceMark.sourceFile ?? current.sourceFile }
+        : sourceMark;
       // Prefer the underlined span (so the connector meets the end of the
       // underlined text); fall back to the marker glyph when styling is off. A
       // match split across inline markup or soft line breaks yields several
@@ -163,10 +183,13 @@ export class ReadingRail {
         geom,
         showReview: this.showReview,
         onCollapse: () => this.toggle(id),
-        onDragMove: (el) =>
-          updateConnector(svg, el, host.getBoundingClientRect())
+        onDragMove: (el) => {
+          updateConnector(svg, el, host.getBoundingClientRect());
+          this.workflow?.updateConnections();
+        }
       });
       if (card.parentElement !== overlay) overlay.appendChild(card);
+      roots.push({ mark, card });
       placed.push({
         card,
         anchorX: anchorRight - hostRect.left,
@@ -180,6 +203,7 @@ export class ReadingRail {
       if (hideLink) return;
       drawConnector(svg, overlay, id, anchorX, anchorMidY, hostRect);
     });
+    this.workflow?.render(roots, { skin: this.skin, showReview: this.showReview });
   }
 
 }

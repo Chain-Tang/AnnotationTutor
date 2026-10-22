@@ -1,0 +1,18 @@
+{
+  "vault": "Tutor-Settings-QA-20261023",
+  "version": "0.7.8",
+  "before": {
+    "tag": "INPUT",
+    "ownBrand": true,
+    "mainBrand": false
+  },
+  "sameInput": true,
+  "draft": "qa-focus-model",
+  "selection": [
+    3,
+    8,
+    "backward"
+  ],
+  "saved": "deepseek-flash",
+  "errors": []
+}

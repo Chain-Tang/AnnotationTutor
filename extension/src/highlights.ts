@@ -20,18 +20,45 @@ export type HighlightColorId = (typeof HIGHLIGHT_COLORS)[number]["id"];
 /** The color a note-annotation defaults to (the note flow doesn't pick one). */
 export const DEFAULT_HIGHLIGHT_COLOR: HighlightColorId = "yellow";
 
+/** How the last re-anchor went: exact hit, fallback hit, or not found at all. */
+export type HighlightStatus = "exact" | "shifted" | "orphaned";
+
 /** One persisted on-page highlight: a TextQuoteSelector plus presentation. */
 export interface StoredHighlight {
   id: string;
   exact: string;
   prefix: string;
   suffix: string;
+  /** Creation-time offset on the flattened page text; disambiguates repeats. */
+  start?: number;
+  /** Outcome of the last re-anchor attempt, surfaced in the popup list. */
+  status?: HighlightStatus;
   note?: string;
   color: HighlightColorId;
   createdAt: string;
 }
 
 const KEY_PREFIX = "atl-hl::";
+
+/**
+ * Serialize storage mutations per URL: chrome.storage has no transaction, so
+ * two overlapping read-modify-write cycles (e.g. a double click creating two
+ * highlights) would otherwise load the same list and clobber each other's
+ * writes. The queue entry is dropped once it is the settled tail again.
+ */
+const writeQueues = new Map<string, Promise<unknown>>();
+
+function enqueueWrite<T>(url: string, run: () => Promise<T>): Promise<T> {
+  const key = keyFor(url);
+  const tail = writeQueues.get(key) ?? Promise.resolve();
+  const next = tail.then(run, run);
+  const settled = next.catch(() => undefined);
+  writeQueues.set(key, settled);
+  void settled.then(() => {
+    if (writeQueues.get(key) === settled) writeQueues.delete(key);
+  });
+  return next;
+}
 
 /** Resolve a color id to its CSS value, defaulting to the first swatch. */
 export function colorValue(id: HighlightColorId): string {
@@ -73,41 +100,70 @@ async function writeHighlights(url: string, list: StoredHighlight[]): Promise<vo
 }
 
 /** Append a highlight for `url`; returns the updated list. */
-export async function addHighlight(
+export function addHighlight(
   url: string,
   hl: StoredHighlight
 ): Promise<StoredHighlight[]> {
-  const list = await loadHighlights(url);
-  list.push(hl);
-  await writeHighlights(url, list);
-  return list;
+  return enqueueWrite(url, async () => {
+    const list = await loadHighlights(url);
+    list.push(hl);
+    await writeHighlights(url, list);
+    return list;
+  });
 }
 
 /** Remove one highlight by id; returns the updated list. */
-export async function removeHighlight(
+export function removeHighlight(
   url: string,
   id: string
 ): Promise<StoredHighlight[]> {
-  const list = (await loadHighlights(url)).filter((h) => h.id !== id);
-  await writeHighlights(url, list);
-  return list;
+  return enqueueWrite(url, async () => {
+    const list = (await loadHighlights(url)).filter((h) => h.id !== id);
+    await writeHighlights(url, list);
+    return list;
+  });
 }
 
 /** Replace one highlight's note (empty clears it); returns the updated list. */
-export async function updateHighlightNote(
+export function updateHighlightNote(
   url: string,
   id: string,
   note: string
 ): Promise<StoredHighlight[]> {
-  const list = await loadHighlights(url);
-  const target = list.find((h) => h.id === id);
-  if (target) {
-    const trimmed = note.trim();
-    if (trimmed) target.note = trimmed;
-    else delete target.note;
-  }
-  await writeHighlights(url, list);
-  return list;
+  return enqueueWrite(url, async () => {
+    const list = await loadHighlights(url);
+    const target = list.find((h) => h.id === id);
+    if (target) {
+      const trimmed = note.trim();
+      if (trimmed) target.note = trimmed;
+      else delete target.note;
+    }
+    await writeHighlights(url, list);
+    return list;
+  });
+}
+
+/**
+ * Record each highlight's last re-anchor outcome. Old records carry no status
+ * at all — an `exact` hit simply gives them one; an orphaned verdict is what
+ * makes a lost highlight visible in the popup instead of silently vanishing.
+ */
+export function saveHighlightStatuses(
+  url: string,
+  statuses: Record<string, HighlightStatus>
+): Promise<void> {
+  return enqueueWrite(url, async () => {
+    const list = await loadHighlights(url);
+    let changed = false;
+    for (const hl of list) {
+      const status = statuses[hl.id];
+      if (status && hl.status !== status) {
+        hl.status = status;
+        changed = true;
+      }
+    }
+    if (changed) await writeHighlights(url, list);
+  });
 }
 
 /** Clear every highlight saved for `url`. */
@@ -122,7 +178,7 @@ export function newHighlightId(): string {
 
 /** Build a StoredHighlight from a capture selector plus a chosen color. */
 export function toStoredHighlight(
-  selector: CaptureSelection,
+  selector: CaptureSelection & { start?: number },
   color: HighlightColorId
 ): StoredHighlight {
   return {
@@ -130,8 +186,19 @@ export function toStoredHighlight(
     exact: selector.exact,
     prefix: selector.prefix,
     suffix: selector.suffix,
+    ...(selector.start !== undefined ? { start: selector.start } : {}),
     ...(selector.note ? { note: selector.note } : {}),
     color,
     createdAt: new Date().toISOString()
+  };
+}
+
+/** A CaptureSelection view of a stored highlight (for the Obsidian channel). */
+export function toSelection(hl: StoredHighlight): CaptureSelection {
+  return {
+    exact: hl.exact,
+    prefix: hl.prefix,
+    suffix: hl.suffix,
+    ...(hl.note ? { note: hl.note } : {})
   };
 }

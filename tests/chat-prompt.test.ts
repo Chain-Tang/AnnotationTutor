@@ -13,11 +13,19 @@ describe("tutorSystemPrompt", () => {
     expect(sys).toContain("learning assistant");
     expect(sys).toContain("Never refuse to answer");
     expect(sys).toContain("tailor your depth");
-    expect(sys).toContain("Write the review content in Chinese.");
+    expect(sys).toContain("Write your reply in Chinese.");
+    expect(sys).not.toContain("Correctness");
+    expect(sys).not.toContain("field labels");
   });
 });
 
 describe("contextBlock", () => {
+  it("keeps a runtime source capability out of both model transports",()=>{
+    const ctx={sourceBinding:"private-host-buffer-capability",notePath:"Math.md",content:"x²"};
+    expect(contextBlock(ctx,true)).not.toContain(ctx.sourceBinding);
+    expect(opencodePreamble(ctx,"Chinese")).not.toContain(ctx.sourceBinding);
+    expect(JSON.stringify(buildApiMessages([],ctx,"继续","Chinese"))).not.toContain(ctx.sourceBinding);
+  });
   it("includes the note path and selection, and the body only when asked", () => {
     const ctx = {
       notePath: "Psych/Klein.md",
@@ -66,6 +74,12 @@ describe("contextBlock", () => {
 });
 
 describe("opencodePreamble", () => {
+  it("supplies bounded source text without promising file access in isolated conversations",()=>{
+    const prompt=opencodePreamble({notePath:"Math.md",content:"x²",teachingControl:'Respond ONLY with valid JSON.'},"Chinese",{allowFileTools:false});
+    expect(prompt).toContain("x²");expect(prompt).toContain("ONLY with valid JSON");
+    expect(prompt).toContain("no file tools");expect(prompt).not.toContain("may read the full note");
+    expect(prompt).not.toContain("Correctness");
+  });
   it("points the agent at the note path for on-demand reads", () => {
     const preamble = opencodePreamble({ notePath: "A.md", selection: "s" }, "");
     expect(preamble).toContain("read the full note with your file tools");

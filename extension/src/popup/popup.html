@@ -7,34 +7,50 @@
   </head>
   <body>
     <main class="wrap">
-      <h1 id="title" class="title">Web Clipper</h1>
-      <p id="status" class="status">Not paired yet</p>
+      <header class="brand">
+        <img class="brand-icon" src="icon-48.png" width="48" height="48" alt="" />
+        <div class="brand-copy">
+          <h1 id="title" class="title">Web Clipper</h1>
+          <p id="status" class="status" aria-live="polite">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span id="status-text">Connecting to Tutor</span>
+          </p>
+        </div>
+      </header>
 
-      <button id="clip-page" class="primary" type="button">Clip whole page</button>
-      <p id="clip-hint" class="hint">Sends the article body as Markdown plus raw HTML.</p>
+      <section class="capture" aria-labelledby="clip-page">
+        <button id="clip-page" class="primary" type="button">Clip whole page</button>
+        <p id="clip-hint" class="hint">Sends the article body as Markdown plus raw HTML.</p>
+      </section>
 
-      <hr />
+      <div class="divider" aria-hidden="true"></div>
 
-      <div class="hl-head">
-        <span id="hl-title" class="label">Highlights on this page</span>
-        <button id="hl-clear" class="link" type="button">Clear all</button>
-      </div>
-      <ul id="hl-list" class="hl-list"></ul>
-      <p id="hl-empty" class="hint">No highlights on this page yet</p>
+      <section class="highlights" aria-labelledby="hl-title">
+        <div class="hl-head">
+          <h2 id="hl-title" class="section-title">Highlights on this page</h2>
+          <span class="hl-head-actions">
+            <button id="hl-sync" class="link" type="button">Sync all</button>
+            <button id="hl-clear" class="link" type="button">Clear all</button>
+          </span>
+        </div>
+        <ul id="hl-list" class="hl-list"></ul>
+        <div id="hl-empty" class="empty-state">
+          <img class="empty-icon" src="empty-highlights.png" width="48" height="48" alt="" />
+          <p id="hl-empty-title" class="empty-title">No highlights on this page yet</p>
+          <p id="hl-empty-hint" class="empty-hint">Select text on the page to highlight or annotate it.</p>
+        </div>
+      </section>
 
-      <hr />
+      <div class="divider" aria-hidden="true"></div>
 
-      <label id="token-label" class="label" for="token">Bridge token</label>
-      <input id="token" class="input" type="text" autocomplete="off" spellcheck="false" />
-
-      <label id="port-label" class="label" for="port">Bridge port</label>
-      <input id="port" class="input" type="number" min="1024" max="65535" />
-
-      <div class="row">
-        <button id="save" class="secondary" type="button">Save</button>
-        <button id="test" class="secondary" type="button">Test pairing</button>
-      </div>
-      <p id="feedback" class="feedback"></p>
+      <section class="connection" aria-labelledby="connection-title">
+        <div class="connection-copy">
+          <h2 id="connection-title" class="connection-title">Tutor connection</h2>
+          <p id="connection-help" class="connection-help">Tutor discovers and configures the local bridge automatically.</p>
+        </div>
+        <button id="connect" class="secondary" type="button">Reconnect</button>
+      </section>
+      <p id="feedback" class="feedback" role="status" aria-live="polite"></p>
     </main>
     <script src="popup.js"></script>
   </body>

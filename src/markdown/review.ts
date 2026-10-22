@@ -68,15 +68,12 @@ function scan(text: string): {
   let current: string | null = null;
 
   for (const raw of text.split(/\r?\n/)) {
-    const stripped = stripMarkers(raw);
-    const labelMatch = /^([A-Za-z][A-Za-z ]*?)\s*[:：]\s*(.*)$/.exec(stripped);
-    const labelKey = labelMatch
-      ? LABELS[(labelMatch[1] ?? "").trim().toLowerCase()]
-      : undefined;
+    const labelled = labelledField(raw);
+    const labelKey = labelled?.key;
 
-    if (labelMatch && labelKey) {
+    if (labelled && labelKey) {
       current = labelKey;
-      const value = (labelMatch[2] ?? "").trim();
+      const value = labelled.value;
       if (value && !inline.has(labelKey)) inline.set(labelKey, value);
       if (!lists.has(labelKey)) lists.set(labelKey, []);
       continue;
@@ -117,25 +114,34 @@ function listField(
   return [];
 }
 
-function stripMarkers(line: string): string {
+function stripBlockMarkers(line: string): string {
   return line
     .replace(/^[\s>]*/, "")
     .replace(/^#{1,6}\s*/, "")
     .replace(/^[-*]\s+/, "")
-    .replace(/\*\*/g, "")
-    .replace(/__/g, "")
     .trim();
+}
+
+/** Strip emphasis only around field labels, preserving the body's Markdown. */
+function labelledField(line: string): { key: string; value: string } | null {
+  const stripped = stripBlockMarkers(line);
+  const inside = /^(\*\*|__)([A-Za-z][A-Za-z ]*?)\s*[:：]\1\s*(.*)$/.exec(stripped);
+  const outside = /^(\*\*|__)([A-Za-z][A-Za-z ]*?)\1\s*[:：]\s*(.*)$/.exec(stripped);
+  const whole = /^(\*\*|__)([A-Za-z][A-Za-z ]*?)\s*[:：]\s*(.*)\1$/.exec(stripped);
+  const plain = /^([A-Za-z][A-Za-z ]*?)\s*[:：]\s*(.*)$/.exec(stripped);
+  const decorated = inside ?? outside ?? whole;
+  const label = decorated?.[2] ?? plain?.[1];
+  const key = label ? LABELS[label.trim().toLowerCase()] : undefined;
+  if (!key) return null;
+  return { key, value: (decorated?.[3] ?? plain?.[2] ?? "").trim() };
 }
 
 function firstParagraph(text: string): string {
   for (const raw of text.split(/\r?\n/)) {
-    const stripped = stripMarkers(raw);
+    const stripped = stripBlockMarkers(raw);
     if (!stripped) continue;
     // Skip lines that are themselves labels.
-    const labelMatch = /^([A-Za-z][A-Za-z ]*?)\s*[:：]/.exec(stripped);
-    if (labelMatch && LABELS[(labelMatch[1] ?? "").trim().toLowerCase()]) {
-      continue;
-    }
+    if (labelledField(raw)) continue;
     return stripped;
   }
   return "";

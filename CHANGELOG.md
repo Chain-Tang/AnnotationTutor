@@ -4,7 +4,177 @@ All notable changes to **Annotation Tutor Lite** and its companion **Web Clipper
 are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## 0.7.8 — 2026-10-23
+
+- Reorganize Tutor settings into focused categories with search, a connection list/detail workspace, and independent feature routing.
+- Keep credentials bound to their endpoint and retain unfinished editors, focus and advanced-group state through background refreshes.
+- Preserve the existing memory library, privacy controls and model configuration; use the active connection to discover models.
+- Fix native settings-host method shadowing and preserve focus and completion events in Obsidian popout windows.
+- Make communication test fixtures portable across Windows and POSIX without weakening directory-setup checks; coordinate SDK cancellation tests with explicit model barriers.
+
 ## [Unreleased]
+
+### Added
+
+- Manually created annotation conversation branches, durable card histories,
+  pinned context, and an editable, zoomable annotation relationship view.
+- Per-vault background learning observations with resumable history backfill,
+  source-linked causal hypotheses, discriminating exercises, and private settings
+  for pausing, excluding, correcting or removing observations.
+
+- Versioned multi-vault collaboration spaces with editable Markdown context and
+  dialogue, durable directed messages, explicit membership and recipient receipts.
+- A dedicated persistent Codex conversation per space; Tutors can initiate
+  requests and receive replies without replacing the desktop main chat.
+- Scoped peer pairing, encrypted credentials outside the Vault, per-call MCP
+  instance routing and a separate background communication switch.
+- Collaboration-only Codex-backed Tutor sessions, isolated by Tutor and space,
+  with persistent recovery and fixed diagnostic codes for failed replies.
+
+### Fixed
+
+- Recover one proven zero-byte transient chat connection failure on a fresh
+  connection, with a cancelable pause, shared timeout/model-call budget and
+  revalidated annotation associations. Show reconnection progress in cards;
+  never replay partial replies or bypass strict format validation.
+- Restore hidden annotation branches through a dedicated header toggle, separate
+  from each card's continuing conversation. Use the selected custom branch icon
+  in the former memory-cell slot and the brain icon for annotation review.
+- Restore native card text selection, keyboard and selected-text context-menu
+  copy without letting the surrounding source editor take over.
+- Drag cards from blank outer padding and borders, leaving text selection,
+  scrollbars and the resize corner available; persist only real drags.
+- Connect parent and child borders with one continuous curve, without the
+  fixed straight segment at the hover port.
+- Preserve finite reply failure causes across reopening and distinguish
+  connection, timeout, format and provider failures. Keep strict string replies
+  and one guarded format correction, with targeted string/escaping guidance.
+
+- Include the initial annotation and Tutor review in follow-up context; keep
+  failed branch questions durable and reject stale or duplicate reply commits.
+- Preserve legacy chat completion uncertainty and invalidate qualitative learning
+  observations when their source is changed, removed or excluded.
+
+- Keep independent Tutor conversations out of the ACP drawing role while
+  retaining strict model selection and tool isolation.
+- Restore annotation status after failed, empty or cancelled reviews; retain
+  completed reviews when a later derived-memory step fails.
+- Replace repeated translation placeholders literally and typecheck complete
+  core dictionaries; translate credential and connection settings in all four locales.
+- Generate schema-valid stable scene IDs for Unicode and long concept titles.
+- Upgrade the extension's Readability to 0.6.0 for CVE-2025-2792 and package
+  the licenses of all bundled extension parsing dependencies.
+- Fix Windows private-state saves, retain explicit symlink/identity checks
+  without O_NOFOLLOW, and make CI fixtures portable across paths and CRLF checkouts.
+
+### Changed
+
+- Show linked conversation annotations directly beside their original text; use
+  three hover-only external ports to add left, right or lower child cards, with
+  independently draggable saved positions and card-local continuing dialogue.
+- Keep branch cards visually identical to existing annotations, removing nested
+  branch lists, default draft labels and relation-page navigation.
+
+- Continue repeated questions in each card through its header conversation
+  button; create breadth through hover-revealed edge ports without coupling
+  parent and child positions. Store both kinds of activity as source-linked
+  observations for optional background learning analysis.
+- Compact conversation navigation and size note inputs to their text instead
+  of stretching them into the available card height.
+
+- Reduce board draft validation and library refresh work; retain awaited durable
+  saves and explicit full-index rebuilds.
+- Minify production bundles, check the extension from the root workflow, and
+  validate packaged release artifacts in CI.
+- Ignore local storage reports/audits and generated research media.
+- Defer custom skin scans until layout-ready idle time and expose bounded,
+  memory-only startup stage timings; retain authorization/recovery readiness.
+- Refresh image/MCP/official Clipper settings sections locally and preserve
+  drafts, credential bindings, focus and scroll through background refreshes.
+- Reuse dirty-generation source snapshots for cells-to-scenes reconciliation;
+  protect hand-authored and incomplete files and retain explicit repair scans.
+- Add V8 coverage reports with measured global and critical-boundary thresholds.
+
+The following entries reconstruct **local development candidates** from dated
+validation records. They are not assertions that those versions were published
+on GitHub, nor that all product acceptance gates passed.
+
+## [0.5.4] — development candidate, verified 2026-10-12
+
+- Secure credential references outside the Vault, explicit Clipper authorization,
+  durable task/surface recovery and managed program rollback.
+- Natural learning v3 uses versioned, restricted evidence and preserves legacy
+  records. Commercial, full desktop and long-term learning gates remain open.
+- C67 fixes settings-lock compatibility on FSKit/exFAT; its real installation
+  evidence is separate from the C66 test-library baseline.
+- Evidence: [implementation status](docs/qa/implementation-status-20261012/report.md),
+  [commercial candidates](docs/qa/commercial-optimization-20261009/report.md),
+  [C67 installation](docs/qa/digital-twin-install-20261012/report.md).
+
+## [0.5.3] — development candidate, 2026-09-27 evidence
+
+- Natural expert review, recovery of completed results, permission invalidation,
+  PDF observation scope and adult support evaluation.
+- Full UI, professional support and long-term outcome gates remain open.
+- Evidence: [batch 4](docs/qa/natural-learning-20260927/batch4/report.md).
+
+## [0.5.2] — development candidate, 2026-09-27 evidence
+
+- Annotation learning integration, source/revision protection, original ink
+  preservation and local watercolor drawing.
+- Evidence: [batch 3](docs/qa/natural-learning-20260927/batch3/report.md).
+
+## [0.5.1] — development candidate, 2026-09-27 evidence
+
+- Six learning topics, 54 templates, host-side answer checking, separate practice,
+  transfer and delayed-verification pools, and 1/3/7-day scheduling.
+- Evidence: [batch 2](docs/qa/natural-learning-20260927/batch2/report.md).
+
+## [0.5.0] — development candidate, 2026-09-27 evidence
+
+- Natural learning dialogue, shared restricted summaries, explicit consent,
+  independent v2 records and separately authorized MCP learning access.
+- Evidence: [batch 1](docs/qa/natural-learning-20260927/batch1/report.md).
+
+## [0.4.6] — development candidate, 2026-09-26 evidence
+
+- Keep drawing annotations visible without hiding their underlying artwork;
+  preserve existing placements and ink.
+- Evidence: [annotation compatibility](docs/qa/board-annotation-20260926/report.md).
+
+## [0.4.5] — development candidate, 2026-09-26 evidence
+
+- Avoid document text when placing generated diagrams; allow inspecting and
+  undoing a relocation while retaining shared artwork identity across views.
+- Evidence: [placement validation](docs/qa/board-placement-20260926/report.md).
+
+## [0.4.4] — development candidate, 2026-09-26 evidence
+
+- Restore Studio readiness after reload and connect selected text to Tutor
+  explanations or drawings.
+- Evidence: [Studio reload](docs/qa/studio-reload-20260926/report.md).
+
+## [0.4.3] — development candidate, 2026-09-26 evidence
+
+- One default conversation entry; optional private conversation moves under More.
+  Learning, check-ins and expert features remain opt-in.
+- Evidence: [simplified entry](docs/qa/simple-entry-20260926/report.md).
+
+## [0.4.2] / [0.4.1] / [0.4.0] / [0.3.1] — development candidates, 2026-09-26 evidence
+
+- 0.3.1 binds translation to its original document/revision, prevents duplicate
+  review submissions and adds transactional installation/rollback.
+- 0.4.0 adds six topics, versioned learning evidence, budgets and review scheduling.
+- 0.4.1 adds optional check-ins and temporary support sessions; confirmed encrypted
+  summaries have expiry and deletion controls.
+- 0.4.2 adds scoped expert review with distinct evidence, advice and uncertainty.
+- Evidence: [upgrade milestones and validation](docs/qa/learning-upgrade-20260926/report.md).
+
+## [0.3.0] — desktop preview, 2026-09-20 evidence
+
+- Excalidraw, independent Tutor MCP/Codex integration, component editing and local A2A.
+  Android companion remains a source preview without device-release acceptance.
+- Evidence: [0.3.0 validation](docs/tutor-upgrade-status.md).
 
 ## [0.2.4] - 2026-09-08
 

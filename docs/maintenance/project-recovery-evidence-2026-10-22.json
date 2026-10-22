@@ -1,0 +1,164 @@
+{
+  "date": "2026-10-22",
+  "version": "0.7.7",
+  "sourceCommit": "952046e2d9e3e1823d8e53ed0651bf7ca4e67b90",
+  "branch": "codex/recover-0.7.7-20261022",
+  "sourceSet": {
+    "files": 917,
+    "sha256": "dc44291d5239263a9ffb291e9b92e8cffb36d7ff400c05180e4cd9c10837942d",
+    "allMatchedValidatedCandidate": true,
+    "manifestStoredPrivately": "/Users/mac/Tutor/dist/private-baselines/repository-recovery-20261022-18030c3e/validation/source-set.json"
+  },
+  "provenance": {
+    "base": "95ffe3990b8882232a447cb315a6e2dd38d5be2e",
+    "stash": "a7e4ecc38bf76ea473eebecb63ee122a8358454d",
+    "untrackedParent": "9d56aa7979d53037793414febf54fdfadafd2dad",
+    "backup": "/Users/mac/Tutor/dist/private-baselines/repository-recovery-20261022-18030c3e",
+    "bundleVerified": true,
+    "mainRefPreserved": true,
+    "engineeringRefPreserved": true,
+    "stashRefPreserved": true
+  },
+  "unmergedCount": 0,
+  "validation": {
+    "typecheck": {
+      "location": "restored repository",
+      "exitCode": 0,
+      "includes": [
+        "plugin",
+        "production",
+        "extension",
+        "73 JavaScript scripts",
+        "4 locales / 1097 keys"
+      ]
+    },
+    "coverage": {
+      "location": "isolated reconstruction",
+      "exitCode": 0,
+      "suites": 261,
+      "passed": 3644,
+      "failed": 0,
+      "summary": {
+        "lines": {
+          "total": 30946,
+          "covered": 22221,
+          "skipped": 0,
+          "pct": 71.8
+        },
+        "statements": {
+          "total": 45933,
+          "covered": 30691,
+          "skipped": 0,
+          "pct": 66.81
+        },
+        "functions": {
+          "total": 8271,
+          "covered": 5463,
+          "skipped": 0,
+          "pct": 66.05
+        },
+        "branches": {
+          "total": 31339,
+          "covered": 19794,
+          "skipped": 0,
+          "pct": 63.16
+        },
+        "branchesTrue": {
+          "total": 0,
+          "covered": 0,
+          "skipped": 0,
+          "pct": 100
+        }
+      },
+      "existingThresholdsPassed": true,
+      "loopbackPermissionRequired": true
+    },
+    "releaseTests": {
+      "location": "isolated reconstruction",
+      "passed": 33,
+      "failed": 0,
+      "exitCode": 0
+    },
+    "package": {
+      "location": "restored repository",
+      "exitCode": 0,
+      "verification": {
+        "passed": true,
+        "version": "0.7.7",
+        "archive": "annotation-tutor-lite-0.7.7.zip",
+        "archiveBytes": 15309717,
+        "sha256": "ebc65429c9a664864a7b51c10fcd459e71bd1435ed2dfc7dd8f115ec05b37502",
+        "sealedFiles": 281,
+        "bundleBytes": {
+          "main.js": 3501447,
+          "desktop.js": 3463576,
+          "mobile.js": 864537
+        },
+        "bundledDependencies": 29,
+        "extensionBundledDependencies": 3,
+        "extensionVersion": "0.2.0",
+        "portablePaths": true,
+        "archiveMatchesStagedRelease": true,
+        "checkedAt": "2026-10-22T12:28:51.185Z"
+      },
+      "buildId": "1792672096067-34474c63"
+    },
+    "diffCheckExitCode": 0,
+    "dependencyLockMatchesInstalledPnpmLock": true,
+    "freshDependencyDownloadPerformed": false
+  },
+  "installedVaults": [
+    {
+      "vault": "psychological plugin",
+      "version": "0.7.7",
+      "program": {
+        "main.js": {
+          "sha256": "a39acff7bbf526377b917100f9790e60f5eacf5ad575d7c88a55bb299c02d0f2",
+          "matchesBeforeRecovery": true
+        },
+        "desktop.js": {
+          "sha256": "460225b30c9eff2a039e06f4fc06f1796a05e66eeaa790d32964264342364d6a",
+          "matchesBeforeRecovery": true
+        },
+        "mobile.js": {
+          "sha256": "a98763f62c4c91934575b84999f25163509059240450e6a02803e2517a0e13b5",
+          "matchesBeforeRecovery": true
+        },
+        "credential-compatibility.json": {
+          "sha256": "ee48c2a63f40ac5854fd5c25b1a5ab8256b8f41a48032cef00d470c37c7f5b3d",
+          "matchesBeforeRecovery": true
+        }
+      }
+    },
+    {
+      "vault": "所作",
+      "version": "0.7.7",
+      "program": {
+        "main.js": {
+          "sha256": "a39acff7bbf526377b917100f9790e60f5eacf5ad575d7c88a55bb299c02d0f2",
+          "matchesBeforeRecovery": true
+        },
+        "desktop.js": {
+          "sha256": "460225b30c9eff2a039e06f4fc06f1796a05e66eeaa790d32964264342364d6a",
+          "matchesBeforeRecovery": true
+        },
+        "mobile.js": {
+          "sha256": "a98763f62c4c91934575b84999f25163509059240450e6a02803e2517a0e13b5",
+          "matchesBeforeRecovery": true
+        },
+        "credential-compatibility.json": {
+          "sha256": "ee48c2a63f40ac5854fd5c25b1a5ab8256b8f41a48032cef00d470c37c7f5b3d",
+          "matchesBeforeRecovery": true
+        }
+      }
+    }
+  ],
+  "vaultInstallationPerformed": false,
+  "remotePushOrPublicationPerformed": false,
+  "remainingScope": [
+    "Fresh Obsidian interaction acceptance not performed in this recovery",
+    "No new cold-start, large-vault or large-branch latency measurements",
+    "Local QA and research materials intentionally remain untracked; preserved in original snapshot and Git stash/bundle"
+  ],
+  "conflictMarkersInProductFiles": 0
+}

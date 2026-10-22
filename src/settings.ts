@@ -1,4 +1,4 @@
-import { type App, Notice, PluginSettingTab, Setting } from "obsidian";
+import { type App, Notice, PluginSettingTab, Setting, setIcon } from "obsidian";
 import type AnnotationTutorLitePlugin from "./main.js";
 import { t } from "./i18n.js";
 import { isFreeModel } from "./agent-models.js";
@@ -14,18 +14,29 @@ import {
   type HotkeyDef,
   type ShortcutCommandId
 } from "./hotkeys.js";
-import { AnnotationTable } from "./views/annotation-table.js";
+import { replaceListOptions } from "./list-select.js";
+import { ListPagination, type ListPageState } from "./list-pagination.js";
+import { bindCommittedInput, bindSearchInput, commitSettingsInputs } from "./committed-input.js";
+import { AnnotationTable, type AnnotationTableState } from "./views/annotation-table.js";
 import { ConfirmModal } from "./views/annotation-modal.js";
 import { SceneCreateModal } from "./views/scene-modal.js";
 import { parseMcpConfig } from "./mcp-config.js";
+import { BUILD_ID, BUILD_TIME } from "./build-info.js";
+import { credentialBinding, credentialStatusFor } from "./credential-session.js";
+import type { CredentialSlot } from "./credential-types.js";
+import { captureSettingsUi, prepareSettingsUi } from "./settings-ui-state.js";
 import {
   DEFAULT_SETTINGS,
   MIN_AGENT_TIMEOUT_SECONDS,
   MIN_CHAT_LOG_KEEP_SESSIONS,
   MIN_PRETRANSLATE_CHUNK_CHARS,
   agentPermissionPolicies,
+  boardImageProviders,
+  isBoardImage1KSize,
   type AgentPermissionPolicy,
   type AnnotationTutorLiteSettings,
+  type BoardImagePromptExtendMode,
+  type BoardImageProviderKind,
   type HighlightStyle,
   type MemoryWriteMode,
   type PluginLanguage,
@@ -45,31 +56,30 @@ export type {
   MemoryWriteMode
 } from "./settings-config.js";
 
-type SettingsPage =
-  | "general"
-  | "annotations"
-  | "cells"
-  | "scenes"
-  | "feedback"
-  | "profile"
-  | "proposals"
-  | "web";
-
-const PAGES: SettingsPage[] = [
-  "general",
-  "annotations",
-  "cells",
-  "scenes",
-  "feedback",
-  "profile",
-  "proposals",
-  "web"
-];
+type SettingsPage = "general" | "reading" | "feedback" | "connections" | "collaboration" | "privacy" | "web" | "annotations" | "cells" | "scenes" | "profile" | "proposals";
+type ConnectionPage = "api" | "opencode" | "image";
+const CONFIG_PAGES = ["general", "reading", "feedback", "connections", "collaboration", "privacy", "web"] as const;
+const LIBRARY_PAGES = ["annotations", "cells", "scenes", "profile", "proposals"] as const;
+const PAGE_KEYS: Record<string, string> = { general: "general", reading: "reading", feedback: "learning", connections: "connections", collaboration: "collaboration", privacy: "privacy", web: "web", library: "library" };
 
 export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
   private activePage: SettingsPage = "general";
+  private activeConnection: ConnectionPage = "api";
+  private libraryPage: typeof LIBRARY_PAGES[number] = "annotations";
+  private settingsSearch = "";
+  private navigationPending = false;
   private cellQuery: CellQuery = {};
   private sceneQuery: SceneQuery = {};
+  private renderGeneration = 0;
+  private boardBindingGeneration = 0;
+  private ordinarySettingsQueue: Promise<void> = Promise.resolve();
+  private readonly cellPage: ListPageState = { page: 0 };
+  private readonly scenePage: ListPageState = { page: 0 };
+  private readonly annotationState: AnnotationTableState = { filter: {}, pagination: { page: 0 } };
+  private listRefresh: { page: SettingsPage; update: () => void } | undefined;
+  private tagsSnapshot: unknown;
+  private cachedTags = { cells: [] as string[], scenes: [] as string[] };
+  private readonly tagVersions = new WeakMap<HTMLSelectElement, unknown>();
 
   public constructor(
     app: App,
@@ -79,47 +89,164 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
   }
 
   public refresh(): void {
-    if (this.containerEl.isConnected) this.display();
+    if (!this.containerEl.isConnected) return;
+    if (this.listRefresh?.page === this.activePage) this.listRefresh.update();
+    else this.render(true);
   }
 
   public override display(): void {
+    this.render(false);
+  }
+
+  private render(preserveEditing: boolean): void {
     const { containerEl } = this;
-    containerEl.empty();
+    const state = preserveEditing ? captureSettingsUi(containerEl) : null;
+    const generation = ++this.renderGeneration;
+    this.listRefresh = undefined;
+    const content = containerEl.ownerDocument.createElement("div");
     containerEl.addClass("atl-settings");
-    containerEl.createEl("h2", { text: t("settings.title") });
-    const tabs = containerEl.createDiv({
-      cls: "atl-settings-tabs",
-      attr: { role: "tablist" }
+    const header = content.createDiv({ cls: "atl-settings-header" });
+    header.createEl("h2", { cls: "atl-settings-heading", text: t("settings.design.title") });
+    const search = header.createEl("input", { cls: "atl-settings-search", type: "search", attr: { "aria-label": t("settings.design.searchLabel") } });
+    search.placeholder = t("settings.design.search"); search.value = this.settingsSearch;
+    search.dataset.atlSettingsControl = "settings-search";
+    bindSearchInput(search, value => { this.settingsSearch = value; this.applySettingsSearch(); });
+    search.addEventListener("keydown", event => {
+      if (event.key === "Escape" && search.value) { event.preventDefault(); search.value = ""; this.settingsSearch = ""; this.applySettingsSearch(); }
     });
-    for (const page of PAGES) {
-      const button = tabs.createEl("button", {
-        text: t(`settings.tab.${page}`),
-        cls:
-          page === this.activePage
-            ? "atl-settings-tab is-active"
-            : "atl-settings-tab"
-      });
-      button.setAttr("role", "tab");
-      button.setAttr("aria-selected", String(page === this.activePage));
-      button.onclick = () => {
-        this.activePage = page;
-        this.display();
-      };
+    const tabs = content.createDiv({ cls: "atl-settings-tabs", attr: { role: "tablist", "aria-label": t("settings.design.title") } });
+    const category = LIBRARY_PAGES.includes(this.activePage as typeof LIBRARY_PAGES[number]) ? "library" : this.activePage;
+    for (const page of [...CONFIG_PAGES, "library"] as const) {
+      const selected = page === category;
+      const button = tabs.createEl("button", { text: t(`settings.design.page.${PAGE_KEYS[page]}`), cls: `atl-settings-tab${selected ? " is-active" : ""}`, attr: {
+        type: "button", role: "tab", "aria-selected": String(selected), "aria-controls": `atl-settings-panel-${page}`, id: `atl-settings-tab-${page}`, tabindex: selected ? "0" : "-1"
+      } });
+      button.dataset.atlSettingsPage = page;
+      button.onclick = () => { void this.navigateSettings(page === "library" ? this.libraryPage : page); };
+      this.bindTabKeys(button, tabs);
     }
-    const body = containerEl.createDiv({ cls: "atl-settings-body" });
-    if (this.activePage === "general") this.renderGeneral(body);
-    if (this.activePage === "annotations") this.renderAnnotations(body);
-    if (this.activePage === "cells") this.renderCells(body);
-    if (this.activePage === "scenes") this.renderScenes(body);
-    if (this.activePage === "feedback") this.renderFeedback(body);
-    if (this.activePage === "profile") this.renderProfile(body);
-    if (this.activePage === "proposals") void this.renderProposals(body);
-    if (this.activePage === "web") this.renderWeb(body);
+    const body = content.createDiv({ cls: "atl-settings-body" });
+    this.renderGeneral(body);
+    if (category === "library") {
+      const library = this.settingsPanel(body, "library");
+      const subtabs = library.createDiv({ cls: "atl-settings-subtabs", attr: { role: "tablist", "aria-label": t("settings.design.page.library") } });
+      for (const page of LIBRARY_PAGES) {
+        const selected = page === this.activePage;
+        const button = subtabs.createEl("button", { text: t(`settings.tab.${page}`), cls: `atl-settings-subtab${selected ? " is-active" : ""}`, attr: { type: "button", role: "tab", "aria-selected": String(selected), tabindex: selected ? "0" : "-1", "aria-controls": "atl-settings-library-content" } });
+        button.dataset.atlSettingsPage = page;
+        button.onclick = () => { void this.navigateSettings(page); };
+        this.bindTabKeys(button, subtabs);
+      }
+      const view = library.createDiv({ attr: { id: "atl-settings-library-content", role: "tabpanel" } });
+      if (this.activePage === "annotations") this.renderAnnotations(view);
+      if (this.activePage === "cells") this.renderCells(view);
+      if (this.activePage === "scenes") this.renderScenes(view);
+      if (this.activePage === "profile") this.renderProfile(view);
+      if (this.activePage === "proposals") void this.renderProposals(view, generation);
+    }
+    body.createEl("p", { cls: "atl-muted atl-settings-search-empty", text: t("settings.design.searchEmpty"), attr: { role: "status", hidden: "" } });
+    content.createEl("p", { cls: "atl-settings-footer", text: t("settings.design.currentVault") });
+    try {
+      state?.reuse(content);
+      containerEl.replaceChildren(...content.childNodes);
+      const mountedSearch = containerEl.querySelector<HTMLInputElement>("input.atl-settings-search");
+      if (mountedSearch) mountedSearch.value = this.settingsSearch;
+      this.applySettingsSearch();
+    } finally { state?.restore(); }
+    this.discoverConnectionModels();
+  }
+
+  private settingsPanel(container: HTMLElement, page: string): HTMLElement {
+    const panel = container.createDiv({ cls: "atl-settings-panel", attr: { id: `atl-settings-panel-${page}`, role: "tabpanel", "aria-labelledby": `atl-settings-tab-${page}` } });
+    panel.dataset.atlSettingsPanel = page;
+    panel.hidden = this.activePage !== page && !(page === "library" && LIBRARY_PAGES.includes(this.activePage as typeof LIBRARY_PAGES[number]));
+    if (page !== "connections" && page !== "library") panel.createEl("h3", { cls: "atl-settings-page-heading", text: t(`settings.design.page.${PAGE_KEYS[page]}`) });
+    return panel;
+  }
+
+  private bindTabKeys(button: HTMLButtonElement, list: HTMLElement): void {
+    button.addEventListener("keydown", event => {
+      const buttons = Array.from(list.querySelectorAll<HTMLButtonElement>(':scope > [role="tab"]'));
+      const index = buttons.indexOf(button);
+      const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : event.key === "ArrowRight" ? (index + 1) % buttons.length : event.key === "ArrowLeft" ? (index + buttons.length - 1) % buttons.length : -1;
+      if (next < 0) return;
+      event.preventDefault(); buttons[next]?.focus(); buttons[next]?.click();
+    });
+  }
+
+  private async navigateSettings(page: SettingsPage): Promise<void> {
+    if (page === this.activePage && !this.settingsSearch) return;
+    if (this.navigationPending) return;
+    this.navigationPending = true;
+    try {
+      for (const panel of this.containerEl.querySelectorAll<HTMLElement>(".atl-settings-panel:not([hidden])")) {
+        if (!await commitSettingsInputs(panel)) { panel.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus(); return; }
+      }
+      this.activePage = page; this.settingsSearch = "";
+      if (LIBRARY_PAGES.includes(page as typeof LIBRARY_PAGES[number])) this.libraryPage = page as typeof LIBRARY_PAGES[number];
+      this.render(true);
+      const category = LIBRARY_PAGES.includes(page as typeof LIBRARY_PAGES[number]) ? "library" : page;
+      const categoryTab = this.containerEl.querySelector<HTMLElement>(`[data-atl-settings-page="${category}"]`);
+      const pageTab = this.containerEl.querySelector<HTMLElement>(`[data-atl-settings-page="${page}"]`) ?? categoryTab;
+      pageTab?.focus({ preventScroll: true });
+      // The tablist is replaced during render; keep its active item visible
+      // when a narrow settings pane requires horizontal navigation.
+      categoryTab?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+      if (pageTab !== categoryTab) pageTab?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    } finally { this.navigationPending = false; }
+  }
+
+  private applySettingsSearch(): void {
+    const query = this.settingsSearch.trim().toLocaleLowerCase();
+    this.containerEl.dataset.atlSettingsSearching = String(Boolean(query));
+    let matches = 0;
+    for (const panel of this.containerEl.querySelectorAll<HTMLElement>(".atl-settings-panel")) {
+      const page = panel.dataset.atlSettingsPanel;
+      let count = 0;
+      for (const row of panel.querySelectorAll<HTMLElement>(".setting-item")) {
+        const text = row.querySelector(".setting-item-info")?.textContent ?? "";
+        row.hidden = Boolean(query) && !text.toLocaleLowerCase().includes(query);
+        if (!row.hidden) count++;
+      }
+      panel.hidden = query ? !count || page === "library" : page !== this.activePage && !(page === "library" && LIBRARY_PAGES.includes(this.activePage as typeof LIBRARY_PAGES[number]));
+      if (!panel.hidden) matches += count;
+      for (const detail of panel.querySelectorAll<HTMLDetailsElement>("details.atl-settings-advanced")) {
+        if (query && Array.from(detail.querySelectorAll<HTMLElement>(".setting-item")).some(row => !row.hidden)) detail.open = true;
+      }
+      for (const detail of panel.querySelectorAll<HTMLElement>("[data-atl-settings-connection-detail]")) detail.hidden = query ? !Array.from(detail.querySelectorAll<HTMLElement>(".setting-item")).some(row => !row.hidden) : detail.dataset.atlSettingsConnectionDetail !== this.activeConnection;
+    }
+    const empty = this.containerEl.querySelector<HTMLElement>(".atl-settings-search-empty"); if (empty) empty.hidden = !query || matches > 0;
+    prepareSettingsUi(this.containerEl);
+  }
+
+  private createSettingRow(container: HTMLElement, id?: string): Setting {
+    const setting = new Setting(container);
+    if (id) setting.settingEl.dataset.atlSettingsId = id;
+    return setting;
+  }
+
+  private advanced(container: HTMLElement, id: string): HTMLElement {
+    const details = container.createEl("details", { cls: "atl-settings-advanced" });
+    details.dataset.atlSettingsDisclosure = id;
+    details.createEl("summary", { text: t("settings.design.advanced") });
+    return details.createDiv({ cls: "atl-settings-advanced-body" });
+  }
+
+  private updateSection(container: HTMLElement, render: (content: HTMLElement) => void, reuseEditors = true): void {
+    if (!this.containerEl.contains(container)) return;
+    const state = captureSettingsUi(container);
+    const content = container.ownerDocument.createElement("div");
+    render(content);
+    try {
+      if (reuseEditors) state.reuse(content);
+      container.replaceChildren(...content.childNodes);
+      prepareSettingsUi(this.containerEl);
+    } finally { state.restore(); }
   }
 
   private renderGeneral(container: HTMLElement): void {
-    const snapshot = this.plugin.librarySnapshot;
-    new Setting(container)
+    const general = this.settingsPanel(container, "general");
+    new Setting(general)
       .setName(t("set.language"))
       .setDesc(t("set.languageDesc"))
       .addDropdown((dropdown) =>
@@ -134,55 +261,15 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.language)
           .onChange(async (value) => {
             this.plugin.settings.language = value as PluginLanguage;
-            await this.plugin.persistSettings();
             this.plugin.applyLocale();
-            this.display();
-          })
-      );
-
-    new Setting(container)
-      .setName(t("set.memoryFolder"))
-      .setDesc(t("set.memoryFolderDesc"))
-      .addText((text) => {
-        text.setPlaceholder("Agent Memory").setValue(this.plugin.settings.memoryRoot);
-        text.inputEl.addEventListener("blur", () => {
-          void this.plugin.changeMemoryRoot(text.getValue()).then((result) => {
-            if (!result.ok) {
-              new Notice(result.message);
-              text.setValue(this.plugin.settings.memoryRoot);
-            }
-          });
-        });
-      });
-
-    new Setting(container)
-      .setName(t("set.writeMode"))
-      .setDesc(t("set.writeModeDesc"))
-      .addDropdown((dropdown) =>
-        dropdown
-          .addOptions({
-            direct: t("set.writeMode.direct"),
-            confirmation: t("set.writeMode.confirmation")
-          })
-          .setValue(this.plugin.settings.memoryWriteMode)
-          .onChange(async (value) => {
-            this.plugin.settings.memoryWriteMode = value as MemoryWriteMode;
             await this.plugin.persistSettings();
-            this.plugin.applyDisplaySettings();
+            this.render(true);
           })
       );
 
-    this.addToggle(
-      container,
-      "set.allowPreferences",
-      "allowPreferenceWrites"
-    );
-    this.addToggle(
-      container,
-      "set.injectSceneContext",
-      "injectSceneContext"
-    );
-    new Setting(container)
+    this.renderShortcuts(general);
+    const reading = this.settingsPanel(container, "reading");
+    new Setting(reading)
       .setName(t("set.highlight"))
       .setDesc(t("set.highlightDesc"))
       .addDropdown((dropdown) =>
@@ -201,10 +288,10 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
             this.plugin.applyDisplaySettings();
           })
       );
-    this.renderHighlightColor(container);
-    this.addToggle(container, "set.showMarker", "showMarker");
-    this.addToggle(container, "set.marginComments", "marginComments");
-    new Setting(container)
+    this.renderHighlightColor(reading.createDiv({ cls: "atl-highlight-color-fields" }));
+    this.addToggle(reading, "set.showMarker", "showMarker");
+    this.addToggle(reading, "set.marginComments", "marginComments");
+    new Setting(reading)
       .setName(t("set.cardSkin"))
       .setDesc(t("set.cardSkinDesc"))
       .addDropdown((dropdown) => {
@@ -223,20 +310,15 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
             this.plugin.applyDisplaySettings();
           });
       });
-    this.renderSkinTools(container);
-    this.addToggle(container, "set.marginHideLink", "marginHideLink");
-    this.addToggle(container, "set.inlineReview", "inlineReview");
-    this.addToggle(container, "set.watch", "watchMemoryFiles");
-    this.addToggle(container, "set.autoRefresh", "autoRefreshOnAgentWrite");
-    this.addToggle(container, "set.useBlockAnchors", "useBlockAnchors");
-    this.addToggle(
-      container,
-      "set.createAgentInstructions",
-      "createAgentInstructions"
-    );
+    this.renderSkinTools(reading);
+    this.addToggle(reading, "set.marginHideLink", "marginHideLink");
+    this.addToggle(reading, "set.inlineReview", "inlineReview");
+    this.addToggle(reading, "set.watch", "watchMemoryFiles");
+    this.addToggle(reading, "set.autoRefresh", "autoRefreshOnAgentWrite");
+    this.addToggle(reading, "set.useBlockAnchors", "useBlockAnchors");
 
     this.addText(
-      container,
+      reading,
       "set.reviewLanguage",
       "reviewLanguage",
       this.plugin.settings.reviewLanguage,
@@ -244,60 +326,106 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     );
 
     this.addText(
-      container,
+      reading,
       "set.dictionaryLanguage",
       "dictionaryLanguage",
       this.plugin.settings.dictionaryLanguage,
       t("set.dictionaryLanguagePlaceholder")
     );
 
-    this.addToggle(container, "set.pretranslate", "pretranslateOnOpen");
+    this.addToggle(reading, "set.pretranslate", "pretranslateOnOpen");
 
-    new Setting(container)
+    new Setting(reading)
       .setName(t("set.pretranslateChunk"))
       .setDesc(t("set.pretranslateChunkDesc"))
       .addText((text) => {
         text.inputEl.type = "number";
         text.setValue(String(this.plugin.settings.pretranslateChunkChars));
-        text.inputEl.addEventListener("blur", () => {
-          const parsed = Number.parseInt(text.getValue(), 10);
-          const next =
-            Number.isFinite(parsed) && parsed >= MIN_PRETRANSLATE_CHUNK_CHARS
-              ? parsed
-              : DEFAULT_SETTINGS.pretranslateChunkChars;
-          this.plugin.settings.pretranslateChunkChars = next;
-          text.setValue(String(next));
-          void this.plugin.persistSettings();
+        this.bindSettingInput(text.inputEl, "pretranslateChunkChars", value => {
+          const parsed = Number.parseInt(value, 10);
+          return Number.isFinite(parsed) && parsed >= MIN_PRETRANSLATE_CHUNK_CHARS ? parsed : DEFAULT_SETTINGS.pretranslateChunkChars;
         });
       });
 
-    this.addToggle(container, "set.excalidrawAssist", "excalidrawAssist");
+    this.addToggle(reading, "set.excalidrawAssist", "excalidrawAssist");
 
-    this.addToggle(container, "set.persistChatLog", "persistChatLog");
+    const learning = this.settingsPanel(container, "feedback");
+    this.renderFeedback(learning);
+    const privacy = this.settingsPanel(container, "privacy");
+    new Setting(privacy)
+      .setName(`Annotation Tutor Lite ${this.plugin.manifest.version}`)
+      .setDesc(`Build ${BUILD_ID} · ${BUILD_TIME}`);
+    const credentials=credentialStatusFor(this.plugin.settings);
+    if(credentials)new Setting(privacy).setName(t("set.credentialStorage")).setDesc(
+      credentials.state==="migration-pending" ? t("set.credentialMigrationPending")
+      : credentials.state==="reference-unavailable" ? t("set.credentialReferenceUnavailable")
+      : credentials.state==="save-failed" ? t("set.credentialSaveFailed")
+      : credentials.state==="session-only" ? t("set.credentialSessionOnly")
+      : credentials.storage==="available" ? t("set.credentialEncrypted")
+      : t("set.credentialStorageUnavailable")
+    );
+    this.createSettingRow(privacy, "setting:memoryRoot")
+      .setName(t("set.memoryFolder"))
+      .setDesc(t("set.memoryFolderDesc"))
+      .addText((text) => {
+        text.setPlaceholder("Agent Memory").setValue(this.plugin.settings.memoryRoot);
+        bindCommittedInput(text.inputEl, {
+          read: () => this.plugin.settings.memoryRoot, parse: value => value.trim(),
+          save: value => this.queueOrdinarySettings(async () => {
+            if (value === this.plugin.settings.memoryRoot) return;
+            const result = await this.plugin.changeMemoryRoot(value);
+            if (!result.ok) throw new Error(result.message);
+          }),
+          onError: error => { new Notice(error instanceof Error ? error.message : t("notice.settingsSaveFailed")); }
+        });
+      });
 
-    new Setting(container)
+    new Setting(privacy)
+      .setName(t("set.writeMode"))
+      .setDesc(t("set.writeModeDesc"))
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOptions({
+            direct: t("set.writeMode.direct"),
+            confirmation: t("set.writeMode.confirmation")
+          })
+          .setValue(this.plugin.settings.memoryWriteMode)
+          .onChange(async (value) => {
+            this.plugin.settings.memoryWriteMode = value as MemoryWriteMode;
+            await this.plugin.persistSettings();
+            this.plugin.applyDisplaySettings();
+          })
+      );
+
+    this.addToggle(
+      privacy,
+      "set.allowPreferences",
+      "allowPreferenceWrites"
+    );
+    this.addToggle(
+      privacy,
+      "set.injectSceneContext",
+      "injectSceneContext"
+    );
+    this.addToggle(privacy, "set.persistChatLog", "persistChatLog");
+    this.renderLearningInsights(privacy);
+
+    new Setting(privacy)
       .setName(t("set.chatLogKeep"))
       .setDesc(t("set.chatLogKeepDesc"))
       .addText((text) => {
         text.inputEl.type = "number";
         text.setValue(String(this.plugin.settings.chatLogKeepSessions));
-        text.inputEl.addEventListener("blur", () => {
-          const parsed = Number.parseInt(text.getValue(), 10);
-          const next =
-            Number.isFinite(parsed) && parsed >= MIN_CHAT_LOG_KEEP_SESSIONS
-              ? parsed
-              : DEFAULT_SETTINGS.chatLogKeepSessions;
-          this.plugin.settings.chatLogKeepSessions = next;
-          text.setValue(String(next));
-          void this.plugin.persistSettings();
+        this.bindSettingInput(text.inputEl, "chatLogKeepSessions", value => {
+          const parsed = Number.parseInt(value, 10);
+          return Number.isFinite(parsed) && parsed >= MIN_CHAT_LOG_KEEP_SESSIONS ? parsed : DEFAULT_SETTINGS.chatLogKeepSessions;
         });
       });
 
-    this.renderShortcuts(container);
-
-    this.renderAgentRunner(container);
-
-    const stats = container.createDiv({ cls: "atl-library-stats" });
+    this.addToggle(privacy, "set.createAgentInstructions", "createAgentInstructions");
+    const maintenance = this.advanced(privacy, "memory-maintenance");
+    const snapshot = this.plugin.librarySnapshot;
+    const stats = maintenance.createDiv({ cls: "atl-library-stats" });
     stats.createEl("h3", { text: t("settings.libraryStats") });
     stats.createEl("p", {
       text: t("settings.counts", {
@@ -308,11 +436,54 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       })
     });
     const paths = this.plugin.libraryPaths();
-    this.actionRow(container, [
+    this.actionRow(maintenance, [
       [t("settings.openOverview"), () => this.plugin.openLibraryPath(paths.overview)],
       [t("settings.rebuild"), () => this.plugin.rebuildIndex(true)]
     ]);
-    this.renderDiagnostics(container);
+    this.renderDiagnostics(maintenance);
+    const connections = this.settingsPanel(container, "connections");
+    this.renderAgentRunner(connections);
+    const collaboration = this.settingsPanel(container, "collaboration");
+    this.renderBoardMcp(collaboration);
+    const web = this.settingsPanel(container, "web");
+    this.renderWeb(web);
+  }
+
+  private renderLearningInsights(container:HTMLElement):void {
+    container.createEl("h3",{text:t("insight.title")});
+    new Setting(container).setName(t("insight.enabled")).setDesc(t("insight.enabledDesc"))
+      .addToggle(toggle=>toggle.setValue(this.plugin.settings.learningInsightsEnabled).onChange(value=>{
+        void this.queueOrdinarySettings(async()=>{
+          const previous=this.plugin.settings.learningInsightsEnabled;
+          this.plugin.settings.learningInsightsEnabled=value;
+          try{await this.plugin.persistSettings();await this.plugin.learningInsights?.refreshSettings();}
+          catch(error){this.plugin.settings.learningInsightsEnabled=previous;new Notice(String(error));this.refresh();}
+        });
+      }));
+    new Setting(container).setName(t("insight.exclusions")).setDesc(t("insight.exclusionsDesc"))
+      .addTextArea(area=>{
+        area.setValue(this.plugin.settings.learningInsightExcludedSources.join("\n"));area.inputEl.rows=3;
+        this.bindSettingInput(area.inputEl,"learningInsightExcludedSources",value=>[...new Set(value.split(/\r?\n/).map(line=>line.trim()).filter(Boolean))],{
+          format:value=>value.join("\n"),onCommit:()=>{void this.plugin.learningInsights?.refreshSettings();},
+        });
+      });
+    const records=container.createDiv();
+    new Setting(container).setName(t("insight.manage")).addButton(button=>button.setButtonText(t("insight.manage")).onClick(()=>{
+      records.empty();
+      const saved=this.plugin.learningInsights?.listRecords()??[];
+      if(!saved.length){records.createEl("p",{text:t("insight.empty")});return;}
+      for(const record of saved){
+        const item=records.createDiv({cls:"atl-thinking-record"});
+        const title=record.analysis.observations[0]?.statement??record.id;
+        new Setting(item).setName(title).setDesc(t("insight.source",{path:record.source.path})).addButton(open=>open.setButtonText(t("insight.open")).onClick(()=>{
+          const path=this.plugin.learningInsights?.pathFor(record.id);if(path)void this.plugin.openLibraryPath(path);
+        }));
+        let correction=record.correction??"";
+        new Setting(item).setName(t("insight.correction")).setDesc(t("insight.correctionDesc")).addTextArea(area=>area.setValue(correction).onChange(value=>{correction=value;}));
+        new Setting(item).addButton(save=>save.setButtonText(t("insight.save")).onClick(()=>{void this.plugin.learningInsights?.correct(record.id,correction).catch(error=>new Notice(String(error)));}))
+          .addButton(remove=>remove.setButtonText(t("insight.delete")).onClick(()=>{void this.plugin.learningInsights?.deleteRecord(record.id).then(()=>item.remove()).catch(error=>new Notice(String(error)));}));
+      }
+    }));
   }
 
   /**
@@ -372,12 +543,6 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     }
   }
 
-  /**
-   * Annotation color control: a mode picker (follow the theme accent, or a custom
-   * color) plus, in custom mode, a color picker. A mode switch re-renders the
-   * page to reveal/hide the picker; the picker itself only repaints the highlight
-   * (no full re-render, which would close the open picker) so dragging stays live.
-   */
   /** Folder buttons under the Card skin picker: open, create starter, reload. */
   private renderSkinTools(container: HTMLElement): void {
     new Setting(container)
@@ -396,19 +561,20 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
           this.plugin.applySkinCss();
           this.plugin.applyDisplaySettings();
           new Notice(t("skin.created"));
-          this.display();
+          this.render(true);
         })
       )
       .addButton((button) =>
         button.setButtonText(t("skin.reload")).onClick(async () => {
           await this.plugin.reloadSkins();
           new Notice(t("skin.reloaded"));
-          this.display();
+          this.render(true);
         })
       );
   }
 
-  private renderHighlightColor(container: HTMLElement): void {
+  /** Keep the mounted section in handlers when rendering into a temporary fragment. */
+  private renderHighlightColor(container: HTMLElement, section = container): void {
     const custom = this.plugin.settings.highlightColor !== "";
     new Setting(container)
       .setName(t("set.highlightColor"))
@@ -427,7 +593,7 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
                 : "";
             await this.plugin.persistSettings();
             this.plugin.applyHighlightColor();
-            this.display();
+            this.updateSection(section, content => this.renderHighlightColor(content, section));
           })
       );
     if (!custom) return;
@@ -490,8 +656,12 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       [t("settings.cleanInbox"), () => this.plugin.cleanInbox()],
       [t("settings.migrate"), () => this.plugin.migrateLegacyAnnotations()]
     ]);
-    new AnnotationTable(container.createDiv(), this.plugin).render();
-    this.renderDiagnostics(container, "annotation");
+    const table = new AnnotationTable(container.createDiv({ cls: "atl-settings-annotations" }), this.plugin, this.annotationState);
+    table.render();
+    const diagnostics = container.createDiv();
+    const refreshDiagnostics = () => { diagnostics.replaceChildren(); this.renderDiagnostics(diagnostics, "annotation"); };
+    refreshDiagnostics();
+    this.listRefresh = { page: "annotations", update: () => { table.refresh(); refreshDiagnostics(); } };
   }
 
   private renderCells(container: HTMLElement): void {
@@ -505,7 +675,8 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     const controls = container.createDiv({ cls: "atl-toolbar" });
     this.textFilter(controls, this.cellQuery.text ?? "", (value) => {
       this.cellQuery.text = value;
-      this.renderCurrentPage();
+      this.cellPage.page = 0;
+      updateRows();
     });
     this.selectFilter(
       controls,
@@ -514,22 +685,19 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       t("settings.allTypes"),
       (value) => {
         this.cellQuery.type = value as CellQuery["type"];
-        this.renderCurrentPage();
+        this.cellPage.page = 0;
+        updateRows();
       }
     );
-    this.selectFilter(
+    const tags = this.selectFilter(
       controls,
-      [
-        "",
-        ...new Set(
-          this.plugin.librarySnapshot.cells.flatMap((cell) => cell.tags)
-        )
-      ].sort(),
+      ["", ...this.tags("cells")],
       this.cellQuery.tag ?? "",
       t("settings.allTags"),
       (value) => {
         this.cellQuery.tag = value || undefined;
-        this.renderCurrentPage();
+        this.cellPage.page = 0;
+        updateRows();
       }
     );
     this.selectFilter(
@@ -539,10 +707,10 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       t("dash.allStatuses"),
       (value) => {
         this.cellQuery.status = value as CellQuery["status"];
-        this.renderCurrentPage();
+        this.cellPage.page = 0;
+        updateRows();
       }
     );
-    const rows = queryCells(this.plugin.librarySnapshot.cells, this.cellQuery);
     const table = this.table(container, [
       "ID",
       t("dash.col.concept"),
@@ -551,16 +719,27 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       t("settings.scenes"),
       t("dash.col.updated")
     ]);
-    for (const cell of rows) {
-      const row = table.createEl("tr");
-      this.openCell(row, cell.id, cell.path);
-      row.createEl("td", { text: cell.concept });
-      row.createEl("td", { text: cell.type });
-      row.createEl("td", { text: cell.status });
-      row.createEl("td", { text: cell.sceneIds.join(", ") || "—" });
-      row.createEl("td", { text: date(cell.updatedAt) });
-    }
-    this.renderDiagnostics(container, "memory-cell");
+    table.parentElement!.dataset["atlList"] = "cells";
+    const pager = new ListPagination(container, this.cellPage, () => updateRows());
+    const updateRows = (): void => {
+      this.refreshTags(tags, "cells", this.cellQuery.tag);
+      table.replaceChildren();
+      const rows = queryCells(this.plugin.librarySnapshot.cells, this.cellQuery);
+      for (const cell of pager.slice(rows)) {
+        const row = table.createEl("tr");
+        this.openCell(row, cell.id, cell.path);
+        row.createEl("td", { text: cell.concept });
+        row.createEl("td", { text: cell.type });
+        row.createEl("td", { text: cell.status });
+        row.createEl("td", { text: cell.sceneIds.join(", ") || "—" });
+        row.createEl("td", { text: date(cell.updatedAt) });
+      }
+    };
+    updateRows();
+    const diagnostics = container.createDiv();
+    const refreshDiagnostics = () => { diagnostics.replaceChildren(); this.renderDiagnostics(diagnostics, "memory-cell"); };
+    refreshDiagnostics();
+    this.listRefresh = { page: "cells", update: () => { updateRows(); refreshDiagnostics(); } };
   }
 
   private renderScenes(container: HTMLElement): void {
@@ -583,7 +762,8 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     const controls = container.createDiv({ cls: "atl-toolbar" });
     this.textFilter(controls, this.sceneQuery.text ?? "", (value) => {
       this.sceneQuery.text = value;
-      this.renderCurrentPage();
+      this.scenePage.page = 0;
+      updateRows();
     });
     this.selectFilter(
       controls,
@@ -592,7 +772,8 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       t("settings.allTypes"),
       (value) => {
         this.sceneQuery.type = value as SceneQuery["type"];
-        this.renderCurrentPage();
+        this.scenePage.page = 0;
+        updateRows();
       }
     );
     this.selectFilter(
@@ -602,25 +783,21 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       t("dash.allStatuses"),
       (value) => {
         this.sceneQuery.status = value as SceneQuery["status"];
-        this.renderCurrentPage();
+        this.scenePage.page = 0;
+        updateRows();
       }
     );
-    this.selectFilter(
+    const tags = this.selectFilter(
       controls,
-      [
-        "",
-        ...new Set(
-          this.plugin.librarySnapshot.scenes.flatMap((scene) => scene.tags)
-        )
-      ].sort(),
+      ["", ...this.tags("scenes")],
       this.sceneQuery.tag ?? "",
       t("settings.allTags"),
       (value) => {
         this.sceneQuery.tag = value || undefined;
-        this.renderCurrentPage();
+        this.scenePage.page = 0;
+        updateRows();
       }
     );
-    const rows = queryScenes(this.plugin.librarySnapshot.scenes, this.sceneQuery);
     const table = this.table(container, [
       "ID",
       t("settings.titleColumn"),
@@ -631,35 +808,46 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       t("dash.col.updated"),
       t("settings.actions")
     ]);
-    for (const scene of rows) {
-      const row = table.createEl("tr");
-      this.openCell(row, scene.id, scene.path);
-      row.createEl("td", { text: scene.title });
-      row.createEl("td", { text: scene.type });
-      row.createEl("td", { text: scene.status });
-      row.createEl("td", { text: String(scene.cells.length) });
-      row.createEl("td", { text: String(scene.sourceAnnotations.length) });
-      row.createEl("td", { text: date(scene.updatedAt) });
-      const actions = row.createEl("td");
-      if (scene.status === "active") {
-        const archive = actions.createEl("button", {
-          text: t("settings.archive"),
-          cls: "atl-link-button"
-        });
-        archive.onclick = () => {
-          new ConfirmModal(this.app, {
-            title: t("settings.archiveSceneTitle"),
-            body: t("settings.archiveSceneBody", { title: scene.title }),
-            confirmText: t("settings.archive"),
-            warning: true,
-            onConfirm: () => this.plugin.archiveScene(scene.id)
-          }).open();
-        };
-      } else {
-        actions.setText("—");
+    table.parentElement!.dataset["atlList"] = "scenes";
+    const pager = new ListPagination(container, this.scenePage, () => updateRows());
+    const updateRows = (): void => {
+      this.refreshTags(tags, "scenes", this.sceneQuery.tag);
+      table.replaceChildren();
+      const rows = queryScenes(this.plugin.librarySnapshot.scenes, this.sceneQuery);
+      for (const scene of pager.slice(rows)) {
+        const row = table.createEl("tr");
+        this.openCell(row, scene.id, scene.path);
+        row.createEl("td", { text: scene.title });
+        row.createEl("td", { text: scene.type });
+        row.createEl("td", { text: scene.status });
+        row.createEl("td", { text: String(scene.cells.length) });
+        row.createEl("td", { text: String(scene.sourceAnnotations.length) });
+        row.createEl("td", { text: date(scene.updatedAt) });
+        const actions = row.createEl("td");
+        if (scene.status === "active") {
+          const archive = actions.createEl("button", {
+            text: t("settings.archive"),
+            cls: "atl-link-button"
+          });
+          archive.onclick = () => {
+            new ConfirmModal(this.app, {
+              title: t("settings.archiveSceneTitle"),
+              body: t("settings.archiveSceneBody", { title: scene.title }),
+              confirmText: t("settings.archive"),
+              warning: true,
+              onConfirm: () => this.plugin.archiveScene(scene.id)
+            }).open();
+          };
+        } else {
+          actions.setText("—");
+        }
       }
-    }
-    this.renderDiagnostics(container, "scene");
+    };
+    updateRows();
+    const diagnostics = container.createDiv();
+    const refreshDiagnostics = () => { diagnostics.replaceChildren(); this.renderDiagnostics(diagnostics, "scene"); };
+    refreshDiagnostics();
+    this.listRefresh = { page: "scenes", update: () => { updateRows(); refreshDiagnostics(); } };
   }
 
   private renderProfile(container: HTMLElement): void {
@@ -756,7 +944,7 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     this.renderDiagnostics(container, "profile");
   }
 
-  private async renderProposals(container: HTMLElement): Promise<void> {
+  private async renderProposals(container: HTMLElement, generation: number): Promise<void> {
     const proposals = this.plugin.librarySnapshot.proposals;
     if (proposals.length === 0) {
       container.createEl("p", {
@@ -776,7 +964,10 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
         cls: "atl-diff",
         text: t("settings.loadingDiff")
       });
-      preview.setText(await this.plugin.proposalDiff(proposal));
+      const diff = await this.plugin.proposalDiff(proposal);
+      if (generation !== this.renderGeneration || this.activePage !== "proposals" ||
+          !container.isConnected || !this.containerEl.contains(container)) return;
+      preview.setText(diff);
       const actions = card.createDiv({ cls: "atl-actions" });
       const approve = actions.createEl("button", {
         text: t("settings.approve"),
@@ -809,13 +1000,71 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     }
   }
 
-  /**
-   * Auto-run section: a toggle plus, when enabled, the engine selector, the
-   * engine's own fields, and the shared timeout. The toggle/selector re-render
-   * the page so the relevant fields appear/hide.
-   */
+  /** Connection profiles plus independent routing for every AI-powered surface. */
   private renderAgentRunner(container: HTMLElement): void {
-    new Setting(container)
+    const heading = container.createDiv({ cls: "atl-settings-page-heading" });
+    heading.createEl("h3", { text: t("settings.design.connectionsTitle") });
+    heading.createEl("p", { text: t("settings.design.connectionsDesc") });
+    const workspace = container.createDiv({ cls: "atl-settings-connections" });
+    const list = workspace.createDiv({ cls: "atl-settings-connection-list", attr: { role: "tablist", "aria-label": t("settings.design.connectionsTitle"), "aria-orientation": "vertical" } });
+    const details = workspace.createDiv();
+    for (const [id, icon] of [["api", "link"], ["opencode", "square-terminal"], ["image", "image"]] as const) {
+      const selected = this.activeConnection === id;
+      const configured = id === "api" ? this.hasCredential("apiKey") : id === "opencode" ? Boolean(this.plugin.settings.agentCommand.trim()) : this.plugin.settings.boardImageProvider !== "disabled" && (this.plugin.settings.boardImageUseSharedApiKey ? this.hasCredential("apiKey") : this.hasCredential("boardImageApiKey"));
+      const label = t(`settings.design.connection.${id}`);
+      const button = list.createEl("button", { cls: `atl-settings-connection${selected ? " is-active" : ""}`, attr: { type: "button", role: "tab", "aria-selected": String(selected), "aria-controls": `atl-settings-connection-${id}`, id: `atl-settings-connection-tab-${id}`, tabindex: selected ? "0" : "-1" } });
+      button.dataset.atlSettingsConnection = id;
+      setIcon(button.createSpan({ cls: "atl-settings-connection-icon" }), icon);
+      button.createSpan({ cls: "atl-settings-connection-name", text: label });
+      button.createSpan({ cls: `atl-settings-connection-state${configured ? " is-configured" : ""}`, text: t(configured ? "settings.design.configured" : "settings.design.unconfigured") });
+      button.onclick = () => { void this.selectConnection(id); };
+      button.addEventListener("keydown", event => {
+        const buttons = Array.from(list.querySelectorAll<HTMLButtonElement>("button"));
+        const index = buttons.indexOf(button);
+        const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : ["ArrowDown", "ArrowRight"].includes(event.key) ? (index + 1) % buttons.length : ["ArrowUp", "ArrowLeft"].includes(event.key) ? (index + buttons.length - 1) % buttons.length : -1;
+        if (next < 0) return; event.preventDefault(); buttons[next]?.click();
+      });
+      const detail = details.createDiv({ cls: "atl-settings-connection-detail", attr: { id: `atl-settings-connection-${id}`, role: "tabpanel", "aria-labelledby": `atl-settings-connection-tab-${id}` } });
+      detail.dataset.atlSettingsConnectionDetail = id; detail.hidden = !selected;
+      detail.createEl("h4", { text: label });
+      if (id === "api") this.renderApiEngine(detail);
+      else if (id === "opencode") this.renderOpenCodeEngine(detail);
+      else this.renderImageEngine(detail);
+    }
+    const routes = container.createDiv({ cls: "atl-settings-routes" });
+    routes.createEl("h3", { cls: "atl-settings-section-title", text: t("settings.design.routes") });
+    routes.createEl("p", { cls: "atl-muted", text: t("settings.design.routesDesc") });
+    const columns = routes.createDiv({ cls: "atl-settings-route-header", attr: { "aria-hidden": "true" } });
+    for (const key of ["routeFeature", "routeConnection", "routeModel"]) columns.createSpan({ text: t(`settings.design.${key}`) });
+    this.renderEngineRoute(routes, "set.chatEngine", "chatEngine", () => this.refreshRouteModels());
+    this.renderEngineRoute(routes, "set.reviewEngine", "reviewEngine", () => this.refreshRouteModels());
+    this.createSettingRow(routes, "route:boardConnectionMode").setName(t("board.connectionMode")).setDesc(t("board.connectionModeDesc"))
+      .addDropdown(dropdown => dropdown.addOptions({inherit:t("board.connectionInherit"),custom:t("board.connectionCustom")})
+        .setValue(this.plugin.settings.boardConnectionMode).onChange(async value => {
+          if (!await commitSettingsInputs(boardFields)) { dropdown.setValue(this.plugin.settings.boardConnectionMode); return; }
+          try {
+            await this.queueOrdinarySettings(async () => {
+              const previous = this.plugin.settings.boardConnectionMode, generation = this.boardBindingGeneration;
+              const next = value === "custom" ? "custom" : "inherit";
+              if (next === previous) return;
+              this.boardBindingGeneration++;
+              this.plugin.settings.boardConnectionMode = next;
+              try { await this.plugin.persistSettings(); }
+              catch (error) {
+                this.plugin.settings.boardConnectionMode = previous; this.boardBindingGeneration = generation;
+                throw error;
+              }
+              this.updateSection(boardFields, content => this.renderBoardConnectionFields(content, boardFields));
+              this.refreshRouteModels();
+            });
+          } catch { dropdown.setValue(this.plugin.settings.boardConnectionMode); new Notice(t("notice.settingsSaveFailed")); }
+        }));
+    const boardFields = routes.createDiv({ cls: "atl-board-connection-fields" });
+    this.renderBoardConnectionFields(boardFields);
+    this.renderEngineRoute(routes, "set.web.engine", "webEngine", () => this.refreshRouteModels());
+
+    const advanced = this.advanced(container, "agent-options");
+    new Setting(advanced)
       .setName(t("set.autoRunAgent"))
       .setDesc(t("set.autoRunAgentDesc"))
       .addToggle((toggle) =>
@@ -825,53 +1074,124 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
             this.plugin.settings.autoRunAgent = value;
             await this.plugin.persistSettings();
             this.plugin.applyDisplaySettings();
-            this.display();
           })
       );
-    // The engine (OpenCode / Direct API), its key, and the model are always shown:
-    // translation (Alt+T), the tutor chat, and manual reviews all need an engine,
-    // not just auto-run. Gating these behind auto-run hid them on a fresh install.
-
-    new Setting(container)
-      .setName(t("set.reviewEngine"))
-      .setDesc(t("set.reviewEngineDesc"))
-      .addDropdown((dropdown) =>
-        dropdown
-          .addOptions({
-            api: t("set.engine.api"),
-            opencode: t("set.engine.opencode")
-          })
-          .setValue(this.plugin.settings.reviewEngine)
-          .onChange(async (value) => {
-            this.plugin.settings.reviewEngine = value as ReviewEngine;
-            await this.plugin.persistSettings();
-            this.display();
-          })
-      );
-
-    if (this.plugin.settings.reviewEngine === "api") {
-      this.renderApiEngine(container);
-    } else {
-      this.renderOpenCodeEngine(container);
-    }
-
-    new Setting(container)
+    new Setting(advanced)
       .setName(t("set.agentTimeout"))
       .setDesc(t("set.agentTimeoutDesc"))
       .addText((text) => {
         text.inputEl.type = "number";
         text.setValue(String(this.plugin.settings.agentTimeoutSeconds));
-        text.inputEl.addEventListener("blur", () => {
-          const parsed = Number.parseInt(text.getValue(), 10);
-          const next =
-            Number.isFinite(parsed) && parsed >= MIN_AGENT_TIMEOUT_SECONDS
-              ? parsed
-              : DEFAULT_SETTINGS.agentTimeoutSeconds;
-          this.plugin.settings.agentTimeoutSeconds = next;
-          text.setValue(String(next));
-          void this.plugin.persistSettings();
+        this.bindSettingInput(text.inputEl, "agentTimeoutSeconds", value => {
+          const parsed = Number.parseInt(value, 10);
+          return Number.isFinite(parsed) && parsed >= MIN_AGENT_TIMEOUT_SECONDS ? parsed : DEFAULT_SETTINGS.agentTimeoutSeconds;
         });
       });
+    this.refreshRouteModels(routes);
+  }
+
+  private hasCredential(slot: CredentialSlot): boolean {
+    const binding = credentialBinding(this.plugin.settings, slot);
+    return Boolean(this.plugin.settings[slot] || this.plugin.settings.credentialRefs.some(ref => ref.slot === slot && ref.binding === binding));
+  }
+
+  private async selectConnection(connection: ConnectionPage): Promise<void> {
+    const previous = this.containerEl.querySelector<HTMLElement>(`[data-atl-settings-connection-detail="${this.activeConnection}"]`);
+    if (previous && !await commitSettingsInputs(previous)) return;
+    this.activeConnection = connection;
+    for (const button of this.containerEl.querySelectorAll<HTMLButtonElement>("[data-atl-settings-connection]")) {
+      const selected = button.dataset.atlSettingsConnection === connection;
+      button.classList.toggle("is-active", selected); button.setAttribute("aria-selected", String(selected)); button.tabIndex = selected ? 0 : -1;
+      if (selected) button.focus({ preventScroll: true });
+    }
+    this.applySettingsSearch();
+    this.discoverConnectionModels();
+  }
+
+  private discoverConnectionModels(): void {
+    if (this.activePage !== "connections") return;
+    if (this.activeConnection === "api" && this.plugin.settings.apiKey && !this.plugin.apiModelsLoaded && !this.plugin.availableApiModels.length) void this.plugin.refreshApiModels().then(() => this.refresh());
+    if (this.activeConnection === "opencode" && !this.plugin.modelsLoaded && !this.plugin.availableModels.length) void this.plugin.refreshAvailableModels().then(() => this.refresh());
+  }
+
+  private refreshRouteModels(root: HTMLElement = this.containerEl): void {
+    for (const row of root.querySelectorAll<HTMLElement>(".atl-settings-routes > .setting-item")) {
+      row.classList.add("atl-settings-route-row");
+      const name = row.querySelector(".setting-item-name")?.textContent ?? "";
+      const description = row.querySelector(".setting-item-description")?.textContent ?? "";
+      // Keep the compact routing table readable; full help remains available
+      // to screen readers and on hover rather than stretching every row.
+      row.querySelector<HTMLElement>(".setting-item-info")?.setAttribute("title", description);
+      const select = row.querySelector("select");
+      select?.setAttribute("aria-label", name);
+      select?.setAttribute("aria-description", description);
+      row.querySelector(".atl-settings-route-model")?.remove();
+      const id = row.dataset.atlSettingsId;
+      const icon = id === "setting:set.chatEngine" ? "file-text" : id === "setting:set.reviewEngine" ? "message-circle" : id === "route:boardConnectionMode" ? "pencil" : "globe";
+      const nameEl = row.querySelector<HTMLElement>(".setting-item-name");
+      if (nameEl && !nameEl.querySelector(".atl-settings-route-icon")) {
+        const mark = nameEl.createSpan({ cls: "atl-settings-route-icon", attr: { "aria-hidden": "true" } });
+        setIcon(mark, icon); nameEl.prepend(mark);
+      }
+      let engine: ReviewEngine | undefined;
+      if (id === "setting:set.chatEngine") engine = this.plugin.settings.chatEngine;
+      if (id === "setting:set.reviewEngine") engine = this.plugin.settings.reviewEngine;
+      if (id === "setting:set.web.engine") engine = this.plugin.settings.webEngine;
+      const chatModel = this.plugin.settings.chatEngine === "api" ? this.plugin.settings.apiModel : this.plugin.settings.agentModel;
+      const model = id === "route:boardConnectionMode" ? this.plugin.settings.boardConnectionMode === "inherit" ? chatModel : this.plugin.settings.boardEngine === "api" ? this.plugin.settings.boardApiModel : this.plugin.settings.boardAgentModel : engine === "api" ? this.plugin.settings.apiModel : this.plugin.settings.agentModel;
+      row.querySelector<HTMLElement>(".setting-item-control")?.createSpan({ cls: "atl-settings-route-model", text: model || t("set.modelNone"), attr: { "aria-label": t("settings.design.routeModel") } });
+    }
+  }
+
+  private renderBoardConnectionFields(container: HTMLElement, section = container): void {
+    if (this.plugin.settings.boardConnectionMode !== "custom") return;
+    this.renderEngineRoute(container, "set.boardEngine", "boardEngine", () => {
+      // A different engine selects a different model setting and listener.
+      this.updateSection(section, content => this.renderBoardConnectionFields(content, section), false);
+    }, () => commitSettingsInputs(section));
+    const key = this.plugin.settings.boardEngine === "api" ? "boardApiModel" : "boardAgentModel";
+    new Setting(container).setName(t("board.connectionModel")).setDesc(t("board.connectionModelDesc"))
+      .addText(text => {
+        text.setValue(this.plugin.settings[key]);
+        const engine = this.plugin.settings.boardEngine, generation = this.boardBindingGeneration;
+        this.bindSettingInput(text.inputEl, key, value => value.trim(), {
+          isCurrent: () => generation === this.boardBindingGeneration && this.plugin.settings.boardConnectionMode === "custom" && this.plugin.settings.boardEngine === engine
+        });
+      });
+  }
+
+  private renderEngineRoute(
+    container: HTMLElement,
+    i18nKey: string,
+    key: "chatEngine" | "reviewEngine" | "boardEngine" | "webEngine",
+    onChanged?: () => void,
+    beforeChanged?: () => Promise<boolean>
+  ): void {
+    this.createSettingRow(container, `setting:${i18nKey}`)
+      .setName(t(i18nKey))
+      .setDesc(t(`${i18nKey}Desc`))
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOptions({ api: t("set.engine.api"), opencode: t("set.engine.opencode") })
+          .setValue(this.plugin.settings[key])
+          .onChange(async (value) => {
+            if (beforeChanged && !await beforeChanged()) { dropdown.setValue(this.plugin.settings[key]); return; }
+            try {
+              await this.queueOrdinarySettings(async () => {
+                const previous = this.plugin.settings[key], generation = this.boardBindingGeneration;
+                if (value === previous) return;
+                if (key === "boardEngine") this.boardBindingGeneration++;
+                this.plugin.settings[key] = value as ReviewEngine;
+                try { await this.plugin.persistSettings(); }
+                catch (error) {
+                  this.plugin.settings[key] = previous; this.boardBindingGeneration = generation;
+                  throw error;
+                }
+                onChanged?.();
+              });
+            } catch { dropdown.setValue(this.plugin.settings[key]); new Notice(t("notice.settingsSaveFailed")); }
+          })
+      );
   }
 
   /** Direct-API engine fields: base URL, key, model picker, and a test button. */
@@ -898,16 +1218,6 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       }
     );
 
-    // First time the section opens with a key set, discover models in the
-    // background, then re-render so the dropdown replaces the text field.
-    if (
-      this.plugin.settings.apiKey &&
-      !this.plugin.apiModelsLoaded &&
-      this.plugin.availableApiModels.length === 0
-    ) {
-      void this.plugin.refreshApiModels().then(() => this.refresh());
-    }
-
     this.addApiModelField(container);
 
     this.actionRow(container, [
@@ -916,7 +1226,225 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
         () => this.plugin.refreshApiModels().then(() => this.refresh())
       ],
       [t("set.testConnection"), () => this.plugin.testApiConnection()]
-    ]);
+    ], t("set.testConnection"));
+  }
+
+  /** Frontend-owned image generation profile; independent from chat/review. */
+  private renderImageEngine(container: HTMLElement): void {
+    new Setting(container)
+      .setName(t("set.image.provider"))
+      .setDesc(t("set.image.providerDesc"))
+      .addDropdown((dropdown) => {
+        const options: Record<string, string> = {};
+        for (const provider of boardImageProviders) options[provider] = t(`set.image.provider.${provider}`);
+        dropdown.addOptions(options).setValue(this.plugin.settings.boardImageProvider).onChange(async (value) => {
+          this.plugin.settings.boardImageProvider = value as BoardImageProviderKind;
+          await this.plugin.persistSettings();
+          this.updateSection(fields, content => this.renderImageFields(content));
+        });
+      });
+    const fields = container.createDiv({ cls: "atl-image-profile-fields" });
+    this.renderImageFields(fields);
+  }
+
+  private renderImageFields(container: HTMLElement): void {
+    if (this.plugin.settings.boardImageProvider === "disabled") return;
+
+    this.addImageText("set.image.baseUrl", "boardImageBaseUrl", "https://…/compatible-mode/v1", container);
+    new Setting(container)
+      .setName(t("set.image.useSharedKey"))
+      .setDesc(t("set.image.useSharedKeyDesc"))
+      .addToggle((toggle) => toggle.setValue(this.plugin.settings.boardImageUseSharedApiKey).onChange(async (value) => {
+        this.plugin.settings.boardImageUseSharedApiKey = value;
+        await this.plugin.persistSettings();
+        this.updateSection(keyFields, content => this.renderImageKey(content));
+      }));
+    const keyFields = container.createDiv({ cls: "atl-image-key-fields" });
+    this.renderImageKey(keyFields);
+    this.addImageText("set.image.model", "boardImageModel", "qwen-image-3.0", container);
+
+    let widthInput: HTMLInputElement;
+    let heightInput: HTMLInputElement;
+    const size = this.createSettingRow(container, "setting:boardImageSize").setName(t("set.image.size")).setDesc(t("set.image.sizeDesc"));
+    const bindSize = (input: HTMLInputElement, dimension: 0 | 1): void => {
+      bindCommittedInput(input, {
+        read: () => JSON.stringify([this.plugin.settings.boardImageWidth, this.plugin.settings.boardImageHeight]),
+        parse: () => {
+          const width = Number.parseInt(widthInput.value, 10), height = Number.parseInt(heightInput.value, 10);
+          if (!isBoardImage1KSize(width, height)) throw new Error(t("set.image.sizeInvalid"));
+          return JSON.stringify([width, height]);
+        },
+        format: value => String((JSON.parse(value) as [number, number])[dimension]),
+        save: value => this.queueOrdinarySettings(async () => {
+          const previous = [this.plugin.settings.boardImageWidth, this.plugin.settings.boardImageHeight];
+          const [width, height] = JSON.parse(value) as [number, number];
+          if (previous[0] === width && previous[1] === height) return;
+          this.plugin.settings.boardImageWidth = width; this.plugin.settings.boardImageHeight = height;
+          try { await this.plugin.persistSettings(); } catch (error) {
+            if (this.plugin.settings.boardImageWidth === width && this.plugin.settings.boardImageHeight === height) {
+              this.plugin.settings.boardImageWidth = previous[0]!; this.plugin.settings.boardImageHeight = previous[1]!;
+            }
+            throw error;
+          }
+        }),
+        onError: error => { new Notice(error instanceof Error ? error.message : t("notice.settingsSaveFailed")); }
+      });
+    };
+    size.addText((text) => {
+      widthInput = text.inputEl;
+      widthInput.type = "number"; widthInput.min = "1"; widthInput.step = "1";
+      text.setPlaceholder("1024").setValue(String(this.plugin.settings.boardImageWidth));
+      widthInput.setAttribute("aria-label", t("set.image.width"));
+      bindSize(widthInput, 0);
+    }).addText((text) => {
+      heightInput = text.inputEl;
+      heightInput.type = "number"; heightInput.min = "1"; heightInput.step = "1";
+      text.setPlaceholder("1024").setValue(String(this.plugin.settings.boardImageHeight));
+      heightInput.setAttribute("aria-label", t("set.image.height"));
+      bindSize(heightInput, 1);
+    });
+
+    new Setting(container)
+      .setName(t("set.image.count"))
+      .setDesc(t("set.image.countDesc"))
+      .addDropdown((dropdown) => dropdown
+        .addOptions(Object.fromEntries(Array.from({ length: 6 }, (_, index) => [String(index + 1), String(index + 1)])))
+        .setValue(String(this.plugin.settings.boardImageCount))
+        .onChange(async (value) => {
+          this.plugin.settings.boardImageCount = Number(value);
+          await this.plugin.persistSettings();
+        }));
+    new Setting(container)
+      .setName(t("set.image.negativePrompt"))
+      .setDesc(t("set.image.negativePromptDesc"))
+      .addTextArea((area) => {
+        area.setValue(this.plugin.settings.boardImageNegativePrompt);
+        area.inputEl.rows = 3;
+        this.bindSettingInput(area.inputEl, "boardImageNegativePrompt", value => value.trim());
+      });
+    this.addImageText("set.image.seed", "boardImageSeed", t("set.image.seedPlaceholder"), container);
+    new Setting(container)
+      .setName(t("set.image.promptExtend"))
+      .setDesc(t("set.image.promptExtendDesc"))
+      .addToggle((toggle) => toggle.setValue(this.plugin.settings.boardImagePromptExtend).onChange(async (value) => {
+        this.plugin.settings.boardImagePromptExtend = value;
+        await this.plugin.persistSettings();
+        this.updateSection(promptFields, content => this.renderImagePromptExtension(content));
+      }));
+    const promptFields = container.createDiv({ cls: "atl-image-prompt-fields" });
+    this.renderImagePromptExtension(promptFields);
+    new Setting(container)
+      .setName(t("set.image.watermark"))
+      .setDesc(t("set.image.watermarkDesc"))
+      .addToggle((toggle) => toggle.setValue(this.plugin.settings.boardImageWatermark).onChange(async (value) => {
+        this.plugin.settings.boardImageWatermark = value;
+        await this.plugin.persistSettings();
+      }));
+  }
+
+  private renderImageKey(container: HTMLElement): void {
+    if (!this.plugin.settings.boardImageUseSharedApiKey) {
+      this.addImageText("set.image.apiKey", "boardImageApiKey", "sk-…", container, true);
+    }
+  }
+
+  private renderImagePromptExtension(container: HTMLElement): void {
+    if (this.plugin.settings.boardImagePromptExtend) {
+      new Setting(container)
+        .setName(t("set.image.promptExtendMode"))
+        .setDesc(t("set.image.promptExtendModeDesc"))
+        .addDropdown((dropdown) => dropdown
+          .addOptions({ direct: t("set.image.promptExtend.direct"), agent: t("set.image.promptExtend.agent") })
+          .setValue(this.plugin.settings.boardImagePromptExtendMode)
+          .onChange(async (value) => {
+            this.plugin.settings.boardImagePromptExtendMode = value as BoardImagePromptExtendMode;
+            await this.plugin.persistSettings();
+          }));
+      new Setting(container)
+        .setName(t("set.image.thinking"))
+        .setDesc(t("set.image.thinkingDesc"))
+        .addToggle((toggle) => toggle.setValue(this.plugin.settings.boardImageThinking).onChange(async (value) => {
+          this.plugin.settings.boardImageThinking = value;
+          await this.plugin.persistSettings();
+        }));
+    }
+  }
+
+  private renderBoardMcp(container: HTMLElement): void {
+    new Setting(container).setName(t("upgrade.communicationEnabled")).setDesc(t("upgrade.communicationEnabledDesc")).addToggle(toggle=>toggle.setValue(this.plugin.settings.tutorCommunicationEnabled).onChange(value=>void this.plugin.setTutorCommunicationEnabled(value).catch(error=>new Notice(String(error)))));
+    new Setting(container).setName(t("upgrade.communicationEngine")).setDesc(t("upgrade.communicationEngineDesc")).addDropdown(drop=>drop.addOption("inherit",t("upgrade.communicationEngineInherit")).addOption("codex",t("upgrade.communicationEngineCodex")).setValue(this.plugin.settings.tutorCommunicationEngine).onChange(value=>void this.plugin.setTutorCommunicationEngine(value as "inherit"|"codex").catch(error=>new Notice(String(error)))));
+    new Setting(container).setName(t("upgrade.communicationTitle")).setDesc(t("upgrade.communicationIntro")).addButton(button=>button.setButtonText(t("upgrade.communicationTitle")).onClick(()=>void this.plugin.openTutorCommunication().catch(error=>new Notice(String(error)))));
+    for (const key of ["tutorRemoteName", "tutorRemoteUrl"] as const) new Setting(container)
+      .setName(t(`board.${key}`)).setDesc(key === "tutorRemoteUrl" ? t("board.remoteScope") : "")
+      .addText(text => { text.setValue(this.plugin.settings[key]); this.bindSettingInput(text.inputEl, key, value => value.trim()); });
+    this.addCredentialInput(container,"board.tutorRemoteToken","tutorRemoteToken");
+    new Setting(container).setName(t("board.codexCommand")).addText(text => {
+      text.setValue(this.plugin.settings.tutorCodexCommand);
+      this.bindSettingInput(text.inputEl, "tutorCodexCommand", value => value.trim() || "codex");
+    });
+    new Setting(container)
+      .setName(t("set.boardMcp.enabled"))
+      .setDesc(t("set.boardMcp.enabledDesc"))
+      .addToggle(toggle => toggle.setValue(this.plugin.settings.boardMcpEnabled).onChange(async value => {
+        this.plugin.settings.boardMcpEnabled = value;
+        await this.plugin.persistSettings();
+        this.updateSection(fields, content => this.renderBoardMcpFields(content));
+      }));
+    const fields = container.createDiv({ cls: "atl-board-mcp-fields" });
+    this.renderBoardMcpFields(fields);
+  }
+
+  private renderBoardMcpFields(container: HTMLElement): void {
+    if (!this.plugin.settings.boardMcpEnabled) return;
+    new Setting(container)
+      .setName(t("set.boardMcp.readOnly"))
+      .setDesc(t("set.boardMcp.readOnlyDesc"))
+      .addToggle(toggle => toggle.setValue(this.plugin.settings.boardMcpReadOnly).onChange(async value => {
+        this.plugin.settings.boardMcpReadOnly = value;
+        await this.plugin.persistSettings();
+        this.updateSection(statusFields, content => this.renderBoardMcpStatus(content));
+      }));
+    const statusFields = container.createDiv({ cls: "atl-board-mcp-status" });
+    this.renderBoardMcpStatus(statusFields);
+  }
+
+  private renderBoardMcpStatus(container: HTMLElement): void {
+    for (const pairing of this.plugin.settings.tutorPairings) {
+      const setting = new Setting(container).setName(pairing.grant.name).setDesc(pairing.grant.documents.join(" · "));
+      setting.addButton(button => button.setButtonText(t("board.pairRevoke")).onClick(async () => {
+        await this.plugin.revokeTutorClient(pairing.grant.clientId);
+        const parent = setting.settingEl.parentElement;
+        if (parent) this.updateSection(parent, content => this.renderBoardMcpStatus(content));
+      }));
+    }
+    const connection = this.plugin.boardMcpConnection();
+    const status = new Setting(container)
+      .setName(t("set.boardMcp.status"))
+      .setDesc(connection.running ? `http://127.0.0.1:${connection.port}/mcp · ${connection.recentCalls} calls` : t("set.boardMcp.stopped"));
+    if (connection.running && connection.token) status.addButton(button => button
+      .setButtonText(t("set.boardMcp.copy"))
+      .onClick(async () => {
+        await navigator.clipboard.writeText(JSON.stringify({
+          url: `http://127.0.0.1:${connection.port}/mcp`,
+          headers: { Authorization: `Bearer ${connection.token}` },
+        }, null, 2));
+        new Notice(t("set.boardMcp.copied"));
+      }));
+  }
+
+  private addImageText(
+    i18nKey: string,
+    key: "boardImageBaseUrl" | "boardImageApiKey" | "boardImageModel" | "boardImageSeed",
+    placeholder: string,
+    container: HTMLElement,
+    password = false,
+  ): void {
+    if(key==="boardImageApiKey") {this.addCredentialInput(container,i18nKey,key);return;}
+    this.createSettingRow(container, `setting:${i18nKey}`).setName(t(i18nKey)).setDesc(t(`${i18nKey}Desc`)).addText((text) => {
+      if (password) text.inputEl.type = "password";
+      text.setPlaceholder(placeholder).setValue(this.plugin.settings[key]);
+      this.bindSettingInput(text.inputEl, key, value => value.trim());
+    });
   }
 
   /**
@@ -942,7 +1470,7 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     if (current && !(current in options)) {
       options[current] = `${current} · ${t("set.modelUnavailable")}`;
     }
-    new Setting(container)
+    this.createSettingRow(container, "setting:apiModel")
       .setName(t("set.apiModel"))
       .setDesc(t("set.apiModelDesc"))
       .addDropdown((dropdown) =>
@@ -952,6 +1480,7 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.apiModel = value;
             await this.plugin.persistSettings();
+            this.refreshRouteModels();
           })
       );
   }
@@ -966,12 +1495,6 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
       "opencode"
     );
 
-    // Discover the CLI's models once, in the background, then re-render so the
-    // pickers populate. OpenCode's free models change, so we detect them live.
-    if (!this.plugin.modelsLoaded && this.plugin.availableModels.length === 0) {
-      void this.plugin.refreshAvailableModels().then(() => this.refresh());
-    }
-
     this.addModelDropdown(container, "set.agentModel", "agentModel", false);
 
     this.actionRow(container, [
@@ -981,12 +1504,14 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
         () => this.plugin.refreshAvailableModels().then(() => this.refresh())
       ],
       [t("set.testConnection"), () => this.plugin.testAgentConnection()]
-    ]);
+    ], t("set.testConnection"));
 
-    new Setting(container)
+    const advanced = this.advanced(container, "opencode-options");
+    this.createSettingRow(advanced, `credential:mcpServersJson:${credentialBinding(this.plugin.settings, "mcpServersJson")}`)
       .setName(t("set.mcpServers"))
-      .setDesc(t("set.mcpServersDesc"))
+      .setDesc(`${t("set.mcpServersDesc")} ${t("set.mcpCredentialProtection")}`)
       .addTextArea((area) => {
+        const binding=credentialBinding(this.plugin.settings,"mcpServersJson");
         area.setPlaceholder(
           '{ "mcpServers": { "fetch": { "command": "uvx", "args": ["mcp-server-fetch"] } } }'
         );
@@ -1003,12 +1528,11 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
               new Notice(t("notice.mcpConfigError", { detail: parsed.error }));
             }
           }
-          this.plugin.settings.mcpServersJson = value;
-          void this.plugin.persistSettings();
+          void this.commitCredential("mcpServersJson",value,binding);
         });
       });
 
-    new Setting(container)
+    new Setting(advanced)
       .setName(t("set.permPolicy"))
       .setDesc(t("set.permPolicyDesc"))
       .addDropdown((dropdown) => {
@@ -1026,20 +1550,15 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
           });
       });
 
-    new Setting(container)
+    new Setting(advanced)
       .setName(t("set.alwaysAllowTools"))
       .setDesc(t("set.alwaysAllowToolsDesc"))
       .addText((text) => {
         text
           .setPlaceholder("read, search")
           .setValue(this.plugin.settings.alwaysAllowTools.join(", "));
-        text.inputEl.addEventListener("blur", () => {
-          this.plugin.settings.alwaysAllowTools = text
-            .getValue()
-            .split(",")
-            .map((item) => item.trim())
-            .filter((item) => item !== "");
-          void this.plugin.persistSettings();
+        this.bindSettingInput(text.inputEl, "alwaysAllowTools", value => value.split(",").map(item => item.trim()).filter(Boolean), {
+          format: value => value.join(", ")
         });
       });
   }
@@ -1054,17 +1573,54 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     password = false,
     onCommit?: () => void
   ): void {
-    new Setting(container)
+    if(key==="apiKey") {this.addCredentialInput(container,i18nKey,key,onCommit);return;}
+    this.createSettingRow(container, `setting:${i18nKey}`)
       .setName(t(i18nKey))
       .setDesc(t(`${i18nKey}Desc`))
       .addText((text) => {
         if (password) text.inputEl.type = "password";
         text.setPlaceholder(placeholder).setValue(value);
-        text.inputEl.addEventListener("blur", () => {
-          this.plugin.settings[key] = text.getValue().trim();
-          void this.plugin.persistSettings().then(() => onCommit?.());
-        });
+        this.bindSettingInput(text.inputEl, key, value => value.trim(), { onCommit });
       });
+  }
+
+  private addCredentialInput(container:HTMLElement,label:string,slot:CredentialSlot,onCommit?:()=>void):void {
+    let binding=credentialBinding(this.plugin.settings,slot);
+    const hasReference=this.plugin.settings.credentialRefs.some(ref=>ref.slot===slot&&ref.binding===binding);
+    const setting=this.createSettingRow(container,`credential:${slot}:${binding}`).setName(t(label)).setDesc(t("set.credentialInputDesc"));
+    setting.addText(text=>{
+      text.inputEl.type="password";text.inputEl.autocomplete="new-password";
+      text.setValue("").setPlaceholder(this.plugin.settings[slot]||hasReference?t("set.credentialConfigured"):t("set.credentialInput"));
+      let edited=false;text.inputEl.addEventListener("input",()=>{edited=true;});
+      text.inputEl.addEventListener("focus",()=>{if(!edited){binding=credentialBinding(this.plugin.settings,slot);setting.settingEl.dataset.atlSettingsId=`credential:${slot}:${binding}`;}});
+      text.inputEl.addEventListener("blur",()=>{
+        if(!edited)return;edited=false;
+        const value=text.getValue().trim();text.setValue("");
+        // Clearing is a separate explicit operation; an untouched password box
+        // must not erase an unresolved or temporarily unavailable reference.
+        if(value)void this.commitCredential(slot,value,binding,onCommit);
+      });
+    });
+    const credentialState = credentialStatusFor(this.plugin.settings);
+    if (this.plugin.settings[slot] || hasReference) {
+      const stateKey = credentialState?.unavailableSlots.includes(slot) ? "credentialUnavailable"
+        : credentialState?.sessionSlots.includes(slot) ? "credentialSessionOnly"
+        : credentialState?.legacySlots.includes(slot) || credentialState?.state === "save-failed" ? "credentialAttention"
+        : hasReference && credentialState?.storage === "available" ? "credentialEncrypted" : "credentialAttention";
+      setting.settingEl.createEl("p", { cls: "atl-settings-credential-state", text: t(`settings.design.${stateKey}`), attr: { role: "status" } });
+    }
+    if(this.plugin.settings[slot]||hasReference)setting.addButton(button=>button.setButtonText(t("set.credentialClear")).onClick(()=>this.commitCredential(slot,"",binding)));
+  }
+
+  private async commitCredential(slot:CredentialSlot,value:string,binding:string,onCommit?:()=>void):Promise<void> {
+    if(!credentialStatusFor(this.plugin.settings)){new Notice(t("notice.credentialUninitialized"));return;}
+    if(credentialBinding(this.plugin.settings,slot)!==binding){new Notice(t("notice.credentialConnectionChanged"));this.refresh();return;}
+    this.plugin.settings[slot]=value;
+    try {
+      await this.plugin.persistSettings();
+      if(credentialStatusFor(this.plugin.settings)?.state==="session-only")new Notice(t("notice.credentialSessionOnly"));
+      onCommit?.();this.refresh();
+    } catch {new Notice(t("notice.credentialSaveFailed"));}
   }
 
   /**
@@ -1100,7 +1656,7 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     if (current && !(current in options)) {
       options[current] = `${current} · ${t("set.modelUnavailable")}`;
     }
-    new Setting(container)
+    this.createSettingRow(container, `setting:${key}`)
       .setName(t(i18nKey))
       .setDesc(t(`${i18nKey}Desc`))
       .addDropdown((dropdown) =>
@@ -1110,8 +1666,49 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings[key] = value;
             await this.plugin.persistSettings();
+            this.refreshRouteModels();
           })
       );
+  }
+
+  /** Include assignment and rollback in the queue, not only the disk write. */
+  private queueOrdinarySettings(operation: () => Promise<void>): Promise<void> {
+    const result = this.ordinarySettingsQueue.then(operation);
+    this.ordinarySettingsQueue = result.catch(() => {});
+    return result;
+  }
+
+  private bindSettingInput<Key extends keyof AnnotationTutorLiteSettings>(
+    input: HTMLInputElement | HTMLTextAreaElement,
+    key: Key,
+    parse: (draft: string) => AnnotationTutorLiteSettings[Key],
+    options: {
+      format?: (value: AnnotationTutorLiteSettings[Key]) => string;
+      isCurrent?: () => boolean; onCommit?: () => void;
+      prepare?: () => () => void;
+    } = {}
+  ): void {
+    const row = input.closest<HTMLElement>(".setting-item");
+    if (row) row.dataset.atlSettingsId = `setting:${String(key)}`;
+    bindCommittedInput(input, {
+      read: () => this.plugin.settings[key], parse, ...options,
+      equal: (left, right) => Array.isArray(left) && Array.isArray(right) ? JSON.stringify(left) === JSON.stringify(right) : Object.is(left, right),
+      save: value => this.queueOrdinarySettings(async () => {
+        if (options.isCurrent?.() === false) throw new Error("settings-binding-changed");
+        const previous = this.plugin.settings[key];
+        const equal = Array.isArray(previous) && Array.isArray(value) ? JSON.stringify(previous) === JSON.stringify(value) : Object.is(previous, value);
+        if (equal) return;
+        const rollback = options.prepare?.();
+        this.plugin.settings[key] = value;
+        try { await this.plugin.persistSettings(); options.onCommit?.(); if (["apiModel", "agentModel", "boardApiModel", "boardAgentModel"].includes(String(key))) this.refreshRouteModels(); }
+        catch (error) {
+          if (this.plugin.settings[key] === value) this.plugin.settings[key] = previous;
+          rollback?.();
+          throw error;
+        }
+      }),
+      onError: () => { new Notice(t("notice.settingsSaveFailed")); }
+    });
   }
 
   private addText(
@@ -1126,15 +1723,12 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     value: string,
     placeholder: string
   ): void {
-    new Setting(container)
+    this.createSettingRow(container, `setting:${i18nKey}`)
       .setName(t(i18nKey))
       .setDesc(t(`${i18nKey}Desc`))
       .addText((text) => {
         text.setPlaceholder(placeholder).setValue(value);
-        text.inputEl.addEventListener("blur", () => {
-          this.plugin.settings[key] = text.getValue().trim();
-          void this.plugin.persistSettings();
-        });
+        this.bindSettingInput(text.inputEl, key, value => value.trim());
       });
   }
 
@@ -1144,7 +1738,7 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     key: keyof AnnotationTutorLiteSettings,
     rerender = false
   ): void {
-    new Setting(container)
+    this.createSettingRow(container, `setting:${i18nKey}`)
       .setName(t(i18nKey))
       .setDesc(t(`${i18nKey}Desc`))
       .addToggle((toggle) =>
@@ -1154,12 +1748,33 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
             (this.plugin.settings[key] as boolean) = value;
             await this.plugin.persistSettings();
             this.plugin.applyDisplaySettings();
-            if (rerender) this.display();
+            if (rerender) this.render(true);
           })
       );
   }
 
   private renderFeedback(container: HTMLElement): void {
+    this.addToggle(container, "upgrade.learningFlowEnabled", "learningFlowEnabled");
+    this.addToggle(container, "upgrade.supportCheckinEnabled", "supportCheckinEnabled");
+    this.addToggle(container, "upgrade.learningExpertsEnabled", "learningExpertsEnabled");
+    new Setting(container).setName(t("upgrade.supportRetentionDays")).addText(text => {
+      text.setValue(String(this.plugin.settings.supportRetentionDays)); text.inputEl.type = "number";
+      this.bindSettingInput(text.inputEl, "supportRetentionDays", value => {
+        if (!/^\d+$/.test(value)) throw new Error("invalid-retention-days");
+        return Math.max(1, Math.min(30, Number(value)));
+      });
+    });
+    new Setting(container).setName(t("upgrade.dailyMinutes")).addText(text => {
+      text.setValue(String(this.plugin.settings.learningDailyMinutes)); text.inputEl.type = "number";
+      this.bindSettingInput(text.inputEl, "learningDailyMinutes", value => {
+        if (!/^\d+$/.test(value)) throw new Error("invalid-daily-minutes");
+        return Math.max(5, Math.min(180, Number(value)));
+      });
+    });
+    new Setting(container).setName(t("upgrade.teachingMode")).addDropdown(drop=>{
+      for(const mode of ["auto","answer","hint","coach","check"] as const)drop.addOption(mode,t(`upgrade.mode.${mode}`));
+      drop.setValue(this.plugin.settings.teachingMode).onChange(async value=>{this.plugin.settings.teachingMode=value as typeof this.plugin.settings.teachingMode;await this.plugin.persistSettings();});
+    });
     // Opt-in learning-feedback mechanisms — all OFF by default.
     this.addToggle(container, "set.enableSpacedReview", "enableSpacedReview", true);
     if (this.plugin.settings.enableSpacedReview) {
@@ -1182,8 +1797,45 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
   }
 
   private renderWeb(container: HTMLElement): void {
-    // The master switch starts/stops the localhost server, so it can't reuse
-    // the generic toggle helper (which only persists + repaints).
+    container.createEl("h3", { text: t("set.web.shared") });
+    const routeLink = this.createSettingRow(container, "web-route-link").setName(t("set.web.engine")).setDesc(t("set.web.engineDesc"));
+    routeLink.addButton(button => button.setButtonText(t("settings.design.page.connections")).onClick(() => { void this.navigateSettings("connections"); }));
+    this.addToggle(container, "set.web.autoAnalyze", "webAutoAnalyze");
+
+    new Setting(container)
+      .setName(t("set.web.captureDir"))
+      .setDesc(t("set.web.captureDirDesc"))
+      .addText((text) => {
+        text.setPlaceholder(this.plugin.defaultCaptureDir()).setValue(this.plugin.settings.webCaptureDir);
+        this.bindSettingInput(text.inputEl, "webCaptureDir", value => value.trim(), {
+          prepare: () => {
+            const previous = this.plugin.settings.webOfficialTemplateVersion;
+            this.plugin.settings.webOfficialTemplateVersion = "";
+            return () => { if (this.plugin.settings.webOfficialTemplateVersion === "") this.plugin.settings.webOfficialTemplateVersion = previous; };
+          }
+        });
+      })
+      .addExtraButton((button) => button.setIcon("folder-open").setTooltip(t("set.web.openCaptureDir"))
+        .onClick(() => void this.plugin.openWebCaptureDir()));
+
+    container.createEl("h3", { text: t("set.web.official") });
+    new Setting(container)
+      .setName(t("set.web.officialEnabled"))
+      .setDesc(t("set.web.officialEnabledDesc"))
+      .addToggle((toggle) => toggle.setValue(this.plugin.settings.webOfficialIntegrationEnabled)
+        .onChange(async (value) => {
+          this.plugin.settings.webOfficialIntegrationEnabled = value;
+          await this.plugin.persistSettings();
+          this.updateSection(officialFields, content => {
+            if (this.plugin.settings.webOfficialIntegrationEnabled) this.renderOfficialWebClipper(content);
+          });
+        }));
+    const officialFields = container.createDiv({ cls: "atl-official-clipper-fields" });
+    if (this.plugin.settings.webOfficialIntegrationEnabled) this.renderOfficialWebClipper(officialFields);
+
+    container.createEl("h3", { text: t("set.web.advanced") });
+    // This switch is intentionally only the legacy localhost bridge. The
+    // official integration above remains independent and can coexist with it.
     new Setting(container)
       .setName(t("set.web.enabled"))
       .setDesc(t("set.web.enabledDesc"))
@@ -1193,80 +1845,64 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.webEnabled = value;
             await this.plugin.persistSettings();
-            await this.plugin.applyWebBridge();
-            this.display();
+            await this.plugin.applyWebBridge(true);
+            this.render(true);
           })
       );
     this.renderWebInstall(container);
-    if (!this.plugin.settings.webEnabled) return;
-
-    new Setting(container)
-      .setName(t("set.web.port"))
-      .setDesc(t("set.web.portDesc"))
-      .addText((text) => {
-        text
-          .setPlaceholder(String(DEFAULT_SETTINGS.webBridgePort))
-          .setValue(String(this.plugin.settings.webBridgePort));
-        text.inputEl.type = "number";
-        text.inputEl.addEventListener("blur", async () => {
-          const parsed = Number.parseInt(text.getValue(), 10);
-          if (Number.isInteger(parsed) && parsed >= 1024 && parsed <= 65535) {
-            this.plugin.settings.webBridgePort = parsed;
-          }
-          text.setValue(String(this.plugin.settings.webBridgePort));
-          await this.plugin.persistSettings();
-          await this.plugin.applyWebBridge();
-        });
-      });
-
-    new Setting(container)
-      .setName(t("set.web.token"))
-      .setDesc(t("set.web.tokenDesc"))
-      .addText((text) => {
-        text.setValue(this.plugin.settings.webBridgeToken);
-        text.inputEl.readOnly = true;
-      })
-      .addExtraButton((button) =>
-        button
-          .setIcon("copy")
-          .setTooltip(t("set.web.copyToken"))
-          .onClick(async () => {
-            await navigator.clipboard.writeText(
-              this.plugin.settings.webBridgeToken
-            );
-            new Notice(t("notice.webTokenCopied"));
-          })
-      )
-      .addExtraButton((button) =>
-        button
-          .setIcon("refresh-cw")
-          .setTooltip(t("set.web.regenToken"))
-          .onClick(async () => {
-            this.plugin.regenerateWebToken();
-            await this.plugin.persistSettings();
-            await this.plugin.applyWebBridge();
-            this.display();
-          })
-      );
-
-    new Setting(container)
-      .setName(t("set.web.captureDir"))
-      .setDesc(t("set.web.captureDirDesc"))
-      .addText((text) => {
-        text
-          .setPlaceholder(this.plugin.defaultCaptureDir())
-          .setValue(this.plugin.settings.webCaptureDir);
-        text.inputEl.addEventListener("blur", () => {
-          this.plugin.settings.webCaptureDir = text.getValue().trim();
-          void this.plugin.persistSettings();
-        });
-      });
+    for(const client of this.plugin.listClipperClients().filter(item=>!item.revokedAt))new Setting(container)
+      .setName(client.name).setDesc(`${client.capabilities.join(" / ")} · ${client.targetDirectory}`)
+      .addButton(button=>button.setButtonText(t("set.web.revokeConnection")).onClick(async()=>{button.setDisabled(true);try{await this.plugin.revokeClipperClient(client.clientId);this.render(true);}finally{button.setDisabled(false);}}));
+    if (!this.plugin.settings.webEnabled) {
+      this.renderWebStats(container);
+      return;
+    }
 
     this.addToggle(container, "set.web.autoConvert", "webAutoConvertMarkdown");
     this.addToggle(container, "set.web.saveRendered", "webSaveRenderedHtml");
     this.addToggle(container, "set.web.saveSource", "webSaveSourceHtml");
 
+    new Setting(container)
+      .setName(t("set.web.template"))
+      .setDesc(t("set.web.templateDesc"))
+      .addTextArea((area) => {
+        area
+          .setPlaceholder("{{content}}\n\n{{highlights}}")
+          .setValue(this.plugin.settings.webPageTemplate);
+        area.inputEl.rows = 4;
+        area.inputEl.style.width = "100%";
+        this.bindSettingInput(area.inputEl, "webPageTemplate", value => value);
+      });
+
     this.renderWebStats(container);
+  }
+
+  private renderOfficialWebClipper(container: HTMLElement): void {
+    const current = this.plugin.settings.webOfficialTemplateVersion === "official-v1";
+    const install = new Setting(container)
+      .setName(t("set.web.officialInstall"))
+      .setDesc(t(current ? "set.web.officialCurrent" : "set.web.officialNeedsImport"))
+      .addButton((button) => button.setButtonText(t("set.web.openStore")).setCta()
+        .onClick(() => void this.plugin.openOfficialWebClipperStore()))
+      .addButton((button) => button.setButtonText(t("set.web.copyOfficialTemplate"))
+        .onClick(async () => {
+          await navigator.clipboard.writeText(this.plugin.officialWebClipperTemplateJson());
+          await this.plugin.markOfficialTemplateExported();
+          new Notice(t("notice.webOfficialTemplateCopied"));
+          if (this.containerEl.contains(install.settingEl)) install.setDesc(t("set.web.officialCurrent"));
+        }))
+      .addButton((button) => button.setButtonText(t("set.web.downloadOfficialTemplate"))
+        .onClick(async () => {
+          const blob = new Blob([this.plugin.officialWebClipperTemplateJson()], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const anchor = document.createElement("a");
+          anchor.href = url;
+          anchor.download = "tutor-web-capture.json";
+          anchor.click();
+          URL.revokeObjectURL(url);
+          await this.plugin.markOfficialTemplateExported();
+          if (this.containerEl.contains(install.settingEl)) install.setDesc(t("set.web.officialCurrent"));
+        }));
   }
 
   /** The install-the-extension callout, shown whether or not the bridge is on. */
@@ -1368,12 +2004,17 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
 
   private actionRow(
     container: HTMLElement,
-    actions: Array<[string, () => void | Promise<void>]>
+    actions: Array<[string, () => void | Promise<void>]>,
+    primary?: string
   ): void {
     const row = container.createDiv({ cls: "atl-actions atl-settings-actions" });
     for (const [label, action] of actions) {
-      const button = row.createEl("button", { text: label });
-      button.onclick = () => void action();
+      const button = row.createEl("button", { text: label, cls: label === primary ? "mod-cta" : "" });
+      button.onclick = async () => {
+        button.disabled = true; button.setAttribute("aria-busy", "true");
+        try { await action(); } catch (error) { new Notice(error instanceof Error ? error.message : t("notice.settingsSaveFailed")); }
+        finally { button.disabled = false; button.removeAttribute("aria-busy"); }
+      };
     }
   }
 
@@ -1400,7 +2041,7 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     const input = container.createEl("input", { type: "text" });
     input.placeholder = t("dash.search");
     input.value = value;
-    input.onchange = () => onChange(input.value);
+    bindSearchInput(input, onChange);
   }
 
   private selectFilter(
@@ -1409,21 +2050,29 @@ export class AnnotationTutorLiteSettingTab extends PluginSettingTab {
     selected: string,
     emptyLabel: string,
     onChange: (value: string) => void
-  ): void {
+  ): HTMLSelectElement {
     const select = container.createEl("select");
-    for (const value of values) {
-      select.createEl("option", {
-        value,
-        text: value || emptyLabel
-      });
-    }
-    select.value = selected;
+    replaceListOptions(select, values, emptyLabel, selected);
     select.onchange = () => onChange(select.value);
+    return select;
   }
 
-  private renderCurrentPage(): void {
-    this.display();
+  private tags(kind: "cells" | "scenes"): string[] {
+    if (this.tagsSnapshot !== this.plugin.librarySnapshot) {
+      this.tagsSnapshot = this.plugin.librarySnapshot;
+      for (const group of ["cells", "scenes"] as const) this.cachedTags[group] =
+        [...new Set(this.plugin.librarySnapshot[group].flatMap(record => record.tags))].sort();
+    }
+    return this.cachedTags[kind];
   }
+  private refreshTags(select: HTMLSelectElement, kind: "cells" | "scenes", selected?: string): void {
+    if (this.tagVersions.get(select) === this.plugin.librarySnapshot) return;
+    this.tagVersions.set(select, this.plugin.librarySnapshot);
+    const values = ["", ...this.tags(kind)];
+    if (selected && !values.includes(selected)) values.push(selected);
+    replaceListOptions(select, values, t("settings.allTags"), selected);
+  }
+
 }
 
 function date(value: string): string {

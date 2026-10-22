@@ -19,6 +19,31 @@ describe("resolveLocale", () => {
 });
 
 describe("t", () => {
+  it("replaces every occurrence and preserves literal replacement text", () => {
+    const key = "test.repeatedPlaceholders";
+    localeTables.en[key] = "{value} / {value} / {other} / {unknown}";
+    setLocale("en");
+    try {
+      expect(t(key, { value: "$& $$ $` $' {other}", other: 0 })).toBe(
+        "$& $$ $` $' {other} / $& $$ $` $' {other} / 0 / {unknown}"
+      );
+    } finally {
+      delete localeTables.en[key];
+    }
+  });
+
+  it("does not interpolate properties inherited from the variable object", () => {
+    const key = "test.ownPlaceholders";
+    localeTables.en[key] = "{inherited} / {own}";
+    setLocale("en");
+    try {
+      const vars = Object.assign(Object.create({ inherited: "hidden" }), { own: "shown" });
+      expect(t(key, vars)).toBe("{inherited} / shown");
+    } finally {
+      delete localeTables.en[key];
+    }
+  });
+
   it("returns the active locale's string and fills placeholders", () => {
     setLocale("zh");
     expect(t("action.delete")).toBe("删除");

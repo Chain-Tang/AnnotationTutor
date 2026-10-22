@@ -3,7 +3,7 @@
 // drives the SM-2 scheduler (see srs.ts). Pure UI — the plugin supplies the cards
 // and handles grading/persistence via the handlers.
 
-import { type App, Modal, setIcon } from "obsidian";
+import { type App, Modal, Notice, setIcon } from "obsidian";
 import { t } from "../i18n.js";
 import type { ReviewGrade } from "../srs.js";
 
@@ -24,6 +24,9 @@ const GRADES: ReviewGrade[] = ["again", "hard", "good", "easy"];
 export class ReviewModal extends Modal {
   private index = 0;
   private reviewed = 0;
+  private grading = false;
+  private closed = false;
+  private readonly completed = new Set<string>();
 
   public constructor(
     app: App,
@@ -92,13 +95,23 @@ export class ReviewModal extends Modal {
   }
 
   private async gradeAndAdvance(card: ReviewCard, grade: ReviewGrade): Promise<void> {
-    await this.handlers.grade(card, grade);
-    this.reviewed += 1;
-    this.index += 1;
-    this.renderCurrent();
+    if (this.closed || this.grading || this.completed.has(card.cellId)) return;
+    this.grading = true;
+    this.contentEl.querySelectorAll("button").forEach(button => button.disabled = true);
+    try {
+      await this.handlers.grade(card, grade);
+      this.completed.add(card.cellId); this.reviewed += 1; this.index += 1;
+      if (!this.closed) this.renderCurrent();
+    } catch {
+      if (!this.closed) new Notice(t("upgrade.reviewSaveFailed"));
+    } finally {
+      this.grading = false;
+      this.contentEl.querySelectorAll("button").forEach(button => button.disabled = false);
+    }
   }
 
   public override onClose(): void {
+    this.closed = true;
     this.contentEl.empty();
   }
 }

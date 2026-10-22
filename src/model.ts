@@ -65,10 +65,44 @@ export type DialogueRole = "user" | "agent";
  * reloads and is readable/editable as plain Markdown.
  */
 export type DialogueTurn = {
+  /** Assigned lazily to legacy turns when a user derives a branch. */
+  id?: string;
   role: DialogueRole;
   text: string;
   /** ISO timestamp the turn was recorded. */
   at: string;
+};
+
+export type AnnotationReplySnapshot = {
+  id: string;
+  kind: "review" | "dialogue";
+  version: string;
+  text: string;
+  /** Question and complete prefix version pinned when this edge was created. */
+  question?: string;
+  contextVersion?: string;
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
+};
+
+/** A single-parent, pinned conversation edge. Children are derived from the index. */
+export type AnnotationBranch = {
+  parentAnnotationId: string;
+  rootAnnotationId: string;
+  parentReply: AnnotationReplySnapshot;
+  sourceVersion: string;
+};
+
+export type AnnotationRequestStatus = "draft" | "generating" | "completed" | "failed" | "cancelled" | "interrupted";
+export type AnnotationRequest = {
+  id: string;
+  status: AnnotationRequestStatus;
+  question: string;
+  errorCode?: string;
+  startedAt?: string;
+  /** Pinned current-card and source versions reject late continuation replies. */
+  contextVersion?: string;
+  sourceVersion?: string;
+  updatedAt: string;
 };
 
 export type AgentReview = {
@@ -83,6 +117,7 @@ export type AgentReview = {
 };
 
 export type Annotation = {
+  tracking?: "ordinary" | "private" | "excluded";
   id: string;
   sourceFile: string;
   anchor: Anchor;
@@ -99,6 +134,10 @@ export type Annotation = {
   reviewHistory?: string;
   /** In-annotation chat turns (learner + tutor), persisted in the file. */
   dialogue?: DialogueTurn[];
+  branch?: AnnotationBranch;
+  request?: AnnotationRequest;
+  /** Independent continuation draft/request; never replaces the initial Q+A. */
+  dialogueRequest?: AnnotationRequest;
   createdAt: string;
   updatedAt: string;
 };
@@ -176,8 +215,15 @@ export type LearnerProfile = {
 
 /** One turn of a saved sidebar chat session (see ChatLog). */
 export type ChatLogTurn = {
+  id?: string;
+  status?: "complete" | "stopped" | "unknown";
+  source?: "chat" | "board";
+  boardId?: string;
+  tracking?: "ordinary" | "private" | "excluded";
   role: "user" | "assistant";
   text: string;
+  /** An optional local task hint; restore must validate it against the transaction journal. */
+  taskId?: string;
   /** ISO timestamp the turn was recorded. */
   at: string;
 };
@@ -196,6 +242,7 @@ export type ChatLogMode = "ask" | "plan" | "build";
  * received; `at` orders the turns.
  */
 export type ChatLog = {
+  tracking?: "ordinary" | "private" | "excluded";
   id: string;
   title: string;
   engine: ChatLogEngine;
@@ -245,6 +292,7 @@ export type MemoryProposal = {
 
 /** Lightweight, rebuildable index row (spec §7.4 / §10). */
 export type IndexRecord = {
+  tracking?: "ordinary" | "private" | "excluded";
   annotationId: string;
   memoryFile: string;
   sourceFile: string;
@@ -265,6 +313,10 @@ export type IndexRecord = {
   userNote?: string;
   /** In-annotation dialogue turns, so margin cards render them without re-reading. */
   dialogue?: DialogueTurn[];
+  branch?: AnnotationBranch;
+  request?: AnnotationRequest;
+  /** Independent continuation draft/request; never replaces the initial Q+A. */
+  dialogueRequest?: AnnotationRequest;
   createdAt: string;
   updatedAt: string;
 };

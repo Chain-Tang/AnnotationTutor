@@ -12,6 +12,7 @@ import { cleanGloss } from "./translate.js";
 
 /** One cached term and its meaning in the reader's native language. */
 export type GlossaryEntry = { surface: string; gloss: string };
+type GlossaryMatch = { entry: GlossaryEntry; lower: string; length: number; wordBoundary: boolean };
 
 /** The pre-translation result for one document. */
 export type FileGlossary = {
@@ -21,6 +22,8 @@ export type FileGlossary = {
   entries: GlossaryEntry[];
   /** Normalized surface -> entry, for O(1) single-word lookup. */
   byKey: Map<string, GlossaryEntry>;
+  /** Longest-first candidates grouped by their first lowercase UTF-16 unit. */
+  matchesByFirst: ReadonlyMap<string, readonly GlossaryMatch[]>;
   /**
    * True once every batch of the document has been glossed. The cache is written
    * incrementally (so Alt+T can use the parts done so far), so a `false` here
@@ -134,12 +137,20 @@ export function buildFileGlossary(
   const unique = [...byKey.values()].sort(
     (a, b) => b.surface.length - a.surface.length
   );
-  return { hash, entries: unique, byKey, complete };
+  const matchesByFirst = new Map<string, GlossaryMatch[]>();
+  for (const entry of unique) {
+    const lower = entry.surface.toLowerCase(), first = lower[0];
+    if (!first) continue;
+    const bucket = matchesByFirst.get(first) ?? [];
+    bucket.push({ entry, lower, length: entry.surface.length, wordBoundary: needsWordBoundary(entry.surface) });
+    matchesByFirst.set(first, bucket);
+  }
+  return { hash, entries: unique, byKey, matchesByFirst, complete };
 }
 
 /** An empty glossary, e.g. when a document has no glossable content. */
 export function emptyFileGlossary(hash: string): FileGlossary {
-  return { hash, entries: [], byKey: new Map(), complete: true };
+  return buildFileGlossary(hash, []);
 }
 
 /**
@@ -177,32 +188,31 @@ export function lookupGloss(
 export function applyGlossary(passage: string, glossary: FileGlossary): string {
   if (glossary.entries.length === 0) return passage;
   const lower = passage.toLowerCase();
-  let out = "";
-  let i = 0;
+  const out: string[] = [];
+  let i = 0, plainFrom = 0;
   while (i < passage.length) {
-    let matched: GlossaryEntry | undefined;
-    for (const entry of glossary.entries) {
-      const len = entry.surface.length;
-      if (len === 0) continue;
-      if (!lower.startsWith(entry.surface.toLowerCase(), i)) continue;
-      if (needsWordBoundary(entry.surface)) {
+    let matched: GlossaryMatch | undefined;
+    for (const candidate of glossary.matchesByFirst.get(lower[i]!) ?? []) {
+      if (!lower.startsWith(candidate.lower, i)) continue;
+      if (candidate.wordBoundary) {
         const before = i > 0 ? passage[i - 1] : undefined;
-        const after = passage[i + len];
+        const after = passage[i + candidate.length];
         if (isAlphaNum(before) || isAlphaNum(after)) continue;
       }
-      matched = entry;
+      matched = candidate;
       break;
     }
     if (matched) {
-      const surfaceInText = passage.slice(i, i + matched.surface.length);
-      out += `${surfaceInText} (${matched.gloss})`;
-      i += matched.surface.length;
+      out.push(passage.slice(plainFrom, i), `${passage.slice(i, i + matched.length)} (${matched.entry.gloss})`);
+      i += matched.length;
+      plainFrom = i;
     } else {
-      out += passage[i];
       i += 1;
     }
   }
-  return out;
+  if (!out.length) return passage;
+  out.push(passage.slice(plainFrom));
+  return out.join("");
 }
 
 /**

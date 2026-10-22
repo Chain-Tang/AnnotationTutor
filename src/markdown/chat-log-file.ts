@@ -9,6 +9,7 @@ import type { ChatLog, ChatLogHead, ChatLogTurn } from "../model.js";
 import { chatLogHeadSchema, chatLogSchema } from "../schemas.js";
 import { fromBlockquote, toBlockquote } from "./blocks.js";
 import { parseFrontmatter, renderFrontmatter, section } from "./frontmatter.js";
+import { z } from "zod";
 
 // File labels are fixed English so parsing is locale-independent (same policy as
 // annotation-file.ts's DIALOGUE_LABEL); the chat UI shows localized labels.
@@ -21,6 +22,12 @@ const ROLE_LABEL: Record<ChatLogTurn["role"], string> = {
 export const CHAT_LOG_MAX_TURNS = 50;
 /** How many characters of a restored session are rendered / resent at most. */
 export const CHAT_LOG_MAX_CHARS = 20_000;
+const localTaskId=z.uuid();
+const turnMetadataSchema=z.object({
+  id:z.string().min(1).max(200).optional(),status:z.enum(["complete","stopped","unknown"]).optional(),
+  source:z.enum(["chat","board"]).optional(),boardId:z.string().min(1).max(500).optional(),
+  tracking:z.enum(["ordinary","private","excluded"]).optional(),
+}).strict();
 
 export function serializeChatLog(log: ChatLog): string {
   const turns = log.turns
@@ -28,12 +35,15 @@ export function serializeChatLog(log: ChatLog): string {
       const head = turn.at
         ? `### ${ROLE_LABEL[turn.role]} — ${turn.at}`
         : `### ${ROLE_LABEL[turn.role]}`;
-      return `${head}\n\n${toBlockquote(turn.text)}`;
+      const task=localTaskId.safeParse(turn.taskId).success?`\n\n<!-- tutor-task-id: ${turn.taskId} -->`:"";
+      const metadata=turnMetadataSchema.parse({...(turn.id?{id:turn.id}:{}),...(turn.status?{status:turn.status}:{}),...(turn.source?{source:turn.source}:{}),...(turn.boardId?{boardId:turn.boardId}:{}),...(turn.tracking?{tracking:turn.tracking}:{})});
+      const marker=Object.keys(metadata).length?`\n\n<!-- tutor-turn: ${JSON.stringify(metadata).replace(/</g,"\\u003c")} -->`:"";
+      return `${head}${task}${marker}\n\n${toBlockquote(turn.text)}`;
     })
     .join("\n\n");
   return renderFrontmatter(
     {
-      schema: 2,
+      schema: 3,
       kind: "chat-log",
       id: log.id,
       title: log.title,
@@ -43,6 +53,7 @@ export function serializeChatLog(log: ChatLog): string {
       turns: log.turns.length,
       created_at: log.createdAt,
       updated_at: log.updatedAt
+      ,...(log.tracking?{tracking:log.tracking}:{})
     },
     [`# ${log.title}`, "", "## Turns", "", turns].join("\n")
   );
@@ -53,7 +64,7 @@ export function parseChatLogFile(markdown: string): ChatLog | null {
   const document = parseFrontmatter(markdown);
   if (
     !document ||
-    document.data.schema !== 2 ||
+    ![2,3].includes(document.data.schema as number) ||
     document.data.kind !== "chat-log"
   ) {
     return null;
@@ -67,6 +78,7 @@ export function parseChatLogFile(markdown: string): ChatLog | null {
     turns: parseChatTurns(section(document.body, "Turns")),
     createdAt: document.data.created_at,
     updatedAt: document.data.updated_at
+    ,...(document.data.tracking?{tracking:document.data.tracking}:{})
   });
   return parsed.success ? parsed.data : null;
 }
@@ -80,7 +92,7 @@ export function parseChatLogHead(markdown: string): ChatLogHead | null {
   const document = parseFrontmatter(markdown);
   if (
     !document ||
-    document.data.schema !== 2 ||
+    ![2,3].includes(document.data.schema as number) ||
     document.data.kind !== "chat-log"
   ) {
     return null;
@@ -131,11 +143,13 @@ function parseChatTurns(sectionBody: string): ChatLogTurn[] {
   const turns: ChatLogTurn[] = [];
   let role: ChatLogTurn["role"] | null = null;
   let at = "";
+  let taskId:string|undefined,taskMarkers=0;
+  let metadata:z.infer<typeof turnMetadataSchema>|undefined,metadataMarkers=0;
   let buffer: string[] = [];
   const flush = (): void => {
     if (role !== null) {
       const text = fromBlockquote(buffer.join("\n"));
-      if (text) turns.push({ role, text, at });
+      if (text) turns.push({ role, text, at, ...(taskMarkers===1&&taskId?{taskId}:{}),...(metadataMarkers===1&&metadata?metadata:{}) });
     }
     buffer = [];
   };
@@ -147,10 +161,20 @@ function parseChatTurns(sectionBody: string): ChatLogTurn[] {
       const parts = title.split(" — ");
       const label = (parts[0] ?? "").trim().toLowerCase();
       at = parts.length > 1 ? parts.slice(1).join(" — ").trim() : "";
+      taskId=undefined;taskMarkers=0;
+      metadata=undefined;metadataMarkers=0;
       role =
         label.startsWith("you") || label.startsWith("user")
           ? "user"
           : "assistant";
+    } else if(/^<!-- tutor-task-id:/.test(line)) {
+      taskMarkers++;
+      const value=/^<!-- tutor-task-id: ([^ ]+) -->$/.exec(line)?.[1];
+      if(localTaskId.safeParse(value).success)taskId=value;
+    } else if(/^<!-- tutor-turn:/.test(line)) {
+      metadataMarkers++;
+      const value=/^<!-- tutor-turn: (.+) -->$/.exec(line)?.[1];
+      try{const parsed=turnMetadataSchema.safeParse(JSON.parse(value??""));if(parsed.success)metadata=parsed.data;}catch{/* Invalid local metadata never becomes message text or identity. */}
     } else {
       buffer.push(line);
     }

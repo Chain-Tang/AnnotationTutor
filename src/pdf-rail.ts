@@ -4,9 +4,11 @@
 
 import type { AnchorMark } from "./decorations-plan.js";
 import { CardPool } from "./card-pool.js";
+import { InlineAnnotationWorkflow } from "./inline-annotation-workflow.js";
 import {
   clearChildren,
   drawConnector,
+  getMarginCardHandlers,
   lastLineRect,
   loadCardGeom,
   placeCards,
@@ -27,6 +29,7 @@ export class PdfRail {
   private readonly anchorIndex = new Map<string, number>();
   private readonly geom = new Map<string, Geom>();
   private readonly cards = new CardPool();
+  private workflow: InlineAnnotationWorkflow | null = null;
   private hostObserver: ResizeObserver | null = null;
   private pageObserver: MutationObserver | null = null;
   private marks: AnchorMark[] = [];
@@ -58,6 +61,9 @@ export class PdfRail {
     this.overlay = doc.createElement("div");
     this.overlay.className = "atl-rail atl-rail--reading atl-rail--pdf";
     host.append(this.svg, this.overlay);
+    this.workflow = new InlineAnnotationWorkflow(
+      this.overlay, this.svg, () => host.getBoundingClientRect(), () => this.schedule()
+    );
 
     scroller.addEventListener("scroll", this.onScroll, { passive: true });
     const win = doc.defaultView;
@@ -79,6 +85,8 @@ export class PdfRail {
     this.hostObserver = null;
     this.pageObserver?.disconnect();
     this.pageObserver = null;
+    this.workflow?.destroy();
+    this.workflow = null;
     this.cards.clear();
     if (this.frame) {
       const win = this.host?.ownerDocument.defaultView ?? window;
@@ -148,18 +156,29 @@ export class PdfRail {
     if (!svg.isConnected) host.appendChild(svg);
     this.cards.retain(this.expanded);
     clearChildren(svg);
-    if (this.expanded.size === 0) return;
+    if (this.expanded.size === 0) {
+      this.workflow?.render([], { skin: this.skin, showReview: this.showReview });
+      return;
+    }
 
     const hostRect = host.getBoundingClientRect();
     svg.setAttribute("width", `${hostRect.width}`);
     svg.setAttribute("height", `${hostRect.height}`);
     const railWidth = host.clientWidth;
     const byId = new Map(this.marks.map((mark) => [mark.id, mark]));
+    // The conversation index advances independently of PDF highlight anchors.
+    const currentById = new Map((getMarginCardHandlers()?.graphCards?.([...this.expanded][0] ?? "") ?? [])
+      .filter(mark => !mark.branch).map(mark => [mark.id, mark]));
     const placed: PlacedCard[] = [];
+    const roots: { mark: AnchorMark; card: HTMLElement }[] = [];
 
     for (const id of this.expanded) {
-      const mark = byId.get(id);
-      if (!mark) continue;
+      const sourceMark = byId.get(id);
+      if (!sourceMark) continue;
+      const current = currentById.get(id);
+      const mark = current && (!sourceMark.sourceFile || !current.sourceFile || sourceMark.sourceFile === current.sourceFile)
+        ? { ...current, blockId: sourceMark.blockId, selectedText: sourceMark.selectedText, sourceFile: sourceMark.sourceFile ?? current.sourceFile }
+        : sourceMark;
       // PDF.js may replace text-layer nodes during zoom/lazy rendering, so find
       // the current highlight by id on every render instead of retaining a node.
       const spans = scroller.querySelectorAll<HTMLElement>(
@@ -179,8 +198,10 @@ export class PdfRail {
         geom,
         showReview: this.showReview,
         onCollapse: () => this.toggle(id),
-        onDragMove: (element) =>
-          updateConnector(svg, element, host.getBoundingClientRect())
+        onDragMove: (element) => {
+          updateConnector(svg, element, host.getBoundingClientRect());
+          this.workflow?.updateConnections();
+        }
       });
       if (card.parentElement !== overlay) overlay.appendChild(card);
       const rect = anchor ? lastLineRect(anchor) : null;
@@ -189,6 +210,7 @@ export class PdfRail {
       card.hidden = !card.dataset["dragging"] &&
         (rect.bottom < hostRect.top || rect.top > hostRect.bottom);
       if (card.hidden) continue;
+      roots.push({ mark, card });
       placed.push({
         card,
         anchorX: rect.right - hostRect.left,
@@ -201,6 +223,7 @@ export class PdfRail {
     placeCards(placed, railWidth, this.geom, (id, anchorX, anchorMidY) => {
       if (!hideLink) drawConnector(svg, overlay, id, anchorX, anchorMidY, hostRect);
     });
+    this.workflow?.render(roots, { skin: this.skin, showReview: this.showReview });
   }
 
 }

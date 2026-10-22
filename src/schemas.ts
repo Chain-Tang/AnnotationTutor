@@ -116,8 +116,14 @@ export const chatLogEngineSchema = z.enum(["opencode", "api"]);
 export const chatLogModeSchema = z.enum(["ask", "plan", "build"]);
 
 const chatLogTurnSchema = z.object({
+  id:z.string().min(1).max(200).optional(),
   role: z.enum(["user", "assistant"]),
   text: z.string(),
+  status:z.enum(["complete","stopped","unknown"]).optional(),
+  source:z.enum(["chat","board"]).optional(),
+  boardId:z.string().min(1).max(500).optional(),
+  tracking:z.enum(["ordinary","private","excluded"]).optional(),
+  taskId: z.uuid().optional(),
   at: z.string()
 });
 
@@ -129,6 +135,7 @@ export const chatLogSchema = z.object({
   engine: chatLogEngineSchema,
   mode: chatLogModeSchema,
   status: z.enum(["active", "archived"]),
+  tracking:z.enum(["ordinary","private","excluded"]).optional(),
   turns: z.array(chatLogTurnSchema),
   createdAt: isoDateSchema,
   updatedAt: isoDateSchema

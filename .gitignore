@@ -1,17 +1,44 @@
 node_modules/
 dist/
+coverage/
 *.tsbuildinfo
 
 # Finder metadata generated on macOS.
 .DS_Store
 
 # Local dev vault (e.g. created by `pnpm install:vault`); not part of the plugin.
-Tutor/
+/Tutor/
 
 # This repo doubles as the dev vault: ignore the Obsidian config and the
 # runtime memory files the plugin scaffolds inside it.
 .obsidian/
 Agent Memory/
+research/ai-drawing/runs/
 
 # Reference repos cloned for study; not part of the plugin.
 .reference/
+
+# Local audits, recovery scripts and machine-specific storage reports.
+/.codex-audit/
+/.trae/
+/design-qa.md
+/storage-cleanup-report.json
+/storage-migration-report.json
+/storage-restore.py
+
+# Generated research media and model-run outputs; keep source and reports.
+research/**/runs/
+research/**/*.png
+research/**/*.jpg
+research/**/*.jpeg
+research/**/*.webp
+research/**/*.gif
+research/**/*.mp4
+research/**/*.zip
+research/**/*.svg
+research/**/*.tutorboard
+research/**/*.board.json
+research/**/*-latest.json
+/research/ai-drawing/artist-live-v1/
+/research/ai-drawing/three-character-cover/baseline/
+/research/ai-drawing/three-character-cover/stages/

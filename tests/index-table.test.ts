@@ -76,4 +76,19 @@ describe("index table", () => {
     expect(restored.all()).toHaveLength(1);
     expect(IndexTable.fromJson("not json").all()).toEqual([]);
   });
+
+  it("maintains generated anchors by source through replacement, movement and removal", () => {
+    const original = recordFromAnnotation(sample({ anchorOrigin: "generated" }), "a.md");
+    const table = new IndexTable([original, { ...original, annotationId: "ANN-2", sourceFile: "other.md" }]);
+    expect(table.generatedAnchors(original.sourceFile)).toEqual([original.anchor]);
+    table.upsert({ ...original, sourceFile: "moved.md", anchor: "^moved" });
+    expect(table.generatedAnchors(original.sourceFile)).toEqual([]);
+    expect(table.generatedAnchors("moved.md")).toEqual(["^moved"]);
+    table.upsert({ ...original, sourceFile: "moved.md", anchorOrigin: "existing" });
+    expect(table.generatedAnchors("moved.md")).toEqual([]);
+    table.remove("ANN-2"); expect(table.generatedAnchors("other.md")).toEqual([]);
+    table.replaceAll([original]); expect(table.generatedAnchors(original.sourceFile)).toEqual([original.anchor]);
+    const anchors = table.generatedAnchors(original.sourceFile); anchors.push("^external");
+    expect(table.generatedAnchors(original.sourceFile)).toEqual([original.anchor]);
+  });
 });

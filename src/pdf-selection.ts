@@ -37,6 +37,7 @@ export class PdfSelectionController {
   }
 
   private readonly handleContextMenu = (event: MouseEvent): void => {
+    if ((event.target as Element)?.closest?.('[data-atl-board-input="true"], .atl-board-toolbar')) { this.dismiss(); return; }
     const selection = this.readSelection(
       event.target as Node | null,
       event.view?.getSelection() ?? null
@@ -54,6 +55,7 @@ export class PdfSelectionController {
   };
 
   private readonly handlePointerDown = (event: PointerEvent): void => {
+    if ((event.target as Element)?.closest?.('[data-atl-board-input="true"], .atl-board-toolbar')) { this.press = null; this.dismiss(); return; }
     if (event.button !== 0) return;
     this.press = { x: event.clientX, y: event.clientY };
     this.cancelPendingAction();
@@ -61,6 +63,7 @@ export class PdfSelectionController {
   };
 
   private readonly handlePointerUp = (event: PointerEvent): void => {
+    if ((event.target as Element)?.closest?.('[data-atl-board-input="true"], .atl-board-toolbar')) { this.press = null; this.dismiss(); return; }
     if (event.button !== 0) return;
     const dragged = this.press && Math.hypot(event.clientX - this.press.x, event.clientY - this.press.y) > 4;
     this.press = null;

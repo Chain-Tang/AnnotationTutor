@@ -5,6 +5,11 @@
 > 依据：Qoderian 源码（`.reference/Qoderian`，v1.0.4）、excalidraw-diagram SKILL.md（v1.2.1）、ACP 协议官方文档、OpenCode ACP 文档、TutorLite 自身源码（acp-session.ts / chat-view.ts 等）、Zotero 官方中文社区文档与 obsidian-zotero-integration 仓库。
 >
 > 状态：研究与规划文档，不含代码改动。
+>
+> **2026-09-11 继续开发入口：** [Pad 手写与灵感画板](next-development-plan.md)。
+> 本文保留既有研究与历史优先级，部分缺口已有实现，现状以代码为准。
+> 新方向包含 PDF/Markdown 透明画板、人机共画及可爱表达；Tutor 形象支持预设、
+> 用户上传和双方共创。本文原有 PDF 优先级及独立 Excalidraw 路线不限制这一扩展。
 
 ---
 

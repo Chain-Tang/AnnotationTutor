@@ -63,6 +63,20 @@ describe("AcpReviewConversation", () => {
     expect(sent[2]!.method).toBe("session/prompt");
   });
 
+  it("attaches a selected-ink image as ACP multimodal content", () => {
+    const sent: Msg[] = [];
+    const conv = new AcpReviewConversation((m) => sent.push(m as Msg), {
+      cwd: "/tmp", model: "", prompt: "recognize", imageBase64: "AAAA",
+    });
+    conv.start();
+    conv.receive(result(sent[0]!.id, {}));
+    conv.receive(result(sent[1]!.id, { sessionId: "s" }));
+    expect(sent[2]!.params.prompt).toEqual([
+      { type: "text", text: "recognize" },
+      { type: "image", data: "AAAA", mimeType: "image/png" },
+    ]);
+  });
+
   it("proceeds with the prompt even if the model switch errors", async () => {
     const sent: Msg[] = [];
     const conv = new AcpReviewConversation((m) => sent.push(m as Msg), {

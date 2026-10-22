@@ -1,9 +1,11 @@
+import { sealRelease } from "./release-transaction.mjs";
+import { withBuiltArtifacts } from "./build.mjs";
 // Package the built plugin into release-ready artifacts:
-//   dist/release/annotation-tutor-lite/{main.js,manifest.json,styles.css}
+//   dist/release/annotation-tutor-lite/{main.js,manifest.json,styles.css,assets/fonts/}
 //   dist/annotation-tutor-lite-<version>.zip  (the folder, ready to unzip into
 //                                              <Vault>/.obsidian/plugins/)
-// The loose three files are what Obsidian (and BRAT) expect as release assets;
-// the zip is a convenience for manual installers.
+// Install the complete folder/ZIP: offline board fonts in assets/fonts are
+// required in addition to the three conventional Obsidian plugin files.
 
 import { existsSync, statSync } from "node:fs";
 import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -13,44 +15,94 @@ import { crc32, deflateRawSync } from "node:zlib";
 const PLUGIN_ID = "annotation-tutor-lite";
 const root = path.resolve(import.meta.dirname, "..");
 
-// 1. Build a fresh dist/main.js (build.mjs runs its one-shot build on import).
-await import("./build.mjs");
+// Build once and keep the artifact lock through staging and archive creation.
+await withBuiltArtifacts(async () => {
 
-// 2. Stage the three shippable files into dist/release/<id>/.
-const manifest = JSON.parse(await readFile(path.join(root, "manifest.json"), "utf8"));
+// Refresh the independent browser build under the package's artifact lock so
+// a same-version extension/dist from an earlier edit cannot enter the release.
+await import("../extension/build.mjs");
+
+// 2. Stage the plugin files into dist/release/<id>/.
+const manifest = JSON.parse(
+  await readFile(path.join(root, "manifest.json"), "utf8"),
+);
 const version = manifest.version ?? "0.0.0";
 const releaseDir = path.join(root, "dist", "release");
 const pluginDir = path.join(releaseDir, PLUGIN_ID);
 await rm(releaseDir, { recursive: true, force: true });
 await mkdir(pluginDir, { recursive: true });
-const files = ["main.js", "manifest.json", "styles.css"];
+const files = ["main.js", "desktop.js", "mobile.js", "manifest.json", "styles.css", "credential-compatibility.json"];
 for (const [from, to] of [
   ["dist/main.js", "main.js"],
+  ["dist/desktop.js", "desktop.js"],
+  ["dist/mobile.js", "mobile.js"],
+  ["dist/credential-compatibility.json", "credential-compatibility.json"],
   ["manifest.json", "manifest.json"],
-  ["styles.css", "styles.css"]
+  ["styles.css", "styles.css"],
 ]) {
   await cp(path.join(root, from), path.join(pluginDir, to));
 }
 console.log(`Staged ${PLUGIN_ID} v${version} -> ${pluginDir}`);
+
+// 2a. The hand-drawn board has offline font subsets and their license notices.
+const fontDir = path.join(root, "dist/assets/fonts");
+await cp(fontDir, path.join(pluginDir, "assets/fonts"), { recursive: true });
+for (const rel of await readdir(fontDir, { recursive: true })) {
+  if (statSync(path.join(fontDir, rel)).isFile())
+    files.push(`assets/fonts/${rel.split(path.sep).join("/")}`);
+}
+
+const officialTemplateDir = path.join(root, "dist/assets/web-clipper");
+await cp(officialTemplateDir, path.join(pluginDir, "assets/web-clipper"), { recursive: true });
+for (const rel of await readdir(officialTemplateDir, { recursive: true })) {
+  if (statSync(path.join(officialTemplateDir, rel)).isFile())
+    files.push(`assets/web-clipper/${rel.split(path.sep).join("/")}`);
+}
+
+const licenses=path.join(root,"dist/licenses");
+await cp(licenses,path.join(pluginDir,"licenses"),{recursive:true});
+// The release includes both plugin and extension bundles. Keep a complete
+// top-level dependency inventory as well as the extension's standalone notices.
+const extensionLicenses=path.join(root,"extension/dist/licenses");
+const licenseNotices=new Map();
+for(const source of [licenses,extensionLicenses]){
+  const dependencies=JSON.parse(await readFile(path.join(source,"dependencies.json"),"utf8"));
+  await cp(source,path.join(pluginDir,"licenses"),{recursive:true});
+  for(const dependency of dependencies)licenseNotices.set(`${dependency.name}@${dependency.version}`,dependency);
+}
+await writeFile(path.join(pluginDir,"licenses/dependencies.json"),JSON.stringify([...licenseNotices.values()].sort((a,b)=>a.name.localeCompare(b.name)||a.version.localeCompare(b.version)),null,2)+"\n");
+for(const rel of await readdir(path.join(pluginDir,"licenses"),{recursive:true}))if(statSync(path.join(pluginDir,"licenses",rel)).isFile())files.push(`licenses/${rel.split(path.sep).join("/")}`);
 
 // 2b. Bundle the Web Clipper extension (loaded unpacked until it's in a store).
 //     Collect its files so they also land inside the release zip.
 const extDist = path.join(root, "extension", "dist");
 const webClipperEntries = [];
 if (existsSync(extDist)) {
-  await cp(extDist, path.join(pluginDir, "web-clipper"), { recursive: true });
+  await cp(extDist, path.join(pluginDir, "web-clipper"), {
+    recursive: true,
+    filter: source => !source.endsWith(".map"),
+  });
   for (const rel of await readdir(extDist, { recursive: true })) {
     const abs = path.join(extDist, rel);
-    if (!statSync(abs).isFile()) continue;
+    if (!statSync(abs).isFile() || rel.endsWith(".map")) continue;
     webClipperEntries.push({
       name: `web-clipper/${rel.split(path.sep).join("/")}`,
-      data: await readFile(abs)
+      data: await readFile(abs),
     });
   }
-  console.log(`Bundled Web Clipper extension (${webClipperEntries.length} files)`);
+  console.log(
+    `Bundled Web Clipper extension (${webClipperEntries.length} files)`,
+  );
 } else {
   console.warn("No extension/dist found — skipping Web Clipper bundle.");
 }
+
+await cp(path.join(root,"docs/tutor-learning-upgrade.md"),path.join(pluginDir,"UPGRADE.md"));
+await cp(path.join(root,"docs/private-storage-recovery.md"),path.join(pluginDir,"PRIVATE-STORAGE.md"));
+await writeFile(path.join(pluginDir,"compatibility.json"),JSON.stringify({format:1,version,channel:"commercial-s2-internal-candidate",boardFormat:5,vectorAssetFormat:"board-vector-v1",learningRecordFormat:3,readableLearningFormats:[1,2,3],restrictedEvidenceFormat:3,naturalLearning:"v3-candidate-awaiting-real-acceptance",automaticFreeTextEvidence:false,credentialReferences:1,surfaceTransactions:1,clipperAuthorization:2,legacyRecords:"preserved",defaultOff:["learningFlowEnabled","supportCheckinEnabled","learningExpertsEnabled"],rollback:"managed program rollback; reference recovery required for legacy programs",verification:"See the validation report adjacent to the sealed milestone package; candidate is not commercial acceptance",unverified:["S2 full real interaction matrix","S3 desktop matrix","professional mental-health review","minors","longitudinal benefit","Android device","remote multi-agent"]},null,2)+"\n");
+files.push("UPGRADE.md","PRIVATE-STORAGE.md","compatibility.json");
+await sealRelease(pluginDir);
+files.push("release-files.json");
 
 // 3. Zip the folder into a single ready-to-unzip plugin directory. Written in
 //    pure Node so the archive is identical on every OS — crucially using ZIP's
@@ -61,7 +113,7 @@ const entries = [];
 for (const file of files) {
   entries.push({
     name: `${PLUGIN_ID}/${file}`,
-    data: await readFile(path.join(pluginDir, file))
+    data: await readFile(path.join(pluginDir, file)),
   });
 }
 for (const { name, data } of webClipperEntries) {
@@ -130,3 +182,4 @@ function buildZip(entries) {
   eocd.writeUInt16LE(0, 20); // comment length
   return Buffer.concat([...local, centralBuf, eocd]);
 }
+});

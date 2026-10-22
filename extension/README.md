@@ -1,8 +1,13 @@
-# Annotation Tutor Web Clipper
+# Tutor Advanced Clipper
 
-A companion **browser extension** (Chromium — Chrome / Edge / Brave) for the
+An optional advanced **browser extension** (Chromium — Chrome / Edge / Brave) for the
 [Annotation Tutor Lite](../README.md) Obsidian plugin. It lets you **highlight and
 annotate any web page** and **clip selections or whole pages** straight into your Vault.
+
+For ordinary cross-browser clipping, Tutor uses the official
+[Obsidian Web Clipper](https://github.com/obsidianmd/obsidian-clipper) with the
+versioned template exported from TutorWeb settings. This advanced extension is
+kept for Tutor-specific in-page Q&A, per-highlight notes, and raw HTML archives.
 
 It is a separate build with its own version, released independently of the plugin.
 
@@ -15,10 +20,8 @@ It is a separate build with its own version, released independently of the plugi
   retry loop re-anchors late-rendering (SPA) content.
 - **Popup manager.** The toolbar popup lists every highlight on the current page — click one
   to scroll to and flash it, or **Clear all**.
-- **Clip into Obsidian.** Two delivery channels, chosen automatically:
-  - **Selections** ride an `obsidian://atl-web-capture` deep link when small enough.
-  - **Whole pages** are converted to Markdown (via Readability + Turndown in an offscreen
-    document), paired with archived HTML, and POSTed to the plugin's **localhost bridge**.
+- **Clip into Obsidian.** Selections and whole pages use the approved localhost bridge. Whole pages are converted to Markdown (Readability + Turndown) and paired with archived HTML.
+- **Stop an answer.** The Stop button, panel close, page navigation and tab close cancel the request. A disconnected answer is checked by request ID; it is never automatically resubmitted.
 
 ## Build
 
@@ -44,17 +47,15 @@ The plugin's build also bundles a copy of `dist/` into your Vault under
 3. Click **Load unpacked** and choose the `extension/dist/` folder.
 4. Pin the extension. Highlighting works on any page immediately.
 
-## Pair with the plugin (for clipping)
+## Connect to Tutor
 
-Highlighting needs no pairing. Sending clips into your Vault does:
+Enable the advanced browser bridge in Tutor settings, then click **Connect** in the extension popup. In Obsidian, approve **capture**, **ask**, or both, and choose the capture directory. Both capabilities start unchecked. The one-use challenge expires after five minutes. Opening the popup only checks an existing pairing; it cannot grant access.
 
-1. In Obsidian → **Settings → Annotation Tutor Lite → TutorWeb**, turn on **Enable the Web
-   Clipper bridge** and **copy the pairing token**.
-2. Open the extension's popup, paste the token into **Bridge token**, set **Bridge port** to
-   match the plugin (default `51256`), then **Save** → **Test pairing**.
+Each approved client receives a random token bound to this Vault, extension origin, capabilities and directory. The extension stores it in `chrome.storage.local`, never browser sync; the host persists only its hash. An extension name, Origin or fixed header is not authentication. Old shared tokens are discarded and require a fresh approval. Small captures no longer bypass pairing through a URI.
 
-The token is a bearer secret for a loopback-only (`127.0.0.1`) service that runs only while
-the bridge is enabled. Keep it private.
+The bridge listens only on `127.0.0.1`, limits bodies and request rates, and allows one active task per client and two per bridge/Vault with a cancellable bounded queue. A durable request journal prevents the same request from executing twice after reconnection or a host restart. Interrupted requests remain interrupted. A full journal safely refuses new requests rather than removing replay protection.
+
+A transport failure can leave the outcome unknown. Reconnect queries the original request status without starting a new model request. A new question is a new explicit action and can incur new charges. Cancellation stops local waiting and forwards a cancellation signal; providers may still charge for work already performed. Revocation failures are reported and stop the bridge; no UI should claim an unsaved revocation is complete.
 
 ## Architecture
 
@@ -65,7 +66,7 @@ Four execution contexts, one shared wire format:
 - `src/anchor.ts` — text-quote anchoring: flatten the DOM to text, locate a selector with a
   4-level fallback, and paint/unpaint `<mark>` ranges.
 - `src/highlights.ts` — `chrome.storage.local` model, keyed per normalized URL.
-- `src/background.ts` — service worker: bridge config, channel choice, offscreen lifecycle.
+- `src/background.ts` — service worker: approved connections, request status/cancellation, offscreen lifecycle.
 - `src/offscreen.ts` — Readability + Turndown HTML → Markdown conversion.
 - `src/popup/` — settings + full-page trigger + highlight manager.
 - `src/protocol.ts` — the capture wire format, mirrored byte-for-byte from the plugin

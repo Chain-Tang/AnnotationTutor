@@ -1,0 +1,4265 @@
+{
+  "date": "2026-10-22",
+  "scope": "Only untracked generated reports, Vitest cache and Finder metadata inside the project; no Git conflict resolution, backups, symlinks, source or Vault data deleted.",
+  "status": "completed",
+  "files": [
+    {
+      "path": "coverage/coverage-summary.json",
+      "bytes": 79205,
+      "mtime_ns": 1792164622745890956,
+      "sha256": "fa129012f58e8f072137055e27ef018c1bde624c86cee947dcfd2876e308be65",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/index.html",
+      "bytes": 9314,
+      "mtime_ns": 1792164622750456306,
+      "sha256": "775c86eef3b532184693201067a7670da16eaefa2a9e07ebe2e694e66776ab57",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/.DS_Store",
+      "bytes": 6148,
+      "mtime_ns": 1792335119984702626,
+      "sha256": "cf7f92eec3fe5d53767624b1dd7011adb99aeb6ed37c8f69d71546ab1ce43d2d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/block-navigation.js",
+      "bytes": 2655,
+      "mtime_ns": 1792164622748126130,
+      "sha256": "cd8db34b1fbeb973354a93f8b4133c7c7eab34cdda9429a0434be91384783b7e",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov.info",
+      "bytes": 1087211,
+      "mtime_ns": 1792164623061312509,
+      "sha256": "09aa4c1e315d9e44e0503faa6fcd3559c9c81bb4776d6e00dc86af57a08eea99",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/prettify.js",
+      "bytes": 17590,
+      "mtime_ns": 1792164622749880419,
+      "sha256": "fa1b1e1b906ddcfa08b46f161c0f924f506e1a31b4f3e09b8caaa2463ef52c18",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/favicon.png",
+      "bytes": 445,
+      "mtime_ns": 1792164622748356343,
+      "sha256": "5b0cfd52dc0bfbe544f4e1a9c77aa46b8629b0e0aad6c54f95eef457b86c2a89",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/prettify.css",
+      "bytes": 676,
+      "mtime_ns": 1792164622749622205,
+      "sha256": "ea3fe433f9450698ca8a230271688e7aeec12f99c8a7ef6c94379abb38f27823",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/sorter.js",
+      "bytes": 6731,
+      "mtime_ns": 1792164622749491827,
+      "sha256": "f8cc5d157379d844fd695ad567b6c29b3c1f0812964ddf6f95c26327e434bab5",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/base.css",
+      "bytes": 5394,
+      "mtime_ns": 1792164622747933501,
+      "sha256": "3f876e51f0a46864ffa7665b4b7a1f5fb5f6f37fb6a28f014e2b12d82962c852",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/sort-arrow-sprite.png",
+      "bytes": 138,
+      "mtime_ns": 1792164622749320198,
+      "sha256": "42c895355f9838ede83fdfdca90127d8471aefed5ecf5342374f65ec7c3f10ab",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/extension/src/index.html",
+      "bytes": 11722,
+      "mtime_ns": 1792164622750853107,
+      "sha256": "d756af6396a59466c640ee93a524f09aaacc3d788c5917761cd9c5347ecbbd4a",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/extension/src/protocol.ts.html",
+      "bytes": 15696,
+      "mtime_ns": 1792164622755427415,
+      "sha256": "0202dc4ce898695dbe945f1b8e1952a9e71f52fb7e0da202f0a683e942494e7e",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/extension/src/background.ts.html",
+      "bytes": 42562,
+      "mtime_ns": 1792164622753400288,
+      "sha256": "6029937a18101ddfa87e7384ff71f74a86f09659e9a60511d7961d59ef6b1fdf",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/extension/src/content.ts.html",
+      "bytes": 79242,
+      "mtime_ns": 1792164622754400601,
+      "sha256": "a95d3cb73bbf0b972f81aaf602fda423905550b96ffc20f0ea3da6b036e07a22",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/extension/src/ask-overlay.ts.html",
+      "bytes": 73250,
+      "mtime_ns": 1792164622752865234,
+      "sha256": "5ed02ec266a37ac41a04e8e19246f22c9b7c32ca83ee1a95496b9d7a107b8d5c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/extension/src/messages.ts.html",
+      "bytes": 18353,
+      "mtime_ns": 1792164622755008906,
+      "sha256": "0f09e26a1bf0faab578410f0c2290e9fec5966fb837c27c1b6b5a7fda32dfceb",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/extension/src/anchor.ts.html",
+      "bytes": 64342,
+      "mtime_ns": 1792164622752156302,
+      "sha256": "c85ade3389e17a1de4f928e9857cdc2e11e99d9675d54d2c79eba39ecc2d44d9",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/extension/src/ui.ts.html",
+      "bytes": 19477,
+      "mtime_ns": 1792164622755953469,
+      "sha256": "838e36fe43d67befe9486d20614bfe2e99a5d8a11dfb8823e46c2ba8e80e68a6",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/extension/src/offscreen.ts.html",
+      "bytes": 11181,
+      "mtime_ns": 1792164622755191077,
+      "sha256": "8adbff7480a6303af8a22efd1e196855b67e1fd4f33bed99b3192fd7c4cca982",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/extension/src/bridge-client.ts.html",
+      "bytes": 18518,
+      "mtime_ns": 1792164622753669377,
+      "sha256": "46afdacfb4dd5e0111e422cdc92b51748e07f3ac24d3a00c715e8cf32b0e1842",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/extension/src/highlights.ts.html",
+      "bytes": 34313,
+      "mtime_ns": 1792164622754758359,
+      "sha256": "6cf31651269544fdb7a160581f269da2f0883db5123e34fb1b4ac13287e892ca",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/extension/src/snapshot.ts.html",
+      "bytes": 12018,
+      "mtime_ns": 1792164622755625336,
+      "sha256": "bff25f268406a4dc8dc4ad2354ea923e1b261407425479fa175786461f0ea2ab",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/extension/src/types.d.ts.html",
+      "bytes": 4853,
+      "mtime_ns": 1792164622755739964,
+      "sha256": "6ad6ca718cbadc51eb783852fe8d74108b51b30eb34eaae2f67a787679ad14b0",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/extension/src/popup/popup.ts.html",
+      "bytes": 40017,
+      "mtime_ns": 1792164622756858197,
+      "sha256": "add4fdf5aa57710a533a0981ee892aacfa16fa0b64ff9f24d69d1cd4270190b8",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/extension/src/popup/index.html",
+      "bytes": 4446,
+      "mtime_ns": 1792164622756500356,
+      "sha256": "b9f78d369370758ffd88c5ad83435de46d9026b84d189791d83a3244a7e47746",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/extension/src/i18n/index.html",
+      "bytes": 4435,
+      "mtime_ns": 1792164622756089263,
+      "sha256": "677cba44505465535b9a7c2054a54b6350f66cb2d3d07995e0e20bd0d6a297d1",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/extension/src/i18n/index.ts.html",
+      "bytes": 39263,
+      "mtime_ns": 1792164622756387895,
+      "sha256": "e74ceb31c561e7ea4788a13371078b97d85c75c4467f82274e7ec5f72bd85eac",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/index.html",
+      "bytes": 9314,
+      "mtime_ns": 1792164622853363275,
+      "sha256": "9cfc9ace8043490b2263b96675607c27459631c3536dc827c209b4e2e4c2c222",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/block-navigation.js",
+      "bytes": 2655,
+      "mtime_ns": 1792164622852591758,
+      "sha256": "cd8db34b1fbeb973354a93f8b4133c7c7eab34cdda9429a0434be91384783b7e",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/prettify.js",
+      "bytes": 17590,
+      "mtime_ns": 1792164622853211480,
+      "sha256": "fa1b1e1b906ddcfa08b46f161c0f924f506e1a31b4f3e09b8caaa2463ef52c18",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/favicon.png",
+      "bytes": 445,
+      "mtime_ns": 1792164622852710885,
+      "sha256": "5b0cfd52dc0bfbe544f4e1a9c77aa46b8629b0e0aad6c54f95eef457b86c2a89",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/prettify.css",
+      "bytes": 676,
+      "mtime_ns": 1792164622853141603,
+      "sha256": "ea3fe433f9450698ca8a230271688e7aeec12f99c8a7ef6c94379abb38f27823",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/sorter.js",
+      "bytes": 6731,
+      "mtime_ns": 1792164622853050518,
+      "sha256": "f8cc5d157379d844fd695ad567b6c29b3c1f0812964ddf6f95c26327e434bab5",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/base.css",
+      "bytes": 5394,
+      "mtime_ns": 1792164622852509339,
+      "sha256": "3f876e51f0a46864ffa7665b4b7a1f5fb5f6f37fb6a28f014e2b12d82962c852",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/sort-arrow-sprite.png",
+      "bytes": 138,
+      "mtime_ns": 1792164622852786845,
+      "sha256": "42c895355f9838ede83fdfdca90127d8471aefed5ecf5342374f65ec7c3f10ab",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/extension/src/index.html",
+      "bytes": 11722,
+      "mtime_ns": 1792164622853570154,
+      "sha256": "54ac10bd89320bd77f0bc603e3695990b6c735c448812ae35fbb7319b218e3df",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/extension/src/protocol.ts.html",
+      "bytes": 15696,
+      "mtime_ns": 1792164622859835250,
+      "sha256": "09655a6696839cccb9a6e3fa1be74a4ad002f427aa947760894e67862a8bebfa",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/extension/src/background.ts.html",
+      "bytes": 42562,
+      "mtime_ns": 1792164622856664139,
+      "sha256": "26f78643b46fa4c52fc76a67ae33ac1bf68ff6141b3c0420132fd51aabc9b97d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/extension/src/content.ts.html",
+      "bytes": 79242,
+      "mtime_ns": 1792164622858462387,
+      "sha256": "731b68614aeaf52208babb6093c3ff56170c7d1c0b1e9e921815d76cbf8c1261",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/extension/src/ask-overlay.ts.html",
+      "bytes": 73250,
+      "mtime_ns": 1792164622855837079,
+      "sha256": "c64a4e22a4155f1e805e83428b8fd653ce3c15131671c1f47537735f304aa373",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/extension/src/messages.ts.html",
+      "bytes": 18353,
+      "mtime_ns": 1792164622859239737,
+      "sha256": "7fa66d656b4cd20104e2a813b9d37de1a82b15e75693c9c078dada4776b2b476",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/extension/src/anchor.ts.html",
+      "bytes": 64342,
+      "mtime_ns": 1792164622854839765,
+      "sha256": "f3aad2c1619be3603305f79a4846f6b002f4df21774b2df149580218edd86d13",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/extension/src/ui.ts.html",
+      "bytes": 19477,
+      "mtime_ns": 1792164622860563058,
+      "sha256": "7f5f709ef563cc3a4994bf7e59552dd679136a62659bab7b2662576639bebeea",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/extension/src/offscreen.ts.html",
+      "bytes": 11181,
+      "mtime_ns": 1792164622859480493,
+      "sha256": "a812f7a5debaacd54ca16aa704dbe36dcd60d44f7ec0ea04088a94b93f800e82",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/extension/src/bridge-client.ts.html",
+      "bytes": 18518,
+      "mtime_ns": 1792164622857074815,
+      "sha256": "a8100ab01a5bfed3a84e953c92e7968f4c23dc336192377d6781aadf1dd2f70d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/extension/src/highlights.ts.html",
+      "bytes": 34313,
+      "mtime_ns": 1792164622859026566,
+      "sha256": "8f954ced9b1dd5e5549d9762bf7acbf2ae34cc1ee681a4ce354d4e16fd04e499",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/extension/src/snapshot.ts.html",
+      "bytes": 12018,
+      "mtime_ns": 1792164622860104048,
+      "sha256": "3314a42ecb6a59bd70353c19731d540283d081ab1eb4b99d7129ba845b04aa9a",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/extension/src/types.d.ts.html",
+      "bytes": 4853,
+      "mtime_ns": 1792164622860240134,
+      "sha256": "22314302e07c00b001fec0d3c6ddeebd1aff0035592e877a22ffdfff34136818",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/extension/src/popup/popup.ts.html",
+      "bytes": 40017,
+      "mtime_ns": 1792164622862485975,
+      "sha256": "872276ff7ffad62e5b5b728aeb43a72b9eeec6716069650fbc7428f84b2529b4",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/extension/src/popup/index.html",
+      "bytes": 4446,
+      "mtime_ns": 1792164622861221156,
+      "sha256": "77d168e66b72b0985b80293039e0c5a3d6f491b2e4b93ae5a7b5d5dd09fdc2ad",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/extension/src/i18n/index.html",
+      "bytes": 4435,
+      "mtime_ns": 1792164622860708436,
+      "sha256": "268e26e8e3c8a66382ff6f617240caddb48d639ca7b1c1e597eeb3b1979c2dd9",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/extension/src/i18n/index.ts.html",
+      "bytes": 39263,
+      "mtime_ns": 1792164622861089861,
+      "sha256": "4d0d2d14fa018aebe8f2311215379776a6ae502a30946a84c87d3d32cc350a3c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/surface-transactions.ts.html",
+      "bytes": 23781,
+      "mtime_ns": 1792164623016334563,
+      "sha256": "3bd2128350bd94321457c4130a97e0647c4a3a4f0438453ee82084a24e4f4a1d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-expert-modal.ts.html",
+      "bytes": 13301,
+      "mtime_ns": 1792164622960637756,
+      "sha256": "662731d04cd3b79700b10f0daa5f5eb12bcd389fe5140fafdc45ce76c61c6dd1",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/card-pool.ts.html",
+      "bytes": 7500,
+      "mtime_ns": 1792164622941150036,
+      "sha256": "d788f4d3bb003e293b3f6f1b474df72d420c231b952fe217cc49564011281575",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-draft.ts.html",
+      "bytes": 49242,
+      "mtime_ns": 1792164622902187639,
+      "sha256": "4eed133ff1e4e401f2025103a50e760bbf140b038ee052274ca8fc073e4f8a4e",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/watcher.ts.html",
+      "bytes": 11299,
+      "mtime_ns": 1792164623030019280,
+      "sha256": "a5512d40baaa16599713a43e0e4b479c87cf79c3ab981362d9ad30cfb1bea870",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-panel.ts.html",
+      "bytes": 31353,
+      "mtime_ns": 1792164622963494735,
+      "sha256": "56c5bf942ca0fbe843b8f2ffc72f18322f94f06ddb042be23e345a3f45a2d4c2",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-camera-preview.ts.html",
+      "bytes": 6658,
+      "mtime_ns": 1792164622878318198,
+      "sha256": "bc63cfa0a113d4b4b99b447c89e7513cb6ac6dbb49cac6087dbb961bc925706f",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-safe-projection.ts.html",
+      "bytes": 8177,
+      "mtime_ns": 1792164622968073211,
+      "sha256": "52ff2f2c85712ff1483301d51b405398778cb8280fe9a78dc9a8689b14789970",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/skins.ts.html",
+      "bytes": 18275,
+      "mtime_ns": 1792164623008161425,
+      "sha256": "4a9920edb1add37eff42e1f6fd3b445173853f3ecb6bd08cb2f09ed27efa5091",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/tutor-a2a.ts.html",
+      "bytes": 21219,
+      "mtime_ns": 1792164623020862079,
+      "sha256": "10c4a3648a05a2156690e651e39be0e6e257729d527eac4b86938e165c21c1ff",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/tutor-access.ts.html",
+      "bytes": 5129,
+      "mtime_ns": 1792164623021019665,
+      "sha256": "c392f449a30ffeead6ddff7e052c0bb3914070809b94d78d29be024b35199d91",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-reference-regions.ts.html",
+      "bytes": 32723,
+      "mtime_ns": 1792164622921661733,
+      "sha256": "b386ad96f6e99e2f64fff8be203e419d2072cf63b52ce0aed3f631958f522443",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/interaction-activity.ts.html",
+      "bytes": 3914,
+      "mtime_ns": 1792164622953231760,
+      "sha256": "5a1732a35c0cec18ba345055c274fc28afc52d105e4068166e3a1ef90ee17a9c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-pdf-context.ts.html",
+      "bytes": 5345,
+      "mtime_ns": 1792164622963715740,
+      "sha256": "b6d0a06fec93180e291ed29c17854d5442f5c1c8aedd865291b0e2f4f41578c9",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/anchors.ts.html",
+      "bytes": 23797,
+      "mtime_ns": 1792164622868205059,
+      "sha256": "1ab1cf5a581743aa163cfc13bb24983a1cd8cd321625da00dcbdd3ca25cea08a",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/pretranslate.ts.html",
+      "bytes": 40772,
+      "mtime_ns": 1792164622998954556,
+      "sha256": "5ca7b521671bb29990abceda82e99d727e07d3a8f32d59095cc07f7bfc348fc1",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-paint-checkpoint.ts.html",
+      "bytes": 25872,
+      "mtime_ns": 1792164622916742500,
+      "sha256": "4432fdc9c4bddce2a88c149bdcb34ce7c3d67575c4709d89fff77163e6868b16",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-context.ts.html",
+      "bytes": 17071,
+      "mtime_ns": 1792164622956522790,
+      "sha256": "b65a5cee6db524874de58c6227ceffeb116193f53bfa8eae1490a64860b3d5ed",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/study-source-binding.ts.html",
+      "bytes": 14352,
+      "mtime_ns": 1792164623012071636,
+      "sha256": "cd70c972df6614195acca1a88199d2dac1aadeb736c5352b23092c4d2c1d932d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-progressive-render.ts.html",
+      "bytes": 6735,
+      "mtime_ns": 1792164622919470560,
+      "sha256": "a5a922682dcf00b82e226e6720f27adc79fa4701389ca22a4c6cfa80689243ae",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-pressure-geometry.ts.html",
+      "bytes": 10638,
+      "mtime_ns": 1792164622919264597,
+      "sha256": "fecf880b05cc1934417b087007dc6e16e04076a77078d467601eb97b870273d5",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/pdf-annotation.ts.html",
+      "bytes": 14158,
+      "mtime_ns": 1792164622995637233,
+      "sha256": "b5f99cf2d8771e95b401aca7cb9d7d60116e6329fb009fd63de29c522b414da6",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/excalidraw-guard.ts.html",
+      "bytes": 18688,
+      "mtime_ns": 1792164622947606678,
+      "sha256": "b5cc47c762f1baa9ad78da76aa21bff5e567a87445c226e4392b04402fb272cd",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-vectorization.ts.html",
+      "bytes": 40195,
+      "mtime_ns": 1792164622939968010,
+      "sha256": "6dec75eea9731f48899f8a989efb4954dbffbb870538867d379b39a8f4031b6c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/editor.ts.html",
+      "bytes": 25788,
+      "mtime_ns": 1792164622947033374,
+      "sha256": "e1f20521e5a273ecb29b13013cd448e9a023fb6ff6c80dccff0735986ce4e0f1",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-image-provider.ts.html",
+      "bytes": 61962,
+      "mtime_ns": 1792164622906783906,
+      "sha256": "47577e8f593e5da5497183aff2c8b723dbfd400f0d619fc5b613a8c6f1929f37",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-types.ts.html",
+      "bytes": 109780,
+      "mtime_ns": 1792164622935799502,
+      "sha256": "da62d797c74a5137acb49e049f640df3464eecf212289a349a0246d6f62c906c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/tutor-journal.ts.html",
+      "bytes": 10595,
+      "mtime_ns": 1792164623025594016,
+      "sha256": "ad921fe88e8f86dabe428d4512187c63339438d036b3cce4019080c628524da5",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/list-select.ts.html",
+      "bytes": 14877,
+      "mtime_ns": 1792164622973509080,
+      "sha256": "a2cd66efb3bc3da9571cb4b855721bc66d289287889d18f892bec02f8e68e164",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/api-stream.ts.html",
+      "bytes": 45744,
+      "mtime_ns": 1792164622869591715,
+      "sha256": "989e1780df44ee27a829bd00fa274e6deaa7e1ffbf89252d5d2306071629e1ce",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-record-read.ts.html",
+      "bytes": 33713,
+      "mtime_ns": 1792164622966329548,
+      "sha256": "bb80d0dff6b30c6c25cb3f5918068c56fa872618c0af6a2ea4ca6800f5b2ef08",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/index.html",
+      "bytes": 167484,
+      "mtime_ns": 1792164622863940465,
+      "sha256": "2b4807c0885d6acd288d164add6781df248047288cc189a6c26f82963487cc60",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-portable-layout.ts.html",
+      "bytes": 8701,
+      "mtime_ns": 1792164622919042134,
+      "sha256": "6c008bc6b4617b741885d0fd61339e67ba67c74bbd648659e7466a39155874df",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/decorations.ts.html",
+      "bytes": 31963,
+      "mtime_ns": 1792164622945431505,
+      "sha256": "65702d876beec9ae3cec0073b3c99234728e7500c3e20a732420c73aed9ff8a1",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-semantics.ts.html",
+      "bytes": 15456,
+      "mtime_ns": 1792164622926539382,
+      "sha256": "1f4c02ffb48d2c1852cb833599ee7a3c170202489c77937c92f354c7fab6ef20",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-projection.ts.html",
+      "bytes": 18187,
+      "mtime_ns": 1792164622919889736,
+      "sha256": "2296e161745a2be7c280ea8a932ff20b109fe71f8d7453358652004873d4ae5b",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning.ts.html",
+      "bytes": 46456,
+      "mtime_ns": 1792164622971950713,
+      "sha256": "182cb98d43cbcc334c2977a475651372d71be1c6d232fd961013ddf6ec2c40d8",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/card-drag.ts.html",
+      "bytes": 10195,
+      "mtime_ns": 1792164622940918114,
+      "sha256": "79c683054b2f70422a23aa2949bd153b366e474c89df0ac6af8463b4483cc6ec",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/tutor-discovery.ts.html",
+      "bytes": 5567,
+      "mtime_ns": 1792164623024780957,
+      "sha256": "3184aee66a4905d283f92eb4de233239c826a1f028ac6eca4215b247163a6121",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-question-bank-v2-2.ts.html",
+      "bytes": 27836,
+      "mtime_ns": 1792164622965413861,
+      "sha256": "abfb0ffd78ec536f1e3abd09c3ff96940d780a3e12b4118f8582380a57f6a414",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/cell-distill.ts.html",
+      "bytes": 15327,
+      "mtime_ns": 1792164622941631922,
+      "sha256": "b3d7bc10e78880d32363e150c62f2a81fd7e37952afdac0f482b474825e0407b",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-capture.ts.html",
+      "bytes": 47570,
+      "mtime_ns": 1792164622879516558,
+      "sha256": "777636a007e4073346b3d8ae6c6549034c6cafa74cc8dddea0a98ecc8efd03fa",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-recognition-acp.ts.html",
+      "bytes": 14783,
+      "mtime_ns": 1792164622920180117,
+      "sha256": "bd8832a828d332173f6d297d554443bff0b7a40e01777b9f116614abe22b697c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-legacy-v3.ts.html",
+      "bytes": 21192,
+      "mtime_ns": 1792164622962604757,
+      "sha256": "976ca202d4dd2e13e9892e2dfaf9f500e8f565d4c9c69ccb7772842cf93a0e32",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/textures.ts.html",
+      "bytes": 152858,
+      "mtime_ns": 1792164623018038225,
+      "sha256": "493660981592b6b7ac324b0c963406da824c5c2ba84a99c066fd3d71b06b8f46",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-stream-v3.ts.html",
+      "bytes": 26735,
+      "mtime_ns": 1792164622968738225,
+      "sha256": "3028fe1e1b4aaa5506e6b9a1667673bafa65b3e7259cd3ecd62ea67c0248dba2",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/edit-parse.ts.html",
+      "bytes": 22129,
+      "mtime_ns": 1792164622946618906,
+      "sha256": "dc46480a4e446ab0f9c4b1791c2461827ccfcdee28591ee86ac1e2d561c0cd81",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/support-session.ts.html",
+      "bytes": 19859,
+      "mtime_ns": 1792164623014191515,
+      "sha256": "29e95f029e31e89fee8b899c436ed384629035a4c0affc4b5b97e09501730bc8",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-dialogue-v3.ts.html",
+      "bytes": 76439,
+      "mtime_ns": 1792164622958258245,
+      "sha256": "c52aef662c7c9510ca0393dfd382dea84a9b6701a927e475a50c345a6d26e6ff",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-comic-cover.ts.html",
+      "bytes": 65420,
+      "mtime_ns": 1792164622881907652,
+      "sha256": "4f8ddc65ae1da4e151941f44361f80f2bd0eb6e1df7fa19aa032c0b16059b7ba",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/settings-config.ts.html",
+      "bytes": 92392,
+      "mtime_ns": 1792164623002824682,
+      "sha256": "3a97f06edc2553c5e9bc0c16ce3ddd154a733e1805fe0d72fe488e2bd7170481",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/agent-models.ts.html",
+      "bytes": 8256,
+      "mtime_ns": 1792164622866793612,
+      "sha256": "6aeea5f2440b5ead3035a5986e21b775eb953395ce915bc84956fe4e5bace5a8",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-answer-extract.ts.html",
+      "bytes": 26027,
+      "mtime_ns": 1792164622954037194,
+      "sha256": "dd0b84d908edb75027a434f586d1a5b80a840db6f4942f6fe89f2020a7089a8e",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-question-bank.ts.html",
+      "bytes": 3485,
+      "mtime_ns": 1792164622965527197,
+      "sha256": "fe95efa241dc39abba9c7a1e39883ea070135d9f766c93450d3415dc7a0dc75f",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/excalidraw-agent.ts.html",
+      "bytes": 12435,
+      "mtime_ns": 1792164622947264170,
+      "sha256": "e0cf416359b0639b271133b8c14b5bab6a830ed9d9731a2e0984f5e4b547e7d9",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/settings.ts.html",
+      "bytes": 282133,
+      "mtime_ns": 1792164623007236238,
+      "sha256": "9bddadd34f379d78ee5ff4a0e371575a71b5d576f57a72a0dfb4f8f14c8586bf",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-ai-error.ts.html",
+      "bytes": 7499,
+      "mtime_ns": 1792164622873148959,
+      "sha256": "868b62cdb5a3b58a7c100005c5ba761eefe110ff1764e0b51bb3f272ff5d0a8c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-reference-paint.ts.html",
+      "bytes": 17466,
+      "mtime_ns": 1792164622920881466,
+      "sha256": "9867e222e8dd4a3fefc6e53f95b076fb19d8e01605ec65675287a6a9cfd61bf2",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-commands-v3.ts.html",
+      "bytes": 46849,
+      "mtime_ns": 1792164622956052239,
+      "sha256": "ada8a60913ec95364379b4c69add7cfa84ff54c65b691667f72b962048629670",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-store.ts.html",
+      "bytes": 206206,
+      "mtime_ns": 1792164622933346156,
+      "sha256": "ad8076cb7fc2684c10393a703579e9549f15d8b69f48108ee6ae991c6fb829ee",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-ai.ts.html",
+      "bytes": 28779,
+      "mtime_ns": 1792164622873649179,
+      "sha256": "9c4f45c4740e12a03c698bce876a058156e72b69a18a7a9e4ecd807743d76250",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/ai-execution.ts.html",
+      "bytes": 14169,
+      "mtime_ns": 1792164622867824717,
+      "sha256": "4a32c54377416fdf0344b6515f1194f5f3aa82701719c09268bdb29369edcc58",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/tutor-mcp.ts.html",
+      "bytes": 58263,
+      "mtime_ns": 1792164623026851919,
+      "sha256": "a8902d860f7417a1aa3feeb575bc401efc2273559f5a6687b787612ddab415f5",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-runner-v3.ts.html",
+      "bytes": 53282,
+      "mtime_ns": 1792164622967850164,
+      "sha256": "d7a37f3c8e544440cb968ec0231ac60573ae9ceffade96a61fdd4e61414ec601",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/tutor-result-store.ts.html",
+      "bytes": 17402,
+      "mtime_ns": 1792164623027477807,
+      "sha256": "2dbe851a23df093e1928e499a6d0b887684e4b677702ecd4ac76d54fc6547498",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/excalidraw-surface.ts.html",
+      "bytes": 48826,
+      "mtime_ns": 1792164622949147545,
+      "sha256": "a1e8ffd94c6e1d5c01692b64195c6b471e6e365baa64664029956a9b889273d9",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-clone.ts.html",
+      "bytes": 3910,
+      "mtime_ns": 1792164622880920963,
+      "sha256": "9738c9f1acf0deb755933b7ce5ecfe75419391bb89ae7591d3030ba4d8314ae7",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/schemas.ts.html",
+      "bytes": 23397,
+      "mtime_ns": 1792164623001434735,
+      "sha256": "643274f4b274e9e7d53a0bd61c6775fd29c9ab81e7df1ad16952a40a8ca8d6b2",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/store.ts.html",
+      "bytes": 170079,
+      "mtime_ns": 1792164623011637418,
+      "sha256": "8f7de0188952c755b9c9110392cec32b01762124b1636e2c74e47ebb2e9d0865",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/codex-command.ts.html",
+      "bytes": 7991,
+      "mtime_ns": 1792164622942414397,
+      "sha256": "48584de210bdd0c11ce577bbd1dd3240a9c337d505886091ce8a56673e8c97d7",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-v2.ts.html",
+      "bytes": 30509,
+      "mtime_ns": 1792164622969846333,
+      "sha256": "f261e5d70f6ac32f9cf12833c37836c7614c082dba6cd1b64bd7350692417207",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-artwork-agent.ts.html",
+      "bytes": 17634,
+      "mtime_ns": 1792164622875543720,
+      "sha256": "b37ac2b321c8726ff51ee6979fd9fd24d4f2b00015da829316c9d13d9567bc7e",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/review-controller.ts.html",
+      "bytes": 60071,
+      "mtime_ns": 1792164623001111270,
+      "sha256": "5b59bcb40f0b5acac11d35571f8466dbb84f527e5fbe42f64fd29d8ff2387a2a",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-vector-agent.ts.html",
+      "bytes": 9337,
+      "mtime_ns": 1792164622936239803,
+      "sha256": "5f3376255de343562bc58e6983952f169740cdb758ac8347ec0fd6e546bf626e",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/surface-transaction-journal.ts.html",
+      "bytes": 50330,
+      "mtime_ns": 1792164623015810551,
+      "sha256": "9f6716cbcfe7c7ef781e41e7be35d69ea964b11d459b71c2ded80ac87a67b9f8",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-episode-store.ts.html",
+      "bytes": 13099,
+      "mtime_ns": 1792164622959983450,
+      "sha256": "e70c441509e4ae3f80dc9213d8db939345f8dc674c87676b79907fd815c98152",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/hotkeys.ts.html",
+      "bytes": 14813,
+      "mtime_ns": 1792164622950125525,
+      "sha256": "c8b6155274dadfcaed9f9fd66faa1263b25bb100e209db54c51f87403bcb7f31",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/api-runner.ts.html",
+      "bytes": 40230,
+      "mtime_ns": 1792164622868663486,
+      "sha256": "c91415bbc97ea88cf2fa9399f946b3f81bd83d48dd458bc9b6f556acb83cb0b7",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/chat-stream.ts.html",
+      "bytes": 11376,
+      "mtime_ns": 1792164622942213143,
+      "sha256": "da603d2ad810bf6f0fca0c62735d24c9d2af274029e3a0b77a54c985587b6527",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-drawing-intent.ts.html",
+      "bytes": 11504,
+      "mtime_ns": 1792164622902478604,
+      "sha256": "829a227a2e5cff9b9e2e92cc8a6bead2a5031c921242473425f7e487f5a5f826",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-layer-renderer.ts.html",
+      "bytes": 30283,
+      "mtime_ns": 1792164622907489089,
+      "sha256": "2073307527d0a7a0c31d5615d468a441920e5c34132bfba24599c23cef6302d0",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/card-zoom.ts.html",
+      "bytes": 6661,
+      "mtime_ns": 1792164622941327082,
+      "sha256": "36f8b8ecec0b52dba991ae83108cbe04b221139afe147a4b343d04505eaee845",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/builtin-commands.ts.html",
+      "bytes": 20157,
+      "mtime_ns": 1792164622940284142,
+      "sha256": "0323dee74ac0afdf7adfd21f45783010f50d01b1a4a24918cdc840defa00e2fc",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-v3.ts.html",
+      "bytes": 48732,
+      "mtime_ns": 1792164622971006775,
+      "sha256": "398775cfa343b4f44fc9351da227011f843476ed46e9dcfb22b946b95fd66c48",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/margin-card.ts.html",
+      "bytes": 99397,
+      "mtime_ns": 1792164622992407745,
+      "sha256": "88a12b48ce082fbc7768201066597f9488a5858c1f7a6fd4989987ca82da2fd1",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/pdf-rail.ts.html",
+      "bytes": 31916,
+      "mtime_ns": 1792164622997107765,
+      "sha256": "1a6451ad8132ea2d0569d06ab02c959e9409608d6652a6e0d7800384a9118e3f",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/lang.ts.html",
+      "bytes": 10818,
+      "mtime_ns": 1792164622953452473,
+      "sha256": "ecdf6cb043517a5f3a300a749184c571c7d98ddac4ac154bcc797c648f2c190b",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/support-modal.ts.html",
+      "bytes": 8655,
+      "mtime_ns": 1792164623012304307,
+      "sha256": "b919dc9675cdcdaa3c83eba381a53b405c74d406922b0894e644c953d901b4c5",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/desktop-private-storage.ts.html",
+      "bytes": 6846,
+      "mtime_ns": 1792164622945620676,
+      "sha256": "e7bad9048fe8c8acbf5fe8c1913f880a5fcdc82322abe2d5a9bbe030491c72da",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/pdf-highlighter.ts.html",
+      "bytes": 50562,
+      "mtime_ns": 1792164622996542961,
+      "sha256": "285dadc3dd0c8de6d82e3ac34e2d8260c18890b02318a847a0604b324bda45fb",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-answer.ts.html",
+      "bytes": 8939,
+      "mtime_ns": 1792164622954286658,
+      "sha256": "69d54ce4a8c0598f801baed623bd88af1522533ac04f6e0c639eb2ea4523511c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-episode.ts.html",
+      "bytes": 19208,
+      "mtime_ns": 1792164622960342041,
+      "sha256": "6b0d0a473a5f914b0ee20cc1c4fdcceb4a2fb48764784bbec5d4f95cf39ce66a",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-fonts.ts.html",
+      "bytes": 46734,
+      "mtime_ns": 1792164622904769821,
+      "sha256": "e81beddd0d3581af104d46adc5cc70237ffd57916083ad24ab133c0f3e79a2c3",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-character-rig.ts.html",
+      "bytes": 25832,
+      "mtime_ns": 1792164622880311575,
+      "sha256": "c60e0841a52cdcc2cb099d03ae7dcd958b7997a1cb238080cee21a23f653d445",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-image-error.ts.html",
+      "bytes": 6201,
+      "mtime_ns": 1792164622905693257,
+      "sha256": "11c9c229474407e96fc19ea943984b8d21a3970a7122dd0473849af3198ac386",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-renderer.ts.html",
+      "bytes": 172841,
+      "mtime_ns": 1792164622924872345,
+      "sha256": "ec68f376e75f4dda514b867b7c714d019a1103c254e0391b76879a598e607f7c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/model.ts.html",
+      "bytes": 40182,
+      "mtime_ns": 1792164622994191410,
+      "sha256": "fae3e48c7e0f369cb9aabb3917a1c12446c8b9d80f72f98f75a27556cd2285db",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-ui.ts.html",
+      "bytes": 19466,
+      "mtime_ns": 1792164622936020757,
+      "sha256": "66668a0ff1e53b6e78fd0fd06a682b0f2a0616affdd35713706790daba518f4b",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-brush-pack.ts.html",
+      "bytes": 17405,
+      "mtime_ns": 1792164622876873416,
+      "sha256": "2c04a1252c417cfb9fc9d2e421f3fe40a7caff645f0fb7c17ab374b5aa3b2843",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-reference-style.ts.html",
+      "bytes": 5273,
+      "mtime_ns": 1792164622921778819,
+      "sha256": "384eb89fc6f76d5c08f7427982f8c250162aae1d653df528e1ce8fd21df83b84",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/zotero-import.ts.html",
+      "bytes": 39422,
+      "mtime_ns": 1792164623031247557,
+      "sha256": "a8a3bfcce492f80fc51d735f262308a3557f873d611c29b4fd6e304ac90aea42",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/pdf-selection.ts.html",
+      "bytes": 40748,
+      "mtime_ns": 1792164622998269666,
+      "sha256": "69a544233d5a1264f92eb2ce3e0c94f5558b1a90ef95b19a44cbb35c3d5f674d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/tutor-pairing-modal.ts.html",
+      "bytes": 11828,
+      "mtime_ns": 1792164623027093216,
+      "sha256": "c34201073ca6642fbc33dba8ec3595125f2a8608be1f840cf2d6c23ddb3a432c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/mcp-config.ts.html",
+      "bytes": 16729,
+      "mtime_ns": 1792164622993361391,
+      "sha256": "cca3785a81ab49af0f82772ad2f94d2e484d50907f2d5f840d4f8d9038079b4a",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/tutor-studio-commit.ts.html",
+      "bytes": 9395,
+      "mtime_ns": 1792164623028002111,
+      "sha256": "c8bebcfd5621fe45566c245c5e1acbb0384a346fe4f4b994976221b87c305f6b",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-source-identity.ts.html",
+      "bytes": 20960,
+      "mtime_ns": 1792164622928452882,
+      "sha256": "643668244ead9aea3a785b11f953fc86abb2adb5b9084a4cc657df43c771eeb0",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/official-web-clipper.ts.html",
+      "bytes": 21355,
+      "mtime_ns": 1792164622994874175,
+      "sha256": "10ea6105717855117362a8d4c1c5bb1583977d59c10aa570b5b83c4624b12e01",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/reading-highlight.ts.html",
+      "bytes": 21399,
+      "mtime_ns": 1792164622999723156,
+      "sha256": "3496117d9fa12041bba7e51364a73f57ef7dcc7203f7cea3bd4ae89ef17c6a82",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-layout-digest.ts.html",
+      "bytes": 8850,
+      "mtime_ns": 1792164622907765803,
+      "sha256": "f3b1e4287841ca5b52f96476995524d245f7fa1356fd4e9f1687b73931ecadf8",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/tutor-service.ts.html",
+      "bytes": 15942,
+      "mtime_ns": 1792164623027783731,
+      "sha256": "229861bf3e489e47418306da91f7017835f7ae65739ba9a9ce3de67f1538fdf3",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-model.ts.html",
+      "bytes": 180326,
+      "mtime_ns": 1792164622915517723,
+      "sha256": "a7e59480c64f5bc9c93c2c8dc6886e2cf7edeca5d5515e924066952c39c729c0",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/startup.ts.html",
+      "bytes": 20109,
+      "mtime_ns": 1792164623008856732,
+      "sha256": "74b84a612956f5af8fd0225c6e48d170e8505e0b2e8264e20b71f07728e1a394",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-editor.ts.html",
+      "bytes": 50006,
+      "mtime_ns": 1792164622903626754,
+      "sha256": "e681f78cea8d554ac39676da222767fbf5f51588d252b9b7c3b2bfd18871b724",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-spatial.ts.html",
+      "bytes": 22048,
+      "mtime_ns": 1792164622929032812,
+      "sha256": "19607ed3fa07a3a5bc0221819bec2dd970863d2fc8c8ab5574bd4cbedd1918bd",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/support-private-store.ts.html",
+      "bytes": 24284,
+      "mtime_ns": 1792164623013184243,
+      "sha256": "150593231af5bd8a16a5e4ffdd02baf2021d56c1a5d3818969fc75126169eb30",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/document-edit-target.ts.html",
+      "bytes": 19393,
+      "mtime_ns": 1792164622946269357,
+      "sha256": "763078aee299cb2d06f76f47228fb1d114e1e29efa42dd2e7e0c86d2afee519a",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/text-target.ts.html",
+      "bytes": 7745,
+      "mtime_ns": 1792164623017537547,
+      "sha256": "5259a2a830b0b001b7f41a4262a725149d07911c178d853865e9149e2fe0e708",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/teaching-policy.ts.html",
+      "bytes": 14230,
+      "mtime_ns": 1792164623017301709,
+      "sha256": "2719ab76efe09b188eb29bfbb673718cc3d012a0245111c8fccdcce47b2675e2",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/tutor-grant.ts.html",
+      "bytes": 4741,
+      "mtime_ns": 1792164623024911543,
+      "sha256": "d78c7e8db774e59722927de05dd55aa288eb07a22a5a01d2c9264a7267e46341",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/upgrade-i18n.ts.html",
+      "bytes": 47320,
+      "mtime_ns": 1792164623029676189,
+      "sha256": "2c10ad9cc9d5a664dd5ebc0449e01bc19e062c0414637275118fff5701f0c7a1",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/credential-session.ts.html",
+      "bytes": 19679,
+      "mtime_ns": 1792164622943697676,
+      "sha256": "778c75855b71bca9fe364c47732a88db9851fd557f7971a7df5e5c9f6c549372",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-dialogue.ts.html",
+      "bytes": 44875,
+      "mtime_ns": 1792164622959285143,
+      "sha256": "e94097df869476fb2777df4096e4399268d9d07d99759498c1d31376b6018556",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/credential-types.ts.html",
+      "bytes": 6315,
+      "mtime_ns": 1792164622944372482,
+      "sha256": "6534e285284f111838881f2539f83555b56922fb90845d58560bc1971af5f32e",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/skin-loader.ts.html",
+      "bytes": 28871,
+      "mtime_ns": 1792164623007866668,
+      "sha256": "64ccbc3a9733dd57dfa7be0c4ee70595760cc178025fc61e2df21c04de25cb50",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-progress-v3.ts.html",
+      "bytes": 10898,
+      "mtime_ns": 1792164622964063914,
+      "sha256": "a0c4d57fa07eaee9202f8643bf3adf87608d09bfdfecc4bec20d1c0e2556948e",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/review-outcome.ts.html",
+      "bytes": 4110,
+      "mtime_ns": 1792164623001222606,
+      "sha256": "da222d93ac9f4a406c8a151f502c87504c9e95eb86460289ba537293c6570d90",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-export.ts.html",
+      "bytes": 10994,
+      "mtime_ns": 1792164622903882218,
+      "sha256": "ee82e5cf3b496ee27cf74df143da8a2be4ebcea4988169bad9205da34b2a2c15",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/adult-support-policy.ts.html",
+      "bytes": 9206,
+      "mtime_ns": 1792164622866606441,
+      "sha256": "2e7e0f003b0aae6b7a7832122226f3fe7b63c32ed23afd5be5878207ab494826",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/committed-input.ts.html",
+      "bytes": 16540,
+      "mtime_ns": 1792164622942787531,
+      "sha256": "8df3416d073b21598e31fd190e7e6c618e67925c5c2a0e9c0ac53f7be311b685",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-api-protocol.ts.html",
+      "bytes": 8884,
+      "mtime_ns": 1792164622954456787,
+      "sha256": "968633a80bad495ad616d79378810b542b8df040e3823ccbca90512b52d6b335",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/desktop-state-io.ts.html",
+      "bytes": 14014,
+      "mtime_ns": 1792164622945939600,
+      "sha256": "d2e5800960d070c2fae7ddb87071b3f12874e66f93c97c9d48c7ef75f3aaf166",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-paint.ts.html",
+      "bytes": 66623,
+      "mtime_ns": 1792164622918000486,
+      "sha256": "444530b731fbbad4bc2d46af97cf739ff3b687324cbd0ec80dacb0267008f879",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/list-pagination.ts.html",
+      "bytes": 7766,
+      "mtime_ns": 1792164622973207657,
+      "sha256": "10b9a0d3beb500b62d291818037bf7914a4547748050dc3793277d75512ff802",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/build-info.ts.html",
+      "bytes": 3955,
+      "mtime_ns": 1792164622940108638,
+      "sha256": "4e7b2d1e64844ebb4755a967e0e173324d9e086b88ec3b3b36301fc380f64097",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/platform-entry.ts.html",
+      "bytes": 3950,
+      "mtime_ns": 1792164622998410711,
+      "sha256": "eb15c71b0e16da07c5737344d45cfa1393e2b86111cdb4d9dbdf5b41e508834d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/tutor-intent.ts.html",
+      "bytes": 35396,
+      "mtime_ns": 1792164623025354969,
+      "sha256": "04c8b4dd7ae69ceaa8711b95eb5dbabcf1777900f47e49b933b7f6b6daba59c3",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/acp-runner.ts.html",
+      "bytes": 58507,
+      "mtime_ns": 1792164622864783651,
+      "sha256": "4c2a32872fca0540da9d798766e71c23dd9128a3cc71a563372c5a2705c7c6fc",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-record-backup.ts.html",
+      "bytes": 6978,
+      "mtime_ns": 1792164622965693867,
+      "sha256": "999f8d05ae41885d765020a46f053ccc9e69b797478a9a2d4a2d2ce8dcc31575",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/table-anchors.ts.html",
+      "bytes": 6628,
+      "mtime_ns": 1792164623016555859,
+      "sha256": "298244b7752e87a43b5720617e2ea0f44180f127b261f3a45c120b228f60135c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/decorations-plan.ts.html",
+      "bytes": 49879,
+      "mtime_ns": 1792164622945032288,
+      "sha256": "60a1381db0d17bdd70899f39573b47436f1a2a7f9d60a89241877c75ed763317",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/tutor-collaboration.ts.html",
+      "bytes": 11795,
+      "mtime_ns": 1792164623022942624,
+      "sha256": "340cfbc82d834ce5a8feac724d3087ff3b0196c7aa2fc4c645cfc08af56bd610",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-characters.ts.html",
+      "bytes": 49577,
+      "mtime_ns": 1792164622880797002,
+      "sha256": "1b48ce2a8420b415f6ffe1483470b094fabac7c22ece17eb33bad3b374b5cad9",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-layout.ts.html",
+      "bytes": 17828,
+      "mtime_ns": 1792164622908658448,
+      "sha256": "7cb69d65df7c7cbddff2405685b3b1357fc3d2827770492f36278a4235a7edba",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/i18n.ts.html",
+      "bytes": 410830,
+      "mtime_ns": 1792164622951877522,
+      "sha256": "7434bcf961fb65908a1bdd61e4488b602f4dbeacfbc07224820fd52695ce83cd",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-live-paint.ts.html",
+      "bytes": 17928,
+      "mtime_ns": 1792164622909033122,
+      "sha256": "c8e507e58160d303bf4c0de606a41a5dcdf6849f590c381974079e2a34ab9b43",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/refresh-queue.ts.html",
+      "bytes": 8261,
+      "mtime_ns": 1792164623000391921,
+      "sha256": "671225ce5a6ebfcf8437984adb60f958a37f60b7c7ee1dd0a2425bf66720514a",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-compute.ts.html",
+      "bytes": 18187,
+      "mtime_ns": 1792164622882205075,
+      "sha256": "63a2d3577a85f934b2791bc8074b25a67f134aee56a48adb1ec8079c364c4cb8",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-outline-worker-source.ts.html",
+      "bytes": 3594,
+      "mtime_ns": 1792164622916089819,
+      "sha256": "b9e8790ea27486170e43dc9486d909215877f1e18d95095678a7811c323de23d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-brush-engine.ts.html",
+      "bytes": 36290,
+      "mtime_ns": 1792164622876255028,
+      "sha256": "b25e3ee8d8c0d01b24c5cdd1d617833bac9c1a5daa4062627b8ecb154b3e170e",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/ink-transcript.ts.html",
+      "bytes": 4701,
+      "mtime_ns": 1792164622952835043,
+      "sha256": "8cd94ab8b728949b0b810a1e0b4980b38e34c7c65ab556ec23f7cab24204b62b",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/process-tree.ts.html",
+      "bytes": 8851,
+      "mtime_ns": 1792164622999371982,
+      "sha256": "84c4be577f62cc1722fd3f65e75967cb2f4ada8a1c5bb9d611d0ba3cd671b472",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-outline-worker.ts.html",
+      "bytes": 7565,
+      "mtime_ns": 1792164622916266365,
+      "sha256": "894c493dd43ad90207b7554e54239b8597777789173f37209b88740c7adc7489",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-mechanics.ts.html",
+      "bytes": 81667,
+      "mtime_ns": 1792164622912299903,
+      "sha256": "1a207a6c7c5511b294f09458972f02bc99b3c9fee3ad21d85df06f264cb48d3b",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-recognition.ts.html",
+      "bytes": 20031,
+      "mtime_ns": 1792164622920531333,
+      "sha256": "2183ed08c3d9d3f1f7a2835b2dd6a40338df1fc2cfeb307e7451b4bb2284fbab",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/main.ts.html",
+      "bytes": 1095374,
+      "mtime_ns": 1792164622990861211,
+      "sha256": "1532a84b6b4b2d2dc510c1ed795c7956f2e3f1a34fed79a7a8654ede84fda563",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/translate.ts.html",
+      "bytes": 18650,
+      "mtime_ns": 1792164623018305814,
+      "sha256": "bb86bbb9ae151b4fda90bfbeed241952ea9b3aa366f3d9a4a966df1fcaaef187",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-vector-inspector.ts.html",
+      "bytes": 45087,
+      "mtime_ns": 1792164622937380870,
+      "sha256": "1d59f10a8c9215479a7f4baa200dd4ece58dd4919dc2dd92a6d8e9c64b1fd354",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/private-file-io.ts.html",
+      "bytes": 7145,
+      "mtime_ns": 1792164622999173561,
+      "sha256": "896686a42c86c84e44bfb78f622fa12af50cebe7033f331c3ce91f141bbfe336",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-outline-preparation.ts.html",
+      "bytes": 16736,
+      "mtime_ns": 1792164622915946649,
+      "sha256": "fc4d730c9eecc8e41b25b6f91bc0a13716fc2c07791966fbc23d04a3fcf3e147",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/index-table.ts.html",
+      "bytes": 29822,
+      "mtime_ns": 1792164622952672414,
+      "sha256": "7abfa3ed8bf09a1d75fadfa2a22f4fca04ec10dffa2302c45cf611935b302bd7",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-space-modal.ts.html",
+      "bytes": 5704,
+      "mtime_ns": 1792164622928631636,
+      "sha256": "298ab4163c197bf17c2887c6b5007df4c2c8def3967d6e930eab9d645d4aa29e",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-snap.ts.html",
+      "bytes": 13184,
+      "mtime_ns": 1792164622927843911,
+      "sha256": "6836eb84b7d571202d597df3f383dbf03aebf7446fa170420235cef6fefa263a",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-surfaces.ts.html",
+      "bytes": 56317,
+      "mtime_ns": 1792164622934231926,
+      "sha256": "d74a2f79852beebc23f2a88c8e84a310d37c325be225d7fbe5207455c32b062a",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/highlight-color.ts.html",
+      "bytes": 12585,
+      "mtime_ns": 1792164622949863394,
+      "sha256": "8e992fb1bcaf58999c6ade2886a3c9ca58420aeedd942190c735d499ff576615",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-controller.ts.html",
+      "bytes": 875486,
+      "mtime_ns": 1792164622900837443,
+      "sha256": "c181c60bee989bd683eae4844fd9e81ccdf1fa35df93eb5560631c00454c673d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-selection.ts.html",
+      "bytes": 25130,
+      "mtime_ns": 1792164622926158249,
+      "sha256": "b4686cac8e1cb2ed71e41619fe9ab7490f780dbfac7d384788739cf5bfa78a60",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/table-highlighter.ts.html",
+      "bytes": 30211,
+      "mtime_ns": 1792164623017123830,
+      "sha256": "dabeb9b8aea805306426d29f7948d0137bae48d4d59d4d28d9433ab294252ea5",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/tutor-local-recovery.ts.html",
+      "bytes": 12864,
+      "mtime_ns": 1792164623025860938,
+      "sha256": "6f93d1dab9c2c86edea1c74abffa5180764e26c34a8806ed3b1127755dba2d95",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-layout-store.ts.html",
+      "bytes": 17500,
+      "mtime_ns": 1792164622908189146,
+      "sha256": "861bb670186cae8b12a110e8da4e9d65a596e65c1e09794e3ddc5abc301da1b8",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/web-capture.ts.html",
+      "bytes": 38905,
+      "mtime_ns": 1792164623030535958,
+      "sha256": "5bb15c25fc1ae0238f852a755fd2726f10079d594f76bec7293240528fabbce5",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/srs.ts.html",
+      "bytes": 16029,
+      "mtime_ns": 1792164623008433556,
+      "sha256": "d46d2adc033cc84de927461b8205432f66cc6304d7fac0e038422616dabfdca8",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/line-diff.ts.html",
+      "bytes": 7965,
+      "mtime_ns": 1792164622973034112,
+      "sha256": "08e9a9b13974d92a3ddbb5e4daa88e94ada02006c2ab025514922795539d76b6",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-experts.ts.html",
+      "bytes": 9837,
+      "mtime_ns": 1792164622960874678,
+      "sha256": "25426f9b891466b54071d96c2103e57ee08b6a550355cc8ff0ee60ee907e9c0d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-anchors.ts.html",
+      "bytes": 52209,
+      "mtime_ns": 1792164622875134795,
+      "sha256": "e39a013a38b88fb98c9087d4b27cc1202866a83ac6f63eb8d10b78031857cd39",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/tutor-task.ts.html",
+      "bytes": 40882,
+      "mtime_ns": 1792164623029416933,
+      "sha256": "dbd7f991fe3d5e286f8893650895381a5224c99b5a91b36beb8d21473ed138fc",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/intent.ts.html",
+      "bytes": 15129,
+      "mtime_ns": 1792164622953086632,
+      "sha256": "db39038609a0f7949d5c9c35fed3ceec96051ea5e826a0e84f6b228777d91791",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/translation-controller.ts.html",
+      "bytes": 86688,
+      "mtime_ns": 1792164623019638135,
+      "sha256": "47b5bb5bc88db2ca5d73a384cb9730eee482c4b9c672b626aac8ce0e4e405b78",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/tutor-agent-adapters.ts.html",
+      "bytes": 13673,
+      "mtime_ns": 1792164623021286713,
+      "sha256": "1ce77b29a40c560f615510606e988943e03b21cb39eebd1aa0232c43e0350ee5",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-flow.ts.html",
+      "bytes": 15770,
+      "mtime_ns": 1792164622961291770,
+      "sha256": "80a1d08f157bffa0d3b7b27234eb0c439147cde2daddb8ececae6394155a77de",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-card-v3.ts.html",
+      "bytes": 38657,
+      "mtime_ns": 1792164622955154136,
+      "sha256": "d024e7c4a2e9bca503a724b0266b16b24ef7f5d4e29fc2190f4c3033e8caf797",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/ids.ts.html",
+      "bytes": 10293,
+      "mtime_ns": 1792164622952115360,
+      "sha256": "bd7654935cb1aa849f7994b89086efad4a97fe17ec10eb959857a45bd752f59e",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-mcp.ts.html",
+      "bytes": 42774,
+      "mtime_ns": 1792164622910877663,
+      "sha256": "0723442b5350a244e4bbaf46b2ece3c418ba498a89199aa3dbc1e0307a4bcf06",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/library-query.ts.html",
+      "bytes": 13583,
+      "mtime_ns": 1792164622972812648,
+      "sha256": "3dc64223151c8d6e0b7df8d4baf32852e76bf6fb99c1fb84347fa623c5ed3d72",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-playback.ts.html",
+      "bytes": 14428,
+      "mtime_ns": 1792164622918825463,
+      "sha256": "8a6fb33e6247e1a58c42c918fa64f9587f98b6fde2f616200422aef9cb3dc10d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-metrics.ts.html",
+      "bytes": 5639,
+      "mtime_ns": 1792164622912478990,
+      "sha256": "dce3909ff2a757e1dbfbe97459532521b4900060f9a74ab4515cba12b2709bc6",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/agent-runner.ts.html",
+      "bytes": 58737,
+      "mtime_ns": 1792164622867490543,
+      "sha256": "b706ad507373f3e63d318871ea17a46a8fda97941654b804a5ba1727f88e5823",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/credential-store.ts.html",
+      "bytes": 22470,
+      "mtime_ns": 1792164622944190978,
+      "sha256": "7980980d3c8841aa5ff243bafadd38955a6d1fa659423399de0845cf310aed21",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-share.ts.html",
+      "bytes": 45917,
+      "mtime_ns": 1792164622927561529,
+      "sha256": "557ff435b9bdc44884b85a9c9ee0240efbce9f75b558b0c065ea3747a4701b88",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/tutor-board-surface.ts.html",
+      "bytes": 29941,
+      "mtime_ns": 1792164623021963811,
+      "sha256": "6cbded604c7a82e7ac48d17b2c4efb3efa097298ad19e9092b036bc06dced115",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-invalidation.ts.html",
+      "bytes": 10903,
+      "mtime_ns": 1792164622961630111,
+      "sha256": "6ab4ffebbbf21797db83ba3022321b4df94d2ea9ad35cd597fccd42aee5ddb15",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-math.ts.html",
+      "bytes": 39031,
+      "mtime_ns": 1792164622910030478,
+      "sha256": "0a635a529ae3efe49f8752e3425ace15aaff0a505d021d4367e8c4c8a2172028",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-brush-ui.ts.html",
+      "bytes": 38433,
+      "mtime_ns": 1792164622877523680,
+      "sha256": "b0b4c5d31099a3cc8bae44b871d8451d7ff9621230f0cfe34e9b64eef20554e0",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-connection.ts.html",
+      "bytes": 6119,
+      "mtime_ns": 1792164622882368912,
+      "sha256": "20738202207343ad4420e5b74b9de5ccb032e3c56a1103aea7db60f06b66c636",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/chat-prompt.ts.html",
+      "bytes": 18565,
+      "mtime_ns": 1792164622941963804,
+      "sha256": "5c155d89a1471a11986774eb264018990e49d9172baf1cab71dadfdec3ed7453",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/vanilla-tilt.d.ts.html",
+      "bytes": 6215,
+      "mtime_ns": 1792164623029783608,
+      "sha256": "af822df788fbcc76c1f3e25bafcba34f26f8fd8957b2cf60ca3742709dfe36e0",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/tutor-conversation.ts.html",
+      "bytes": 90801,
+      "mtime_ns": 1792164623024645953,
+      "sha256": "0d19e254c10173ec481b053952da2f130c7a371beed814c652f22bd60f9bda00",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-tools.ts.html",
+      "bytes": 65651,
+      "mtime_ns": 1792164622935374409,
+      "sha256": "67811987074ab04bcdfaa7bd11c35d209447c2be70cd32aba708ea25888d3429",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/service-work.ts.html",
+      "bytes": 7658,
+      "mtime_ns": 1792164623001795327,
+      "sha256": "5473a923b666735ed3c77c05dcffd47e906f355c1a958b325f3556c476a34b6c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/support-storage-context.ts.html",
+      "bytes": 4510,
+      "mtime_ns": 1792164623014344685,
+      "sha256": "47a92fa956cb853da9a9031ec314348683e93adccc6dfc0fc83df29bbb559ab0",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-placement.ts.html",
+      "bytes": 16676,
+      "mtime_ns": 1792164622918483205,
+      "sha256": "cf3c7cd7c8cd512b5fb62dd0ee1df85f006badce453d4f6b4a9ad42988da44fc",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/opencode-setup.ts.html",
+      "bytes": 30557,
+      "mtime_ns": 1792164622995347893,
+      "sha256": "f6cef7986b2c7e29c3adb5a336dd4734437228135e451dd9da76ebfd187470b8",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-reply-gate.ts.html",
+      "bytes": 27053,
+      "mtime_ns": 1792164622966877601,
+      "sha256": "5f65c26065d302f3b901fe57de0cb159f44f48e43b15c5b2c13794427f86c26c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/notebook-controller.ts.html",
+      "bytes": 26903,
+      "mtime_ns": 1792164622994584252,
+      "sha256": "aeb01d4f970d264fc203381bafaa20ed8c20a870251e5d7385fdde0ba9d5462f",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/translation-request-queue.ts.html",
+      "bytes": 11499,
+      "mtime_ns": 1792164623019950434,
+      "sha256": "195e9bd3e6c585a8baf02e24a3d57eaf13db7172479ca3268695d1e502ca8400",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-protection.ts.html",
+      "bytes": 36289,
+      "mtime_ns": 1792164622964852765,
+      "sha256": "0711e1a0bfcbfd3dfd229fe0ba7aef77511c8adcd243105c683082e2f7c2c921",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-vault.ts.html",
+      "bytes": 7119,
+      "mtime_ns": 1792164622971230572,
+      "sha256": "c70a0d2f1c2d6b8d065e523257ffcd82da668d926249e4ddf1e3cccafa80c219",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/memory-derive.ts.html",
+      "bytes": 12967,
+      "mtime_ns": 1792164622993660690,
+      "sha256": "40fea03d181de17ff420b37ebcd11d12455e3a57d050a52a197a5048a30b6e7c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-brush-fill.ts.html",
+      "bytes": 9642,
+      "mtime_ns": 1792164622876501325,
+      "sha256": "727caff2956be38cd0ae27a8bc23dfeb2384cce39c9e904f2b7e1b9bb972a53f",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/support-response.ts.html",
+      "bytes": 42674,
+      "mtime_ns": 1792164623013714713,
+      "sha256": "135d2a09215c761d28af33320439c15d3fe565c7a1c3862a5f3e4a25b5f8b22e",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-i18n.ts.html",
+      "bytes": 169036,
+      "mtime_ns": 1792164622905518545,
+      "sha256": "3a68e9be27ffb62e40db6b45a29af2821de4711deb91bc27623f181cc235506f",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-vector-edit.ts.html",
+      "bytes": 10358,
+      "mtime_ns": 1792164622936539393,
+      "sha256": "e54061bccd7e79cdb7519330102eec9f2f161630b614d0743abd91244093768c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-vector.ts.html",
+      "bytes": 95595,
+      "mtime_ns": 1792164622939222119,
+      "sha256": "931bdc35a724159af4a2a3c23db089e77c2b5db913795b40a9d5aa33a3803fd0",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/conversation-diagnostics.ts.html",
+      "bytes": 17962,
+      "mtime_ns": 1792164622943188373,
+      "sha256": "74e2f56d0b0315d9d1e237a12e6f852272db1dc3b9f4b3a0be2375986c0909a4",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/reading-rail.ts.html",
+      "bytes": 34645,
+      "mtime_ns": 1792164623000204417,
+      "sha256": "7387497ecaded17a944c4db14821c48df1721a8024b6bf0d7068dbf16bfc5552",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/tutor-surface.ts.html",
+      "bytes": 18301,
+      "mtime_ns": 1792164623028516788,
+      "sha256": "fa254d4f165a8ba86f72be285df5e43a2c28a75f9a42e52fe2106990277088ef",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/tutor-codex.ts.html",
+      "bytes": 27210,
+      "mtime_ns": 1792164623022435447,
+      "sha256": "9ab197187325432a285153c84e6ef7d4efcf5655d9d65bd685f5d29f40997490",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-control-v3.ts.html",
+      "bytes": 18648,
+      "mtime_ns": 1792164622956857131,
+      "sha256": "ef40cf331b16b1f08a78bc97b66d8529e902ca1767d33d52cd1dc86d9ba37a06",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/external-generation-gate.ts.html",
+      "bytes": 22008,
+      "mtime_ns": 1792164622949623181,
+      "sha256": "a6c39f8a594fa691d8a41d35b62e39111cc64b7d07f9cc3324a10bad7c0d14db",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/selection-context.ts.html",
+      "bytes": 5580,
+      "mtime_ns": 1792164623001580322,
+      "sha256": "14ee66d1dc58f2157740d6ad2af5f6355a84ecb7d17fa8783e8a37e92aef0946",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/memory-policy.ts.html",
+      "bytes": 13937,
+      "mtime_ns": 1792164622993929029,
+      "sha256": "221e57826eff4ee1703e02684136379a0296db1bc4165f5c5011951d2f97b6e0",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/tutor-a2a-client.ts.html",
+      "bytes": 19992,
+      "mtime_ns": 1792164623020364109,
+      "sha256": "2c5dc8db62fdc5764e22fe156bcde33ab03aa1b9a7f0978b65667617472fb0a3",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-reply.ts.html",
+      "bytes": 26594,
+      "mtime_ns": 1792164622925556694,
+      "sha256": "481306b4dc41f4f571d9913e0552a4b953342398a0ae6e280963e4c1e44c51a9",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-agent.ts.html",
+      "bytes": 214304,
+      "mtime_ns": 1792164622872942663,
+      "sha256": "0b3506fee358f6f55710f9fb546eda6720e02799749d24187e77a9015d1aadfd",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/library-index.ts.html",
+      "bytes": 48634,
+      "mtime_ns": 1792164622972555643,
+      "sha256": "425ba7c9213f0a2c6fdb91dc71e9c44ef5b010c22e6292f553c83ad9c1c815c7",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/support-panel.ts.html",
+      "bytes": 13608,
+      "mtime_ns": 1792164623012634856,
+      "sha256": "93a42842957c6b37b84a722845d06d03044eb9491856a1d1d845f32eb52acd84",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-character-parts.ts.html",
+      "bytes": 17440,
+      "mtime_ns": 1792164622879736354,
+      "sha256": "189734f0e4f86dba578e07f825d04d2913ca5ea154014bf5029c2208dd7f20ba",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/card-chrome.ts.html",
+      "bytes": 9625,
+      "mtime_ns": 1792164622940567107,
+      "sha256": "2549d2de6af98e43cd4ba1830840aa6a0bc6ea368271d2d4a653ad662e80532a",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/settings-ui-state.ts.html",
+      "bytes": 19661,
+      "mtime_ns": 1792164623003238108,
+      "sha256": "56e1508b61449bd54b6077dc93ed4ed7e6329d9f8a205bf5bc5623de82c5236a",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/acp-session.ts.html",
+      "bytes": 110821,
+      "mtime_ns": 1792164622866466854,
+      "sha256": "aa29e74ba9a3aab13edfdcf90eb81b311653bb7422598710d9ea641e5de45a22",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/tutor-collaboration-modal.ts.html",
+      "bytes": 12232,
+      "mtime_ns": 1792164623022683577,
+      "sha256": "cf368bfced7c5f7814192170f5f1c8720ebb48a94ce4ce823188dd6e2d5a0662",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/board-brushes.ts.html",
+      "bytes": 30431,
+      "mtime_ns": 1792164622878132527,
+      "sha256": "c694e0ee1541c1493c11a74bf392d7f4dce906bd87d558bfb88b2d6d4ce6a739",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/margin-rail.ts.html",
+      "bytes": 36867,
+      "mtime_ns": 1792164622992988967,
+      "sha256": "797fe266459bc1b7677f30241ef747cca4224fe26baddc4850a67c267210520b",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/learning-effective-v3.ts.html",
+      "bytes": 12921,
+      "mtime_ns": 1792164622959627525,
+      "sha256": "da5ece61cfc8b54c348ccf81717b1284f07f4a34e8bc8194e6ccc1695c9f3be8",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/markdown/profile-file.ts.html",
+      "bytes": 14979,
+      "mtime_ns": 1792164623036503297,
+      "sha256": "3d48328472f212d237e4eabb2e3cea8faecf38bc93869e151030cc0bc4b8053d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/markdown/blocks.ts.html",
+      "bytes": 26588,
+      "mtime_ns": 1792164623032569878,
+      "sha256": "30b23b57f5a666b1be111b5cd995292153f712310bc1603ef25e131449fc189b",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/markdown/memory-cell-file.ts.html",
+      "bytes": 25999,
+      "mtime_ns": 1792164623034609839,
+      "sha256": "0a6538ef62bf327d6a1e8419f009268d526914205d4e401468de886b8de44d61",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/markdown/index.html",
+      "bytes": 12844,
+      "mtime_ns": 1792164623031451145,
+      "sha256": "17518a0a67d93067074b779afa8ea63157e059129e5427c7c953440277e29aa9",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/markdown/proposal-file.ts.html",
+      "bytes": 17794,
+      "mtime_ns": 1792164623036794179,
+      "sha256": "8f4449376fed2c2e4e75f2475784e11ff62cc36b6c399fccef703746795604f2",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/markdown/inbox.ts.html",
+      "bytes": 21775,
+      "mtime_ns": 1792164623033678985,
+      "sha256": "5f2eb2f61e7dafec4754d86e78138831784ea70353f5f85325214d4b6b7e844d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/markdown/overview.ts.html",
+      "bytes": 44418,
+      "mtime_ns": 1792164623036233375,
+      "sha256": "fcf638432e9552430276bcc6140c12e0adf872b2fdcbf01d25aa2e06d04098b1",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/markdown/annotation-file.ts.html",
+      "bytes": 48872,
+      "mtime_ns": 1792164623032150868,
+      "sha256": "877d8622873dbbea3fee10b5fd4feefcaba29aae56f313bde090516710268dfd",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/markdown/scene-file.ts.html",
+      "bytes": 9730,
+      "mtime_ns": 1792164623037432026,
+      "sha256": "ac4576dacf53c541a3d56945f971625843e7f6695e761a1a16e0cb27c7a718c1",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/markdown/notebook-labels.ts.html",
+      "bytes": 50525,
+      "mtime_ns": 1792164623034924846,
+      "sha256": "7c5bddd343ac6ab01e69c27090a4d859aac95e4db77d4b839a45e2250c785b2f",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/markdown/review.ts.html",
+      "bytes": 24594,
+      "mtime_ns": 1792164623037270814,
+      "sha256": "fc1d2c28a70a4752909c7aa185627d55da4c2cc858737f5502410dcc76f8c684",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/markdown/notebook.ts.html",
+      "bytes": 58404,
+      "mtime_ns": 1792164623035690613,
+      "sha256": "2929e7559c160eece37ffe3806d41eb9f0a438b5c185db36ce8ead5721980f26",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/markdown/frontmatter.ts.html",
+      "bytes": 14260,
+      "mtime_ns": 1792164623033303310,
+      "sha256": "d2c16d888c322d0ce368378722186bc4474d8cd5f96180ff4fc3f9595d8be56b",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/markdown/chat-log-file.ts.html",
+      "bytes": 25345,
+      "mtime_ns": 1792164623032966636,
+      "sha256": "a25857fdb5d417c893ba7bd432961521a11ff2e21f217e80711b330342b1062b",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/web-bridge/index.html",
+      "bytes": 7874,
+      "mtime_ns": 1792164623058755411,
+      "sha256": "a51395a0f700da265c20ecc0bcfd57c5e557e922f3d3edbec6eff54dfc56db4f",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/web-bridge/protocol.ts.html",
+      "bytes": 26257,
+      "mtime_ns": 1792164623059967896,
+      "sha256": "c51259f9c338bca578fec3eee2c4b6a0cabdca9aeeac23ec5fa8c8a5e04c2fa5",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/web-bridge/server.ts.html",
+      "bytes": 45877,
+      "mtime_ns": 1792164623061016627,
+      "sha256": "6bcf2dd83c576c0fd01a160b05fc10a66663e8c7396d72b1eac147a147667dad",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/web-bridge/stats.ts.html",
+      "bytes": 10760,
+      "mtime_ns": 1792164623061433220,
+      "sha256": "aa852a26cf35300fc3198e8cc8b351513aece2c22315fb8594b3b6ef2d3713ae",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/web-bridge/pairing-modal.ts.html",
+      "bytes": 12325,
+      "mtime_ns": 1792164623059089752,
+      "sha256": "30879f3a7c1e178e8cb587c82f68b2c018df9f9b77a1c1ce5b67a1e927961c0d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/web-bridge/state.ts.html",
+      "bytes": 7632,
+      "mtime_ns": 1792164623061216215,
+      "sha256": "f1da53b9df12af4261417eecdca1f764afd0a4a3c1d10fb4287b3b88ff48450f",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/web-bridge/pairing.ts.html",
+      "bytes": 21518,
+      "mtime_ns": 1792164623059644389,
+      "sha256": "190d023bb2091b60816abd7de5029c02ca1585128e0cfdaa7db6a9223057496c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/mobile/index.html",
+      "bytes": 5123,
+      "mtime_ns": 1792164623037571321,
+      "sha256": "a931028a8010d20c4ee7c0773f269f86351cd9a397798cd9c631d88b26144991",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/mobile/recognition.ts.html",
+      "bytes": 9178,
+      "mtime_ns": 1792164623038898392,
+      "sha256": "46ff33fd19ab414f27833c5463cbc9f673f757a852bdc691a0077710fbacf398",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/mobile/main.ts.html",
+      "bytes": 55155,
+      "mtime_ns": 1792164623038643261,
+      "sha256": "c5fcd9fc1134dfa8bef890acf847d94fcf521dea0d78bcb8824bea7660bc7af5",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/views/chat-view.ts.html",
+      "bytes": 184384,
+      "mtime_ns": 1792164623056309691,
+      "sha256": "52129fabd6f237bfa4383947d6485258ff84ac6ecb4d3c7aafa342c9cd15d188",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/views/index.html",
+      "bytes": 10590,
+      "mtime_ns": 1792164623039087062,
+      "sha256": "f59677826fbd6ea2abca98c8bbc9515ee4374013bf9072d5f95a882ac5d56c9d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/views/note-popover.ts.html",
+      "bytes": 21684,
+      "mtime_ns": 1792164623057534426,
+      "sha256": "fb507ce2398c28a695826c7d63c1999b017948d5e6cecdf23166117fac9d59e5",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/views/note-panel.ts.html",
+      "bytes": 31677,
+      "mtime_ns": 1792164623057067624,
+      "sha256": "42caa73d1fc233cd8534a5812e3279703ee067908251e305157918da5e99fc53",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/views/annotation-table.ts.html",
+      "bytes": 38011,
+      "mtime_ns": 1792164623039999166,
+      "sha256": "f1c123a020419e353fe02f16d521831e6b7c86bb439869ee0ab632c791f0b2ef",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/views/dashboard-view.ts.html",
+      "bytes": 11077,
+      "mtime_ns": 1792164623056592655,
+      "sha256": "ae9174968a3e6fe9179f28245125d91513f0aedc6d0c3413f80507a4198ef722",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/views/scene-modal.ts.html",
+      "bytes": 17849,
+      "mtime_ns": 1792164623058533656,
+      "sha256": "e17be86a3c3a22431666a00f3959d1da3fae09845e4a65983db1d92ce3080c2d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/views/annotation-modal.ts.html",
+      "bytes": 21914,
+      "mtime_ns": 1792164623039418070,
+      "sha256": "8689364a4311420eb2d4cb658b752072404629a9a826c7aac59617474c1e4949",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/views/board-view.ts.html",
+      "bytes": 660724,
+      "mtime_ns": 1792164623053156955,
+      "sha256": "3173b79ac42e3ae0e6b37c722b5bb18159b43a0ef2cf4f6dc2b84a342d344bdc",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/views/review-modal.ts.html",
+      "bytes": 23453,
+      "mtime_ns": 1792164623058227816,
+      "sha256": "c00d79aff6a8328e7f9fa1a4abd6f43d2686b6550a184e33c7abee58326d5b86",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/lcov-report/src/views/permission-modal.ts.html",
+      "bytes": 13693,
+      "mtime_ns": 1792164623057829391,
+      "sha256": "00d4a66a499963644a312cb7043379718f8b09c0468d2cc5d1109ab115b57e31",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/surface-transactions.ts.html",
+      "bytes": 23781,
+      "mtime_ns": 1792164622829769131,
+      "sha256": "b443a6e3734ae865586b276e67c42d70b7e47a53aeb08a4b78876da00571a1f6",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-expert-modal.ts.html",
+      "bytes": 13301,
+      "mtime_ns": 1792164622804228571,
+      "sha256": "c6e21d50ca23d7b7baef48d2b21048d699b486b2598f44068f643dddf7d7319c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/card-pool.ts.html",
+      "bytes": 7500,
+      "mtime_ns": 1792164622793809883,
+      "sha256": "7652c997e82f0af5c8dfa31afb692ec9a08e053c0b5156e747bc15a8340a704b",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-draft.ts.html",
+      "bytes": 49242,
+      "mtime_ns": 1792164622775732486,
+      "sha256": "7f033dae658adf5c27f6509be83b3799ed107ba9c452433755572b1f587eecfa",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/watcher.ts.html",
+      "bytes": 11299,
+      "mtime_ns": 1792164622836290275,
+      "sha256": "d3f8470d57bffbcc6cd2fe74788a620bc52ef41e4052669253086019dd7ffa51",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-panel.ts.html",
+      "bytes": 31353,
+      "mtime_ns": 1792164622805128799,
+      "sha256": "6365a58a6db70d60ab9f053a3b8039955a3df3d1e2676533db6257e5ebfdd1df",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-camera-preview.ts.html",
+      "bytes": 6658,
+      "mtime_ns": 1792164622766753372,
+      "sha256": "5667853994b7f1fd29182c55831f166bad88a3cd8bef65ceacc01b13e03a50c2",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-safe-projection.ts.html",
+      "bytes": 8177,
+      "mtime_ns": 1792164622806928838,
+      "sha256": "ab018298795a3de411ad4a1afcdf0df8c82e6dfe608472494d4975ba613f426f",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/skins.ts.html",
+      "bytes": 18275,
+      "mtime_ns": 1792164622826322473,
+      "sha256": "c3ffaa9571d2b8eafc96f3e6138396cfa69ec5e7119eb19d976fcb8028abd701",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/tutor-a2a.ts.html",
+      "bytes": 21219,
+      "mtime_ns": 1792164622832127100,
+      "sha256": "2849ff680f5f56dc83068affbeb4744cf6822f4eed85c8f84b921040192beec9",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/tutor-access.ts.html",
+      "bytes": 5129,
+      "mtime_ns": 1792164622832247394,
+      "sha256": "c2eeb83096527bc687be70b4bcd4850afe904941990d4332922a789f71e3c55f",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-reference-regions.ts.html",
+      "bytes": 32723,
+      "mtime_ns": 1792164622785102567,
+      "sha256": "882acfe0cf19bea48abbe3604d06471b086e9b8b7003b46e55a5d7a86aaa03e9",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/interaction-activity.ts.html",
+      "bytes": 3914,
+      "mtime_ns": 1792164622800548698,
+      "sha256": "4809b1484947809d696780a961bb950a6229364326f0ea57626eaed0ca7e3fa3",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-pdf-context.ts.html",
+      "bytes": 5345,
+      "mtime_ns": 1792164622805248926,
+      "sha256": "0d2a0fbd6706f20aa8d25efedfe1a94e324ab11a414fc57e26a0f099d9aac808",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/anchors.ts.html",
+      "bytes": 23797,
+      "mtime_ns": 1792164622761514424,
+      "sha256": "bc0eb48b1b5ac0ff41b76cead236fef365a84688c3a2ac3c4d4fc346ef2333e6",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/pretranslate.ts.html",
+      "bytes": 40772,
+      "mtime_ns": 1792164622821928459,
+      "sha256": "9bf8dbfb19a8bd45c37380452a641750fec8cbd58a185d88bf5047c4617c2230",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-paint-checkpoint.ts.html",
+      "bytes": 25872,
+      "mtime_ns": 1792164622783017646,
+      "sha256": "1db38294aa4aa2cd745761fa04d60b2eb87f097f765bfa2ac90d137b9a57c055",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-context.ts.html",
+      "bytes": 17071,
+      "mtime_ns": 1792164622802589451,
+      "sha256": "92fb35ea146c7b738326860b796455e75b5f87fa5747191d0ebafc38f6ac0648",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/study-source-binding.ts.html",
+      "bytes": 14352,
+      "mtime_ns": 1792164622827711795,
+      "sha256": "47ff6a96e33501efc7b028c4557ea5afa8b7b5e05d19c0d31f743767a61861e3",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-progressive-render.ts.html",
+      "bytes": 6735,
+      "mtime_ns": 1792164622784160546,
+      "sha256": "8fd7cfead7760ea86afad7ec0f487b56658c91695ccd0cc72a649e2a2c9ac0bb",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-pressure-geometry.ts.html",
+      "bytes": 10638,
+      "mtime_ns": 1792164622784037669,
+      "sha256": "b3e85a54a714c8385c3e39dc9e1ecb9ac8cdeb1835d41d3e6cee6b7ade9b2f42",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/pdf-annotation.ts.html",
+      "bytes": 14158,
+      "mtime_ns": 1792164622820602180,
+      "sha256": "3dd4d3a3210d5aae81625c508c5aecab5121f21df31d1b996b6bc66f1b6bad8b",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/excalidraw-guard.ts.html",
+      "bytes": 18688,
+      "mtime_ns": 1792164622797052913,
+      "sha256": "4ce0bf8cd339c05a435945ce56cefeebb7f892b6a74169ac677d58f51b17d312",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-vectorization.ts.html",
+      "bytes": 40195,
+      "mtime_ns": 1792164622793112493,
+      "sha256": "bb4bc64a7d975ba0f69d73b39c491bae7cd4576168af09ddcc9484965e556749",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/editor.ts.html",
+      "bytes": 25788,
+      "mtime_ns": 1792164622796719656,
+      "sha256": "d7c98953ceeb6612a96579562fbe41c36903fec5575a25affd4c2978702833e2",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-image-provider.ts.html",
+      "bytes": 61962,
+      "mtime_ns": 1792164622778061663,
+      "sha256": "f37f2e4d759c6358d9a4041c858c93801d16ceaa5c9cc2b332ed6342cb3cba31",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-types.ts.html",
+      "bytes": 109780,
+      "mtime_ns": 1792164622791105782,
+      "sha256": "3fc4dffc543cddfbdbd79e0c81830c8ef7820f3663674a1538ec92732df66f9d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/tutor-journal.ts.html",
+      "bytes": 10595,
+      "mtime_ns": 1792164622834288022,
+      "sha256": "5db28c3f61430bfe80f51b4a49c269f2ddeb6d89296597e09430ab9512ffe7c7",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/list-select.ts.html",
+      "bytes": 14877,
+      "mtime_ns": 1792164622809717858,
+      "sha256": "0b8ad74845491cb1c73fe206c4f1f1cc0b263d1c186d80f373686e9d5868c76b",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/api-stream.ts.html",
+      "bytes": 45744,
+      "mtime_ns": 1792164622762360109,
+      "sha256": "6c44463905affdaec198c535acc9f15e49ae72a83aabe6146c23c8c81945b65d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-record-read.ts.html",
+      "bytes": 33713,
+      "mtime_ns": 1792164622806261865,
+      "sha256": "812befed0245f47b3064ec4773870f880c49c2fc30b8840350d2dd222ada5ab1",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/index.html",
+      "bytes": 167484,
+      "mtime_ns": 1792164622758700196,
+      "sha256": "dc3c9d5e735c367c9d966bdcea5bcb112236a75baff6b9f943ae8b9eae340b16",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-portable-layout.ts.html",
+      "bytes": 8701,
+      "mtime_ns": 1792164622783892541,
+      "sha256": "86c599d9d7372460d435bfd77045a8afd1b6b2456c8825b07a07f487aa7baaa1",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/decorations.ts.html",
+      "bytes": 31963,
+      "mtime_ns": 1792164622795868095,
+      "sha256": "6b7f7a863caa74b1e1bb0aa1b0a92dede38d66030c7db8c4548740ab2236b92a",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-semantics.ts.html",
+      "bytes": 15456,
+      "mtime_ns": 1792164622786827022,
+      "sha256": "c0d2cb61c7ca737757b64f49dc6a09dac1911935235409e770c18b99af0df3e3",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-projection.ts.html",
+      "bytes": 18187,
+      "mtime_ns": 1792164622784324592,
+      "sha256": "e1612f6263ca34e1c1f32bca0e62f713785075cb74554cd39b79f54c3a6c4a02",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning.ts.html",
+      "bytes": 46456,
+      "mtime_ns": 1792164622808366828,
+      "sha256": "0e6e68f62199ffa37a8bca41c86d8a64600afaef5a1b8709b73b1782d93752cb",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/card-drag.ts.html",
+      "bytes": 10195,
+      "mtime_ns": 1792164622793684089,
+      "sha256": "0ab51cf180047fdaa12bc7aa522a731798364f0e2ab491b814939ae11be4c0eb",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/tutor-discovery.ts.html",
+      "bytes": 5567,
+      "mtime_ns": 1792164622833834721,
+      "sha256": "3cdc3a2de3051e0dc28e32b58e99697ec0ad71fc7428337847b84f48a645305c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-question-bank-v2-2.ts.html",
+      "bytes": 27836,
+      "mtime_ns": 1792164622805834356,
+      "sha256": "8732522912e73e7392e2d287c35effc9d3e41283733a8cf437d6676fcfa70656",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/cell-distill.ts.html",
+      "bytes": 15327,
+      "mtime_ns": 1792164622794094348,
+      "sha256": "a18cf7a03d3a933e133e40469aaceba5a0f6381f8c6b0b0a42ecbee0cf3422dd",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-capture.ts.html",
+      "bytes": 47570,
+      "mtime_ns": 1792164622767122922,
+      "sha256": "801fc7b25aa83e312b922f7b340a369f16d080dca1fa5cc8115aa9d521dd5195",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-recognition-acp.ts.html",
+      "bytes": 14783,
+      "mtime_ns": 1792164622784487345,
+      "sha256": "0cf6e4d593fa68aca8f6160585b2a8c5584de65d5dacf460eefd3ecdb7e3fed7",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-legacy-v3.ts.html",
+      "bytes": 21192,
+      "mtime_ns": 1792164622804850251,
+      "sha256": "d6c0e2af243dd814f286854f9ef42f30b7c2cf625d0e27f79d8068e1e4366bdb",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/textures.ts.html",
+      "bytes": 152858,
+      "mtime_ns": 1792164622830869989,
+      "sha256": "0182e3ab32319458cfdac1cb9ad24d639159b19db65a6bf913d97deea862f9e2",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-stream-v3.ts.html",
+      "bytes": 26735,
+      "mtime_ns": 1792164622807163843,
+      "sha256": "46ed50cc16ecc90284b7d916e413e84e0afdaa69c5251f723b162dba9f27a75d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/edit-parse.ts.html",
+      "bytes": 22129,
+      "mtime_ns": 1792164622796466108,
+      "sha256": "c86a41f7e49acc4bb7dbebfecff56e17df09b0f43781e62bb1749be5c356ccf5",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/support-session.ts.html",
+      "bytes": 19859,
+      "mtime_ns": 1792164622828679191,
+      "sha256": "140053bdc6a6d87c8579dc9d4e1670f470f4473d199b1b5c7bb4eb352efbf25b",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-dialogue-v3.ts.html",
+      "bytes": 76439,
+      "mtime_ns": 1792164622803225382,
+      "sha256": "9f0cf2afc985cc27702ece9462999055749828efed650a73fab8f253936219ba",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-comic-cover.ts.html",
+      "bytes": 65420,
+      "mtime_ns": 1792164622768422534,
+      "sha256": "5b6c0918ef89d0ba35eee8fda727ccf4759803eca11b597d3b08b94204dd4506",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/settings-config.ts.html",
+      "bytes": 92392,
+      "mtime_ns": 1792164622824005838,
+      "sha256": "881f984c31036dcebc70527760b1595c94e57633570d68342f408924c094ff4e",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/agent-models.ts.html",
+      "bytes": 8256,
+      "mtime_ns": 1792164622760635238,
+      "sha256": "644e50207c408362eb376f264aafd32713dcfda11a3cc90e5f39dc7d878f41ba",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-answer-extract.ts.html",
+      "bytes": 26027,
+      "mtime_ns": 1792164622801496594,
+      "sha256": "bcba40ccbc838cb1102b7e9854b4b02a3ba5189949582c4753ba9ccb951b5a5c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-question-bank.ts.html",
+      "bytes": 3485,
+      "mtime_ns": 1792164622805927066,
+      "sha256": "192396f89cd82c61c8bdf91987037fa527daf60b41e3a22d1e2c36e62c0405e8",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/excalidraw-agent.ts.html",
+      "bytes": 12435,
+      "mtime_ns": 1792164622796860784,
+      "sha256": "b7edfd9fd2c2202f15605e95b97c31ad19e045558302863566d4a5c3448848ff",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/settings.ts.html",
+      "bytes": 282133,
+      "mtime_ns": 1792164622825860837,
+      "sha256": "a50a4598af17241199dfc6b92a3c4888e846470d86a8abfc9302f6ee624c290a",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-ai-error.ts.html",
+      "bytes": 7499,
+      "mtime_ns": 1792164622764494781,
+      "sha256": "600bab8a522a84a3be524e194abda18ae813f5b33455cb192f7da59727bc45ff",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-reference-paint.ts.html",
+      "bytes": 17466,
+      "mtime_ns": 1792164622784845312,
+      "sha256": "0ba5395dcff8e145aad5224fbdd27d5c2a3a8a5f902e93150c832dfef81bd777",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-commands-v3.ts.html",
+      "bytes": 46849,
+      "mtime_ns": 1792164622802405447,
+      "sha256": "6afa94a78e804abd8bf07a73ffcc3b4d6e90ba86aaa8ebb125c9cf4b3e50d867",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-store.ts.html",
+      "bytes": 206206,
+      "mtime_ns": 1792164622789171156,
+      "sha256": "5fc10b67d70e93849576a4ed2cf4e14766399a771edb9ae6bc6ae2068349102d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-ai.ts.html",
+      "bytes": 28779,
+      "mtime_ns": 1792164622764757370,
+      "sha256": "e4717312a5f9c0225802fdf5213515fbfb93539d0257266168016999f85f3fe3",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/ai-execution.ts.html",
+      "bytes": 14169,
+      "mtime_ns": 1792164622761261752,
+      "sha256": "d36e22e04ca6ef153b6c42296034ca6361a86c3b23e0d24395fde552474a3e94",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/tutor-mcp.ts.html",
+      "bytes": 58263,
+      "mtime_ns": 1792164622834758241,
+      "sha256": "da007c1281c60eb2f7ea8ed37dd3afb4d269a5846db07cba64b26baebd9f5f88",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-runner-v3.ts.html",
+      "bytes": 53282,
+      "mtime_ns": 1792164622806800835,
+      "sha256": "5d074cde0b843cd5f1aa44d5995461efe81c853836f271ebd185dafc835b9e0a",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/tutor-result-store.ts.html",
+      "bytes": 17402,
+      "mtime_ns": 1792164622835066081,
+      "sha256": "99f333e8f0abc918b4fa9b2592a870d0de6cbc8963715145c9b6ef5dc8ae551e",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/excalidraw-surface.ts.html",
+      "bytes": 48826,
+      "mtime_ns": 1792164622797408462,
+      "sha256": "8f5667090f01180ded31712ddde73f07d64b868bb41329bc362f4a3739998f33",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-clone.ts.html",
+      "bytes": 3910,
+      "mtime_ns": 1792164622768026109,
+      "sha256": "2711cb8f82b06a8eb2087e1666390e81fca3635e177655eaf4d57341547e0544",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/schemas.ts.html",
+      "bytes": 23397,
+      "mtime_ns": 1792164622823333532,
+      "sha256": "b6b0f359a4e7316d3c34226cde804707d52a6f5d0885b111499d722cc34e8cfa",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/store.ts.html",
+      "bytes": 170079,
+      "mtime_ns": 1792164622827551291,
+      "sha256": "7ddcf40bc909186fd04a83bfce6a8f759fbcb433b172f940f82651c26a07bff2",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/codex-command.ts.html",
+      "bytes": 7991,
+      "mtime_ns": 1792164622794560608,
+      "sha256": "4af202410a9635d1ab7006461167dcfd1ec40322272f5c1d70b16f0779ed81e7",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-v2.ts.html",
+      "bytes": 30509,
+      "mtime_ns": 1792164622807506476,
+      "sha256": "dc1af241d3adc31ab60eab253e64098085ca5c75a9b51363a4e4776f17f2c7b9",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-artwork-agent.ts.html",
+      "bytes": 17634,
+      "mtime_ns": 1792164622765361550,
+      "sha256": "e57064e9b6409a31e886bf206478ac6fba97b794d4370cffd0172863309f7f65",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/review-controller.ts.html",
+      "bytes": 60071,
+      "mtime_ns": 1792164622823088276,
+      "sha256": "8e568a3dc59064ac0c604ebc6a4c1a265d94679c148b9c58ad0584f61b860741",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-vector-agent.ts.html",
+      "bytes": 9337,
+      "mtime_ns": 1792164622791567459,
+      "sha256": "64a420cb9ba6d7cb61769462ef65e6d5bebccd050e399dde19be39cbeca3cd2b",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/surface-transaction-journal.ts.html",
+      "bytes": 50330,
+      "mtime_ns": 1792164622829580669,
+      "sha256": "3316b0379570adbd6e2088bc042593b850653ed3f12c4b5a6b7684fc06f491d4",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-episode-store.ts.html",
+      "bytes": 13099,
+      "mtime_ns": 1792164622803872604,
+      "sha256": "53ee84211505b8ab1d4f8a6288c30f2d1247e0d25b3d500671abce1b84484169",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/hotkeys.ts.html",
+      "bytes": 14813,
+      "mtime_ns": 1792164622797915140,
+      "sha256": "e8777603d076d487507a9f2be4fb4b911cb7f107bace54d5be9bf84358ba6ea9",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/api-runner.ts.html",
+      "bytes": 40230,
+      "mtime_ns": 1792164622761991268,
+      "sha256": "e8f07c02e40beb772f3475328dd2549c845cb43190c286a78a56b055d4385c9a",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/chat-stream.ts.html",
+      "bytes": 11376,
+      "mtime_ns": 1792164622794441147,
+      "sha256": "73f3adaba088d27366088968135911d1dafe94681f0f92422039c8a470bb1ee5",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-drawing-intent.ts.html",
+      "bytes": 11504,
+      "mtime_ns": 1792164622775894490,
+      "sha256": "d7024c148f55a109c888f3be3b863df62e3a74a1614ce6796accf64fc59f8b2f",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-layer-renderer.ts.html",
+      "bytes": 30283,
+      "mtime_ns": 1792164622778335210,
+      "sha256": "4f91d33ae2f747a45dbeb64cf9d5ca487c2f5e1b41895b8b193b5c22a934973a",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/card-zoom.ts.html",
+      "bytes": 6661,
+      "mtime_ns": 1792164622793924969,
+      "sha256": "f658daf1822b07505e011382f22a7816c43a69b4d76d22c36d385d2e6fa606e5",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/builtin-commands.ts.html",
+      "bytes": 20157,
+      "mtime_ns": 1792164622793395833,
+      "sha256": "1214c71902126b31e5fa78aa8f73dcfab60080294a05f47674b1850e2ffc460b",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-v3.ts.html",
+      "bytes": 48732,
+      "mtime_ns": 1792164622807878567,
+      "sha256": "f29c5a070f37116e2b8f2f2409a59b563f6af03c615ee4715a682930884af07f",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/margin-card.ts.html",
+      "bytes": 99397,
+      "mtime_ns": 1792164622817770493,
+      "sha256": "e7656298c79af4a8299d2cfad336a8371aa3f8d41d1249b0c3ead856aeba5f64",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/pdf-rail.ts.html",
+      "bytes": 31916,
+      "mtime_ns": 1792164622821258528,
+      "sha256": "17e4244fcc400d7a846b9e3e380b85f31c7f154cf420b87830d86e2b38b54665",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/lang.ts.html",
+      "bytes": 10818,
+      "mtime_ns": 1792164622800690534,
+      "sha256": "f2496a085ec45cffea3e372b2e266b2a58c03ec98d8a3dbed34bbaaa3ae6c620",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/support-modal.ts.html",
+      "bytes": 8655,
+      "mtime_ns": 1792164622827848089,
+      "sha256": "c2d684554aea3998072e3ea092de1be2441e25727c04052630351c2bf64e0fde",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/desktop-private-storage.ts.html",
+      "bytes": 6846,
+      "mtime_ns": 1792164622795979264,
+      "sha256": "406a5c7e7d7741098afc6cc6b2eb66b43f1d574a2ab6c2b17342b29f44a553de",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/pdf-highlighter.ts.html",
+      "bytes": 50562,
+      "mtime_ns": 1792164622820996064,
+      "sha256": "5842f0f503108ac25f3d883849fe577aec15bda274ccbbb80dfae580a94dafaa",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-answer.ts.html",
+      "bytes": 8939,
+      "mtime_ns": 1792164622801671348,
+      "sha256": "92a7f19c9ef4403f20292b48612558f8bce9d2996ec3795335cd7722c2fbbd96",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-episode.ts.html",
+      "bytes": 19208,
+      "mtime_ns": 1792164622804051775,
+      "sha256": "9448bf41c87bf19b41c0edc539be0ffe0f12c2eccf4409ee3ac4b70cc6e1fb6d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-fonts.ts.html",
+      "bytes": 46734,
+      "mtime_ns": 1792164622776724467,
+      "sha256": "23ee8809e9d44aea355a2ba433c52718eb5ea556957ab537f3eb21167d3f39c5",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-character-rig.ts.html",
+      "bytes": 25832,
+      "mtime_ns": 1792164622767561932,
+      "sha256": "05ee1d115682f772018cbea89e6548f1aa082398e5a608d7584dc81d507c3d56",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-image-error.ts.html",
+      "bytes": 6201,
+      "mtime_ns": 1792164622777592819,
+      "sha256": "4b3afe4b8fed00401bc66c376b25d586065b376c5c4c402d6ddaa8900d8f7cee",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-renderer.ts.html",
+      "bytes": 172841,
+      "mtime_ns": 1792164622786234967,
+      "sha256": "ef5d8c8a6fcd9031e1c7ceb5d585a68f7c103db64d09c1345910bf9f356b7ff0",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/model.ts.html",
+      "bytes": 40182,
+      "mtime_ns": 1792164622819032729,
+      "sha256": "f68b6b900eba87789eff3158d8ae647a4d35011dfb9cb99f26bc964a0473af84",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-ui.ts.html",
+      "bytes": 19466,
+      "mtime_ns": 1792164622791384330,
+      "sha256": "43d9d1809597c6bfe03ff72d01eed81fec704f2422b869039a1acc44f0bcb53f",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-brush-pack.ts.html",
+      "bytes": 17405,
+      "mtime_ns": 1792164622766000064,
+      "sha256": "0ac844a375d41d34138c4ea460993c036daa2c2f644862dee1ba76920e619161",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-reference-style.ts.html",
+      "bytes": 5273,
+      "mtime_ns": 1792164622785205069,
+      "sha256": "e7a24f4fa9cfbe796e0253797afd30033b23da242b0b9e514a898433ab7a4fd1",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/zotero-import.ts.html",
+      "bytes": 39422,
+      "mtime_ns": 1792164622836830370,
+      "sha256": "636bb132e458951679f754073de583c4bc7a593789f4d3ce474d216f83348f1d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/pdf-selection.ts.html",
+      "bytes": 40748,
+      "mtime_ns": 1792164622821548534,
+      "sha256": "01ba1f29a86153f5d0e9e70cc0473688b4cc8101c735f1e9b51070c07e573fd4",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/tutor-pairing-modal.ts.html",
+      "bytes": 11828,
+      "mtime_ns": 1792164622834900536,
+      "sha256": "1ae2c87479420bb971882a3136f44dd3855d643bc7d166c1066d60fb7e613318",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/mcp-config.ts.html",
+      "bytes": 16729,
+      "mtime_ns": 1792164622818300296,
+      "sha256": "0f1e328c584b1e17eba5ba491ed91e713480087186855ee62e9fdad7c822549a",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/tutor-studio-commit.ts.html",
+      "bytes": 9395,
+      "mtime_ns": 1792164622835376505,
+      "sha256": "befc7d2c290d51e4b6648e9988889c4d4b03ed07395ccdf458a63c7e9e2203e8",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-source-identity.ts.html",
+      "bytes": 20960,
+      "mtime_ns": 1792164622787498745,
+      "sha256": "f15d7a00f1c6767ad392c4b359f546501c1998c3345ae4d669490542fe5ec0f1",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/official-web-clipper.ts.html",
+      "bytes": 21355,
+      "mtime_ns": 1792164622820147837,
+      "sha256": "924d91fbf699ed8687bc5261a101310621ee4002a2cfca5f89aa71d6a49abe20",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/reading-highlight.ts.html",
+      "bytes": 21399,
+      "mtime_ns": 1792164622822381594,
+      "sha256": "43cfb4cb1b32f03c685b20757c13e08eea9528170f2396c2b80c7b207248b732",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-layout-digest.ts.html",
+      "bytes": 8850,
+      "mtime_ns": 1792164622778472297,
+      "sha256": "68ec17afb5b97c9dbc1ad5dbee6c1db86f77907a7805055216ddb0ab5bc0d92f",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/tutor-service.ts.html",
+      "bytes": 15942,
+      "mtime_ns": 1792164622835226418,
+      "sha256": "8a52238a44b4940cddfa6e869be924f6910bea237398f35f01e3945dfe150183",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-model.ts.html",
+      "bytes": 180326,
+      "mtime_ns": 1792164622782359465,
+      "sha256": "82ce58da3eb0dd9bc222adaa5de541fb36a0d73eb53e1ba5198aa2fa7e8c82aa",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/startup.ts.html",
+      "bytes": 20109,
+      "mtime_ns": 1792164622826663688,
+      "sha256": "b7d7d8506e142c7fb99b8e55c8f54156f38eb06668d4cd0662925c7901dff1f2",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-editor.ts.html",
+      "bytes": 50006,
+      "mtime_ns": 1792164622776244248,
+      "sha256": "13f5a0774cc161edacfd3202103d805c992b2bea0e8a63c79eabbcfe1fb87bce",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-spatial.ts.html",
+      "bytes": 22048,
+      "mtime_ns": 1792164622787827085,
+      "sha256": "43e4d66319f826010abadfc0a3f8528a8c2df8e72a629cbe7c0ed749e3a537a3",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/support-private-store.ts.html",
+      "bytes": 24284,
+      "mtime_ns": 1792164622828262515,
+      "sha256": "c1d40e264f041ca7f2abe3a75c9d90d80dd6cd133fce38f5b0931d84ed6a9d3c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/document-edit-target.ts.html",
+      "bytes": 19393,
+      "mtime_ns": 1792164622796291980,
+      "sha256": "9eb25e2350a63e14558da6c72eaa0128e2775aeeb1102fefe4e96c3fda5c0ec7",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/text-target.ts.html",
+      "bytes": 7745,
+      "mtime_ns": 1792164622830376937,
+      "sha256": "ade3bbfd2c07fc74908f34b14e3205177c938df19db5514aef792ad7b91d6300",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/teaching-policy.ts.html",
+      "bytes": 14230,
+      "mtime_ns": 1792164622830241850,
+      "sha256": "fd26d3f570425a00014fa35ef610f7fa695bfb4efdcc2c499dd7ece8ba063854",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/tutor-grant.ts.html",
+      "bytes": 4741,
+      "mtime_ns": 1792164622833945557,
+      "sha256": "6b8ab8b8273bd1526264f08a4be48b02c94e5a179a39e4498d645bde2536aced",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/upgrade-i18n.ts.html",
+      "bytes": 47320,
+      "mtime_ns": 1792164622836062895,
+      "sha256": "dc19ed3241ee941c174bd491e287718bf007a8998720003066f38c40e5fc9191",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/credential-session.ts.html",
+      "bytes": 19679,
+      "mtime_ns": 1792164622795067161,
+      "sha256": "c9b6c7c9cb6db7f688adbbd17eb8920f566b6eff408c2a0b63d5bf7885067875",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-dialogue.ts.html",
+      "bytes": 44875,
+      "mtime_ns": 1792164622803564931,
+      "sha256": "f3faad6b7d57940d4bf3a2958ddb443e80f169ee126110eb291a28af558d8d41",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/credential-types.ts.html",
+      "bytes": 6315,
+      "mtime_ns": 1792164622795363876,
+      "sha256": "3484e43b0c14fd141963514e13470919791f09e3c909dd02004b532b710ceb03",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/skin-loader.ts.html",
+      "bytes": 28871,
+      "mtime_ns": 1792164622826163261,
+      "sha256": "e0fe3e318830e7aa5a8d79125569c3cd7d30e99f583dbadaadace7d9bb47819a",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-progress-v3.ts.html",
+      "bytes": 10898,
+      "mtime_ns": 1792164622805381429,
+      "sha256": "dad8fc7600bd32b1bc9aff568efbfd2f769c4af35ecda01a8ebd045fd48f8ed4",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/review-outcome.ts.html",
+      "bytes": 4110,
+      "mtime_ns": 1792164622823183695,
+      "sha256": "207c6cec39d60d9ac79754b376c856eff91b7c1492f2551799ed019aed008f78",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-export.ts.html",
+      "bytes": 10994,
+      "mtime_ns": 1792164622776390084,
+      "sha256": "c8b12cc7ba13b82cd8d8841f4f064c6319b77abcfbfa813063bc220fe2445c4a",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/adult-support-policy.ts.html",
+      "bytes": 9206,
+      "mtime_ns": 1792164622760466443,
+      "sha256": "0943a2bb447d98bcf94af6c1953ffd18eb757bb5442f89bb1ca13c5885177e0f",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/committed-input.ts.html",
+      "bytes": 16540,
+      "mtime_ns": 1792164622794717945,
+      "sha256": "a91a0fe6e303d1cfc78a0845ceb8d4cd1071c4f6e1b30aeeba921f3b747713d2",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-api-protocol.ts.html",
+      "bytes": 8884,
+      "mtime_ns": 1792164622801817184,
+      "sha256": "9479e2f256b154e55ddd8ed3c39228c837277fb2abd22b259d5e83c0e4d7a362",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/desktop-state-io.ts.html",
+      "bytes": 14014,
+      "mtime_ns": 1792164622796124101,
+      "sha256": "bd14f3a4c364f3ca49b6844b61a1f53467e8019a95c5ab0aae77dabd1ee88d4c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-paint.ts.html",
+      "bytes": 66623,
+      "mtime_ns": 1792164622783388488,
+      "sha256": "ba64a91a2852653e6bc07f10116713d9868d6d09471a29567de672d94c20526b",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/list-pagination.ts.html",
+      "bytes": 7766,
+      "mtime_ns": 1792164622809501186,
+      "sha256": "26b264b17d87c89ebf4dfa4464ef4ec33fdc65139e12847c20b4ad130ac42f5e",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/build-info.ts.html",
+      "bytes": 3955,
+      "mtime_ns": 1792164622793249330,
+      "sha256": "971c2edd0f1411243862f9d110710ba14966edc16fa3c35ea4f1dae0255db46f",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/platform-entry.ts.html",
+      "bytes": 3950,
+      "mtime_ns": 1792164622821652328,
+      "sha256": "7edf95273a5bb9d1af684c344a90fbd6d519c85b1bb13bc98a23adee0168d8d2",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/tutor-intent.ts.html",
+      "bytes": 35396,
+      "mtime_ns": 1792164622834167062,
+      "sha256": "3a9231c6d6fb730f924138c9622252956d46452fd4df0f6aa39af01bef4c3396",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/acp-runner.ts.html",
+      "bytes": 58507,
+      "mtime_ns": 1792164622759337335,
+      "sha256": "7cdbc61ac993d45c8bebef2803384cce5c0c10301f137521ccc8b51126875f13",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-record-backup.ts.html",
+      "bytes": 6978,
+      "mtime_ns": 1792164622806033860,
+      "sha256": "9142bb75171d3951d4db4666eeb25d4427741e7b335c0e101f09e9c155c5473d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/table-anchors.ts.html",
+      "bytes": 6628,
+      "mtime_ns": 1792164622829879967,
+      "sha256": "4ed750ef77ba2c02465934c9433d86eb3b7209520ebcb0beb0c0a0b406ac3964",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/decorations-plan.ts.html",
+      "bytes": 49879,
+      "mtime_ns": 1792164622795662174,
+      "sha256": "31c97a00e162d3eed05bc8652ee739a6c1dedd51116ce21bb21459b827783c78",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/tutor-collaboration.ts.html",
+      "bytes": 11795,
+      "mtime_ns": 1792164622833162914,
+      "sha256": "935835fe3fe4e6823a40ec67996701859f5f966b44f12d1800b3e7dedc41d9da",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-characters.ts.html",
+      "bytes": 49577,
+      "mtime_ns": 1792164622767909481,
+      "sha256": "2e8334552cba8aa9b321d8fb374a7a503624e3c298e96f63b2eb379a4a5602f5",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-layout.ts.html",
+      "bytes": 17828,
+      "mtime_ns": 1792164622779109186,
+      "sha256": "15772a238fac084d3466827ef07e8c24cd069740ae894c38763a3aad7eaa704e",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/i18n.ts.html",
+      "bytes": 410830,
+      "mtime_ns": 1792164622799667637,
+      "sha256": "5997500b8934dcea8fe6fec20ff1f380f7d7834ad97c80353ba35a7d2d552470",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-live-paint.ts.html",
+      "bytes": 17928,
+      "mtime_ns": 1792164622779301315,
+      "sha256": "2985ead1a8aa00d321487946fb81538b509743240452c891b2112a3bb173a8eb",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/refresh-queue.ts.html",
+      "bytes": 8261,
+      "mtime_ns": 1792164622822730519,
+      "sha256": "61bf94e5f35c0164909b8ae596577216501f45afcc6ace1b9670b3fb3443b805",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-compute.ts.html",
+      "bytes": 18187,
+      "mtime_ns": 1792164622768596455,
+      "sha256": "d814623265f8939feb2bea0f7f73dfcad0f348a518777a8d0a4e210b933e96a6",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-outline-worker-source.ts.html",
+      "bytes": 3594,
+      "mtime_ns": 1792164622782667139,
+      "sha256": "8491a32a02c1f5f7c5462f91dcd3eb3eb4a608b374394d5c315c00148c220f51",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-brush-engine.ts.html",
+      "bytes": 36290,
+      "mtime_ns": 1792164622765660474,
+      "sha256": "8ad195b8d56af35b29a8d14a35ae2eb25e1477a28c3100cecf4b0ea1c4a5052c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/ink-transcript.ts.html",
+      "bytes": 4701,
+      "mtime_ns": 1792164622800233566,
+      "sha256": "30bd6bc70f6fd974de281db33b8255d8c3c0c059ac90d7bdbe4a3ea71a56df96",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/process-tree.ts.html",
+      "bytes": 8851,
+      "mtime_ns": 1792164622822179965,
+      "sha256": "09bdec6b154d46cb9ffd0595b1bda2c945bc33b6e626a3feef39f81abd9f9691",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-outline-worker.ts.html",
+      "bytes": 7565,
+      "mtime_ns": 1792164622782775974,
+      "sha256": "37248b2bb3d8803fb2fb397c034dfe2d65dc94d90dcecf385a197762491294e4",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-mechanics.ts.html",
+      "bytes": 81667,
+      "mtime_ns": 1792164622781238566,
+      "sha256": "834b4446037dea3e11e3b46b32656bb96728de61ed374c35e321b185c6636032",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-recognition.ts.html",
+      "bytes": 20031,
+      "mtime_ns": 1792164622784671224,
+      "sha256": "c7dbebd974f79ffffdde4523b2561dc78c1183684cc158e4e29e898c3b76485d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/main.ts.html",
+      "bytes": 1095374,
+      "mtime_ns": 1792164622816994893,
+      "sha256": "cb461d10f15922b3b738f39c5d0620385973f82ce73bdde822d77e81ecc31960",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/translate.ts.html",
+      "bytes": 18650,
+      "mtime_ns": 1792164622831041618,
+      "sha256": "abe5e37c64148bf58f3e8c7520013ddd3f0c13e085aa1c66b1fbe8392b6fa66a",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-vector-inspector.ts.html",
+      "bytes": 45087,
+      "mtime_ns": 1792164622792224807,
+      "sha256": "7e130b8f9cd822fd1aaef1512cd5ade38073d5f2c2fe5efcd231a4e1cded63e9",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/private-file-io.ts.html",
+      "bytes": 7145,
+      "mtime_ns": 1792164622822052129,
+      "sha256": "4ac21ce0f5bb0a290e2bf222783b3ad225e0f521f5ce22e8ff22ffd51f931eae",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-outline-preparation.ts.html",
+      "bytes": 16736,
+      "mtime_ns": 1792164622782556136,
+      "sha256": "047b8d91285f6f5915e51c716e3e6a092d1e31cd35ae16ec7b6ac5374f6fdee6",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/index-table.ts.html",
+      "bytes": 29822,
+      "mtime_ns": 1792164622800103688,
+      "sha256": "f81752e385f266bfaf93136e2108960b2cc57a3d5a37008ca33616c920496153",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-space-modal.ts.html",
+      "bytes": 5704,
+      "mtime_ns": 1792164622787629664,
+      "sha256": "b2553d39d1dabf786092588c12c9851d23a70d1e402a2e733fedd83a9cfaec86",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-snap.ts.html",
+      "bytes": 13184,
+      "mtime_ns": 1792164622787302199,
+      "sha256": "ce181585ba771d93dc6dd2f9d6f96f801f2778afdff0cc592f4ed70f537a544c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-surfaces.ts.html",
+      "bytes": 56317,
+      "mtime_ns": 1792164622789557415,
+      "sha256": "62199198ff7e472c01c95a787e10efb197231f321d46932506c81ef488950755",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/highlight-color.ts.html",
+      "bytes": 12585,
+      "mtime_ns": 1792164622797758429,
+      "sha256": "b8c003a3c1ed9aa581e76e598f21d388d3d68415908ba97463119a5e249840e7",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-controller.ts.html",
+      "bytes": 875486,
+      "mtime_ns": 1792164622775253392,
+      "sha256": "14f7a064d7cd0fe8fe748109fa5ec519b57b987ceab16b454d491fe69bf5da0f",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-selection.ts.html",
+      "bytes": 25130,
+      "mtime_ns": 1792164622786663268,
+      "sha256": "9f4d590178e5af5e5a49f17f3227b5b10d1f5ff9c2b53c82918758d03d02656d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/table-highlighter.ts.html",
+      "bytes": 30211,
+      "mtime_ns": 1792164622830095305,
+      "sha256": "1c5ff890963f3285ca6d1a46a162f8c92479835b5d25f87cd86a9a1485df27b5",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/tutor-local-recovery.ts.html",
+      "bytes": 12864,
+      "mtime_ns": 1792164622834422442,
+      "sha256": "e1641d7dd1ac50f6b3df7efaa338dffadc93502b79de245fbf1329ccb1a32036",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-layout-store.ts.html",
+      "bytes": 17500,
+      "mtime_ns": 1792164622778901556,
+      "sha256": "7d3b8df911e1dfda79863c06d97b7cc3225313baab8f8ba22f2ba1b177116945",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/web-capture.ts.html",
+      "bytes": 38905,
+      "mtime_ns": 1792164622836546614,
+      "sha256": "fcd3f46b98566662f11a3982f81f7d508553956b584dded08b2a685010bc0c38",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/srs.ts.html",
+      "bytes": 16029,
+      "mtime_ns": 1792164622826484601,
+      "sha256": "7042b4b9e44de23510844063b445e51ced0ec662a1c892de36d18609cbce2943",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/line-diff.ts.html",
+      "bytes": 7965,
+      "mtime_ns": 1792164622809328808,
+      "sha256": "062ef505633dc118942d548d8bd061abbfa5ad29cd66beec7d0224aeff655b94",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-experts.ts.html",
+      "bytes": 9837,
+      "mtime_ns": 1792164622804376699,
+      "sha256": "8ccaf21ca77fb5ac71d7f9258fed76de4a7b7d1f50c435b000e6ca8537177ead",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-anchors.ts.html",
+      "bytes": 52209,
+      "mtime_ns": 1792164622765164504,
+      "sha256": "0196e92c9e95e20e9c35356ac1dfb1d04ac49e9556faa35c9d2e4d0a28e783c6",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/tutor-task.ts.html",
+      "bytes": 40882,
+      "mtime_ns": 1792164622835824306,
+      "sha256": "446064b203cc14a6c2c511ae34e61e3f76f85c4e5f2b3cc0247d632f090e7272",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/intent.ts.html",
+      "bytes": 15129,
+      "mtime_ns": 1792164622800412237,
+      "sha256": "dfecc7d7a38182d6332b822f704e1382dce336784c7a8e4342f475738c440cfd",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/translation-controller.ts.html",
+      "bytes": 86688,
+      "mtime_ns": 1792164622831573921,
+      "sha256": "b78cb0b6849d4ab3a9e8c6be318d729a5ca062dd124e2fbe64c024b7e2bcb49c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/tutor-agent-adapters.ts.html",
+      "bytes": 13673,
+      "mtime_ns": 1792164622832407856,
+      "sha256": "b5cf5d5ee2e90dca389b9e32ae8dc16ef1a76ca02449a36b58928b06b298db6f",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-flow.ts.html",
+      "bytes": 15770,
+      "mtime_ns": 1792164622804542827,
+      "sha256": "5bb9a580bb0285abbf085a63122c02292ca597227291e270c8efe957a18b50fa",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-card-v3.ts.html",
+      "bytes": 38657,
+      "mtime_ns": 1792164622802097232,
+      "sha256": "91f857312cfd5ad29c80730f99afeaa6a928e1c8a89ea98930993d5d9af1ed07",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/ids.ts.html",
+      "bytes": 10293,
+      "mtime_ns": 1792164622799831766,
+      "sha256": "e0f4d34159e6351eb56731142e337284aa27cb73f1d24111b1714eb84629ec2b",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-mcp.ts.html",
+      "bytes": 42774,
+      "mtime_ns": 1792164622779984163,
+      "sha256": "eb2625fdeb76d1f19e953c84ab7673e3353b90d84406e6285d8f4f7cad808593",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/library-query.ts.html",
+      "bytes": 13583,
+      "mtime_ns": 1792164622809122011,
+      "sha256": "c2f4e36ab17363fbdac3056d0212d50986007376706f72b09213cbb074115456",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-playback.ts.html",
+      "bytes": 14428,
+      "mtime_ns": 1792164622783746787,
+      "sha256": "7580eac472d0f21fa34358c9c49ef542a7d87900b8af062267bd1d702fcff11b",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-metrics.ts.html",
+      "bytes": 5639,
+      "mtime_ns": 1792164622781405611,
+      "sha256": "21e6b341439e5f8f41b5fdb774d834e31451fd2b1329a98ddf20c05e47cf3de7",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/agent-runner.ts.html",
+      "bytes": 58737,
+      "mtime_ns": 1792164622761052039,
+      "sha256": "f3e6c3a2bb17477846ddf44a3af01a486716a81b4080ceb2723619c7bf335524",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/credential-store.ts.html",
+      "bytes": 22470,
+      "mtime_ns": 1792164622795259374,
+      "sha256": "e97b3033aac8dff959ac83fd5db47b5b1b7974546b1cb728f1ab7f5528a24488",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-share.ts.html",
+      "bytes": 45917,
+      "mtime_ns": 1792164622787161404,
+      "sha256": "0211fe685a17b5b0814fa52fef72d649ab90e5ce7d5d29e5e20918de50cb6447",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/tutor-board-surface.ts.html",
+      "bytes": 29941,
+      "mtime_ns": 1792164622832642528,
+      "sha256": "ae7c503f42779a04f487cd22a9549dbc3e8e5deb3cb2af51996afaf54f56606c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-invalidation.ts.html",
+      "bytes": 10903,
+      "mtime_ns": 1792164622804680122,
+      "sha256": "c2c967cac0cf378fdff7efa3dc770335252cca71344d52aad738b363be51c8a0",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-math.ts.html",
+      "bytes": 39031,
+      "mtime_ns": 1792164622779651281,
+      "sha256": "ea5a5cb87b8fb9581bd8e0918e12599a45aaabb44b9d6a9cc78f1fd182f47058",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-brush-ui.ts.html",
+      "bytes": 38433,
+      "mtime_ns": 1792164622766365489,
+      "sha256": "b7b599e2c32316ab5167dd140f1a52028936a379f956edd31c8e70746184da21",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-connection.ts.html",
+      "bytes": 6119,
+      "mtime_ns": 1792164622768732791,
+      "sha256": "40738f084c1681f5af8e05c3cf89b30afb2d1c45a28ddcec529393954d4710df",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/chat-prompt.ts.html",
+      "bytes": 18565,
+      "mtime_ns": 1792164622794290227,
+      "sha256": "1c3d5df1b6f83b4043351a2c12393896fa4a9acbcb74d6c6156908f236b7f70d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/vanilla-tilt.d.ts.html",
+      "bytes": 6215,
+      "mtime_ns": 1792164622836161397,
+      "sha256": "93bed03dc6bcd19cb7c2fc2fd58389674d3ada106383b21cf3072a1a4e003039",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/tutor-conversation.ts.html",
+      "bytes": 90801,
+      "mtime_ns": 1792164622833722968,
+      "sha256": "0a06a137747fdbc3edd69c06cfe16b6623a0abaa0767b795d380f9363c6183ea",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-tools.ts.html",
+      "bytes": 65651,
+      "mtime_ns": 1792164622790497227,
+      "sha256": "0084ca28997b0eaf9d5b2ffcbde0f51a0212c0e64614fb9ce560de78658c5dc2",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/service-work.ts.html",
+      "bytes": 7658,
+      "mtime_ns": 1792164622823534161,
+      "sha256": "66576ad38bb41d8bb00dda75a7c039cce1929fe3d6b3be4fbe7a133f8bdf881a",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/support-storage-context.ts.html",
+      "bytes": 4510,
+      "mtime_ns": 1792164622828782652,
+      "sha256": "038f647a3e1f16303942ad314296e87ba70789065d053c61b1af2d8b2ac43925",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-placement.ts.html",
+      "bytes": 16676,
+      "mtime_ns": 1792164622783586367,
+      "sha256": "9c5a03bc6ecf610615df49571c8181f96243caca9709124c398d16dc19b0dba8",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/opencode-setup.ts.html",
+      "bytes": 30557,
+      "mtime_ns": 1792164622820435135,
+      "sha256": "edf48e4f5ce8a9c8bf684735867594ae268e498db2ff600ae6e80af2e279fe9b",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-reply-gate.ts.html",
+      "bytes": 27053,
+      "mtime_ns": 1792164622806461620,
+      "sha256": "acdef104d9ead6caa5c2c462112a9dadc249b4b9bec9efb2018af239e5aa282f",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/notebook-controller.ts.html",
+      "bytes": 26903,
+      "mtime_ns": 1792164622819865706,
+      "sha256": "73d130d02627d8773cbc760ef7642db66a40061bd675e1d4c34207d91a2ae894",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/translation-request-queue.ts.html",
+      "bytes": 11499,
+      "mtime_ns": 1792164622831728508,
+      "sha256": "1f6f402fa7fe87a4a8e2ae451d947937c1ea33d63c8f189222030e16de92bdd9",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-protection.ts.html",
+      "bytes": 36289,
+      "mtime_ns": 1792164622805612184,
+      "sha256": "ee05804335e39335a917ac6c98dcd9ddb72512f9b6f89a25a95fc6d3533b7517",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-vault.ts.html",
+      "bytes": 7119,
+      "mtime_ns": 1792164622808032404,
+      "sha256": "d44d1e2548eea7a2af52b13dcb3321fa82c7883a3463c2b927616548e2609206",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/memory-derive.ts.html",
+      "bytes": 12967,
+      "mtime_ns": 1792164622818472675,
+      "sha256": "1be114ef71522b1d5ff0450442a40d2f88140fb187e9dc75ddda0e81b53aa3ed",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-brush-fill.ts.html",
+      "bytes": 9642,
+      "mtime_ns": 1792164622765811727,
+      "sha256": "5b554c52423196bb3f7f374c94c0c271c9bfc3e78b36acf2a608387959116de0",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/support-response.ts.html",
+      "bytes": 42674,
+      "mtime_ns": 1792164622828508062,
+      "sha256": "ebe8f7e8d4196972257f9fc97282dfca11b49a7c1e632d3ba3f75a9d6de1924e",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-i18n.ts.html",
+      "bytes": 169036,
+      "mtime_ns": 1792164622777460899,
+      "sha256": "b6f4020cc5546057eb9873c94a2939552d4b3117a743d021499f65cdaa239209",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-vector-edit.ts.html",
+      "bytes": 10358,
+      "mtime_ns": 1792164622791745505,
+      "sha256": "433836625d9e2187c069740e1153fd0b31ffb610dcaf93825a60cb8ee75ae880",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-vector.ts.html",
+      "bytes": 95595,
+      "mtime_ns": 1792164622792774777,
+      "sha256": "7e5de87775914dee5c145c1fecb003b55ef27e9e7bea7d3ebc76ae3df79eb606",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/conversation-diagnostics.ts.html",
+      "bytes": 17962,
+      "mtime_ns": 1792164622794887074,
+      "sha256": "dafb4f51765f39940e1c9c927e7769f68d5ec12c05260604dbe96139962544c9",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/reading-rail.ts.html",
+      "bytes": 34645,
+      "mtime_ns": 1792164622822614099,
+      "sha256": "c7fd6b853dc713ec855c0f14549630f0f298492a7af1cd4b4b0b3ecfce5e3b80",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/tutor-surface.ts.html",
+      "bytes": 18301,
+      "mtime_ns": 1792164622835524508,
+      "sha256": "b84c08d79f0a78d1608a7a1960b0bed4f732e08708f0c6050948f599dcf4215c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/tutor-codex.ts.html",
+      "bytes": 27210,
+      "mtime_ns": 1792164622832871741,
+      "sha256": "71dadbf591c316a4ead084a7eccad859ee0cf7fa90bc1e41684d42284bf66c60",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-control-v3.ts.html",
+      "bytes": 18648,
+      "mtime_ns": 1792164622802774122,
+      "sha256": "a1f2590f8be92b3f5ebab972bb987766c4f73b9236f4f52d88ab5e5e45a133b4",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/external-generation-gate.ts.html",
+      "bytes": 22008,
+      "mtime_ns": 1792164622797608550,
+      "sha256": "b5e50ddaeecd54e3a7d4cc72db52e6717fbac5a149baca5b7c7d4cb161a47c81",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/selection-context.ts.html",
+      "bytes": 5580,
+      "mtime_ns": 1792164622823428409,
+      "sha256": "7158897680d289ebeda91d181492cfe3dbc4f2f42573584292678714c2411b78",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/memory-policy.ts.html",
+      "bytes": 13937,
+      "mtime_ns": 1792164622818710389,
+      "sha256": "df7071c8768bf560292cd00790972743b6a8435229a4cf6ad18472caa1d9bb64",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/tutor-a2a-client.ts.html",
+      "bytes": 19992,
+      "mtime_ns": 1792164622831922637,
+      "sha256": "3da4174dca8c5dc30992029fd6e73af9a35c2cfe8680a2ca5c55096115f50c42",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-reply.ts.html",
+      "bytes": 26594,
+      "mtime_ns": 1792164622786462430,
+      "sha256": "8380db7d8ad143e483f420f4939b1edd8e37733ac9d21b04d9921904caa4304b",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-agent.ts.html",
+      "bytes": 214304,
+      "mtime_ns": 1792164622764319236,
+      "sha256": "e9ca3052471b124081d6861343353b5c76cbd7f91315cf699adfbcec3b83c3bf",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/library-index.ts.html",
+      "bytes": 48634,
+      "mtime_ns": 1792164622808669751,
+      "sha256": "84a81a59090dfdf4b29f55acf753c2f9fc38795f59ef9d9516dd71a6971f61f3",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/support-panel.ts.html",
+      "bytes": 13608,
+      "mtime_ns": 1792164622827997468,
+      "sha256": "d4d9c944e6573c2ce8585c3afac0c5fd1dfc08606d935e606c67d7bdd0da44f2",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-character-parts.ts.html",
+      "bytes": 17440,
+      "mtime_ns": 1792164622767280342,
+      "sha256": "eb662dda6909eda6d6103b4ce34c7959083d595f220e4bc1c3f8f87dea73f8bc",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/card-chrome.ts.html",
+      "bytes": 9625,
+      "mtime_ns": 1792164622793537544,
+      "sha256": "0f570947ec63732c02fd9b012dc37f7844de12ee0911805a441979b8b77db192",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/settings-ui-state.ts.html",
+      "bytes": 19661,
+      "mtime_ns": 1792164622824210301,
+      "sha256": "3432617b6fb05d33f76f5e9947802c63a00128d2566c75dc9067034e10224eb2",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/acp-session.ts.html",
+      "bytes": 110821,
+      "mtime_ns": 1792164622760258147,
+      "sha256": "8f30e6a60b3cba2b7728c1220fb1f160ee001c1aaac5b58c466e37ee9d55ca50",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/tutor-collaboration-modal.ts.html",
+      "bytes": 12232,
+      "mtime_ns": 1792164622833022578,
+      "sha256": "ffe741bd9d86e4821aaae77efd7d65df138d32dff004a2c1a9572cf6c1d8f623",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/board-brushes.ts.html",
+      "bytes": 30431,
+      "mtime_ns": 1792164622766617828,
+      "sha256": "1d13e92df905546442d46441d9c34fe034912cf5f5e48ea593051531cc2aae1b",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/margin-rail.ts.html",
+      "bytes": 36867,
+      "mtime_ns": 1792164622818102334,
+      "sha256": "b96048ae2427216f7a7c2b70f226871af2019153d8931e3221f1db6010fc4422",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/learning-effective-v3.ts.html",
+      "bytes": 12921,
+      "mtime_ns": 1792164622803714559,
+      "sha256": "585205e5876b7964f162322cae43b079d5ffbc4cd89fdaca95301507fb4ebe71",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/markdown/profile-file.ts.html",
+      "bytes": 14979,
+      "mtime_ns": 1792164622839329092,
+      "sha256": "1d18991c3add49409499eaf156b021a6bd772f1ca5dce69c6c0f25a25629e394",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/markdown/blocks.ts.html",
+      "bytes": 26588,
+      "mtime_ns": 1792164622837610095,
+      "sha256": "d1f57b9276379a7f90ef853fdf1a2bafc66721f41361af6463583eeb37610001",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/markdown/memory-cell-file.ts.html",
+      "bytes": 25999,
+      "mtime_ns": 1792164622838312528,
+      "sha256": "e6f37eafac7c0401a1d410d092fc4a5f1a919529ff5b30faa740f00caa4f025c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/markdown/index.html",
+      "bytes": 12844,
+      "mtime_ns": 1792164622837045750,
+      "sha256": "58e82268ed35ba1dc6a56b7cc4c3a0b54877eb9381b87c1a3af4c20dce86c1a9",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/markdown/proposal-file.ts.html",
+      "bytes": 17794,
+      "mtime_ns": 1792164622839495053,
+      "sha256": "efac9ac5711abdc200c6174c4bf882f89611e358e050b8e26bc412244d5e8d26",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/markdown/inbox.ts.html",
+      "bytes": 21775,
+      "mtime_ns": 1792164622838127523,
+      "sha256": "0dc5ca787c562a0788b22ae5a40e61e9332ea1dc4281729c6a5a555b25f43fc3",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/markdown/overview.ts.html",
+      "bytes": 44418,
+      "mtime_ns": 1792164622839191255,
+      "sha256": "fbe5090ba4ca0a002bf1a703c42c4b9a12542be032465fa03634cd97da8cb08f",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/markdown/annotation-file.ts.html",
+      "bytes": 48872,
+      "mtime_ns": 1792164622837368465,
+      "sha256": "10d4b208f9f13bcea6a7311a42c23818e4e37c772617648a401cd3562bc64663",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/markdown/scene-file.ts.html",
+      "bytes": 9730,
+      "mtime_ns": 1792164622840577244,
+      "sha256": "850a5bb9a10ef8eabf5ad2705b4f80c8723cb763c0fe50b2f58d2c450d30a2c5",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/markdown/notebook-labels.ts.html",
+      "bytes": 50525,
+      "mtime_ns": 1792164622838591700,
+      "sha256": "ec0f2534aa4e6951a82f71cdc68bac0fa19a9683c625ea0908ffc55d04b07f0f",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/markdown/review.ts.html",
+      "bytes": 24594,
+      "mtime_ns": 1792164622840376281,
+      "sha256": "41d9402293f571e5ffa0467969348deb4aa137fc2cc8e6ba0f2305b8b072036d",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/markdown/notebook.ts.html",
+      "bytes": 58404,
+      "mtime_ns": 1792164622838917624,
+      "sha256": "b1da96d809182fe8e714cdc8a0d76ab29752cbf9b742465e11721fbc3cc357cc",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/markdown/frontmatter.ts.html",
+      "bytes": 14260,
+      "mtime_ns": 1792164622837948478,
+      "sha256": "0f0b417adf04e7ca9ca61a25c4468a943162f42a1aebccd978e62242c51407f8",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/markdown/chat-log-file.ts.html",
+      "bytes": 25345,
+      "mtime_ns": 1792164622837804891,
+      "sha256": "9203e97d7f2d102ab8912a23808daabd74f79198b042bf13bdc479fdab83526c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/web-bridge/index.html",
+      "bytes": 7874,
+      "mtime_ns": 1792164622849913199,
+      "sha256": "8c38b15f9a4128ef0abf9730abfc2632fc8fd82ea143f0ee19cb3440a05fc6a6",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/web-bridge/protocol.ts.html",
+      "bytes": 26257,
+      "mtime_ns": 1792164622850609756,
+      "sha256": "9e7262ba611084b01027451ffa90fe552c0be122a69f565237483d209732c779",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/web-bridge/server.ts.html",
+      "bytes": 45877,
+      "mtime_ns": 1792164622851039765,
+      "sha256": "081d73a906d9495b68a3adc1faee7d53dc43e3b1079bb74e9fd1e120d4a4bafb",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/web-bridge/stats.ts.html",
+      "bytes": 10760,
+      "mtime_ns": 1792164622851626153,
+      "sha256": "a827dca3bd9c2c61b0b04b585a8ce6c475aec8e1172c5530e1ab07f805cbf233",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/web-bridge/pairing-modal.ts.html",
+      "bytes": 12325,
+      "mtime_ns": 1792164622850114578,
+      "sha256": "508bd8f60e5528045e603fc2a2d5ff9b066cfc3ed4b0304a78efa228b8e0ad2a",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/web-bridge/state.ts.html",
+      "bytes": 7632,
+      "mtime_ns": 1792164622851234061,
+      "sha256": "421dae9299bfa2ae6338618c3b90c95a974412a3de2f67e41516c8cd10171ca0",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/web-bridge/pairing.ts.html",
+      "bytes": 21518,
+      "mtime_ns": 1792164622850352042,
+      "sha256": "c3eb2581a870a883862cf62548d8688163cdaa633a42f2c0575193cadc220caf",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/mobile/index.html",
+      "bytes": 5123,
+      "mtime_ns": 1792164622840734164,
+      "sha256": "2aaf61bb84918a608b014996f76f38f0e6785742a1e9fca6cdbf26e5f562226c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/mobile/recognition.ts.html",
+      "bytes": 9178,
+      "mtime_ns": 1792164622841406221,
+      "sha256": "67227de303c716677811475e7295599a061708bc9f8d22f56c7a6a8e154a47d9",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/mobile/main.ts.html",
+      "bytes": 55155,
+      "mtime_ns": 1792164622841250467,
+      "sha256": "a4741e28bd608e581ee6b98a3873f1894ec8a5a45c9c980e5597ce994c963166",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/views/chat-view.ts.html",
+      "bytes": 184384,
+      "mtime_ns": 1792164622848540794,
+      "sha256": "2c9b9d36cd0c79f763420bbbc931a47ed3bb2d485662f3ee1cfc05ff3472c5b5",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/views/index.html",
+      "bytes": 10590,
+      "mtime_ns": 1792164622841609308,
+      "sha256": "5e81133f53cb90392c014c908b10546c9185171f48bb1872a273c872ed0000d7",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/views/note-popover.ts.html",
+      "bytes": 21684,
+      "mtime_ns": 1792164622849136015,
+      "sha256": "88ce500fd4e0e0f4da314289afca0badc587b2d4f5d5a6b23dc3156407b35515",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/views/note-panel.ts.html",
+      "bytes": 31677,
+      "mtime_ns": 1792164622848943386,
+      "sha256": "5da8cae661f926d284657d6f3090c9976b6e6777080f23bde7875c94f94b8aa1",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/views/annotation-table.ts.html",
+      "bytes": 38011,
+      "mtime_ns": 1792164622842110153,
+      "sha256": "568fb67e5eec53f3d2ded4a37c9167302ac9c977b44c6d5dcbf643900ece3ab8",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/views/dashboard-view.ts.html",
+      "bytes": 11077,
+      "mtime_ns": 1792164622848723465,
+      "sha256": "8370b329b9197cdc4d9c53870510fb4b6908ddb1895fa345ab5e6d343e679454",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/views/scene-modal.ts.html",
+      "bytes": 17849,
+      "mtime_ns": 1792164622849667652,
+      "sha256": "e5f46eddcbe1099e88e22bbc2a7c202a08f4e228e9b7f20a840dddf4c8751d98",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/views/annotation-modal.ts.html",
+      "bytes": 21914,
+      "mtime_ns": 1792164622841821355,
+      "sha256": "b67ae6f2c88f7c8f807d5e4532aeda0e6dbbb2d0d5d19c38894b8e6a80e80238",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/views/board-view.ts.html",
+      "bytes": 660724,
+      "mtime_ns": 1792164622847352809,
+      "sha256": "d60b5be70dfd017434c341f2065729af5a93b476437504a1686b20696863724c",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/views/review-modal.ts.html",
+      "bytes": 23453,
+      "mtime_ns": 1792164622849492648,
+      "sha256": "d35c6885654e7ae43e9a28cd2f37ded5a5b022377ccbf0d21b4b4a995a56df5a",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "coverage/src/views/permission-modal.ts.html",
+      "bytes": 13693,
+      "mtime_ns": 1792164622849282935,
+      "sha256": "c82b6bcd4a72cf4def8f0a99bc7d2b965c56858432c8ec032ec47f9c8f7e4030",
+      "reason": "outdated generated coverage report"
+    },
+    {
+      "path": "node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/results.json",
+      "bytes": 22342,
+      "mtime_ns": 1792511540279905105,
+      "sha256": "9a527772de8aaf4f6c94b46a95b11599a25df65a27577e7cf7fae99f47070dca",
+      "reason": "generated Vitest result cache"
+    },
+    {
+      "path": ".DS_Store",
+      "bytes": 10244,
+      "mtime_ns": 1792520582179895084,
+      "sha256": "829bb97ba7191accf3afd7c93a5938c38b29730e95e1249a5fd71ca3a87791f4",
+      "reason": "Finder metadata"
+    },
+    {
+      "path": "docs/.DS_Store",
+      "bytes": 8196,
+      "mtime_ns": 1792501007738069738,
+      "sha256": "e408eb3e39b4737440f7dbd7370e04a61fa681f32bd3cb4037251922db0b7390",
+      "reason": "Finder metadata"
+    },
+    {
+      "path": "docs/qa/.DS_Store",
+      "bytes": 6148,
+      "mtime_ns": 1792335119980391537,
+      "sha256": "da3dbf321d09ed95c9939f4c5dd66d09592dce835486ebfa5dfe09ab1e5774ea",
+      "reason": "Finder metadata"
+    },
+    {
+      "path": "docs/qa/commercial-optimization-20261009/.DS_Store",
+      "bytes": 6148,
+      "mtime_ns": 1792335114959796989,
+      "sha256": "b52496c910398e3c73457ad1281518941724360f2b77366ca95c17f08fbd8edf",
+      "reason": "Finder metadata"
+    },
+    {
+      "path": "research/.DS_Store",
+      "bytes": 6148,
+      "mtime_ns": 1792335114965448706,
+      "sha256": "7adf5d511f662b167d5835078eb185c2d106a343370ca6f269f40ce900ad2ddc",
+      "reason": "Finder metadata"
+    },
+    {
+      "path": "assets/.DS_Store",
+      "bytes": 6148,
+      "mtime_ns": 1792335119981398080,
+      "sha256": "8e105e9e23f9e7984dc7ee0288e77f23a9d3127e13d6edf7f508ab637c7e6583",
+      "reason": "Finder metadata"
+    },
+    {
+      "path": "src/.DS_Store",
+      "bytes": 6148,
+      "mtime_ns": 1792501007739280319,
+      "sha256": "abd408f040ea77193ae71b978fb21a9251c08c6f8b5021aa171502cc37c84a90",
+      "reason": "Finder metadata"
+    },
+    {
+      "path": "tests/.DS_Store",
+      "bytes": 6148,
+      "mtime_ns": 1792335114959153780,
+      "sha256": "930bb5aedf171d8433fc35f994985c66e3b1de05da87b4a1febcb4ca3758d060",
+      "reason": "Finder metadata"
+    },
+    {
+      "path": "extension/.DS_Store",
+      "bytes": 8196,
+      "mtime_ns": 1792335114974178886,
+      "sha256": "3f0bd2aede362842d1c2e9b28dc1effacdf22cd5142d811f7a04c59823e1bcd0",
+      "reason": "Finder metadata"
+    },
+    {
+      "path": "extension/src/.DS_Store",
+      "bytes": 6148,
+      "mtime_ns": 1788865397691922309,
+      "sha256": "4ba41ac9efcba1e2b4a11a84c9f43c89ec067fade97104560dfa90bbf5744bd1",
+      "reason": "Finder metadata"
+    },
+    {
+      "path": "dist/.DS_Store",
+      "bytes": 8196,
+      "mtime_ns": 1792501002661508220,
+      "sha256": "272bac1af6ded3f47caf16d45833dca9243d447d4223d8d9eb9dc113d74e3001",
+      "reason": "Finder metadata"
+    }
+  ],
+  "file_count": 601,
+  "logical_bytes": 24963132,
+  "historical_coverage_summary": {
+    "lines": {
+      "total": 28131,
+      "covered": 19479,
+      "skipped": 0,
+      "pct": 69.24
+    },
+    "statements": {
+      "total": 41437,
+      "covered": 26802,
+      "skipped": 0,
+      "pct": 64.68
+    },
+    "functions": {
+      "total": 7317,
+      "covered": 4696,
+      "skipped": 0,
+      "pct": 64.17
+    },
+    "branches": {
+      "total": 28176,
+      "covered": 17342,
+      "skipped": 0,
+      "pct": 61.54
+    },
+    "branchesTrue": {
+      "total": 0,
+      "covered": 0,
+      "skipped": 0,
+      "pct": 100
+    }
+  },
+  "preserved": [
+    "dist/private-baselines/",
+    "dist/main.js",
+    "dist/desktop.js",
+    "dist/mobile.js",
+    "dist/assets/",
+    "dist/licenses/",
+    "dist/credential-compatibility.json",
+    "docs/qa/",
+    "research/",
+    "storage-migration-report.json",
+    "storage-restore.py",
+    "Tutor/",
+    ".git/"
+  ],
+  "removed_file_count": 601,
+  "removed_logical_bytes": 24963132
+}

@@ -14,6 +14,9 @@ export const UI_CLASS = "atl-hl-ui";
 /** Class on every painted highlight fragment. */
 export const MARK_CLASS = "atl-hl";
 
+/** How much context selectors keep on each side of the exact text. */
+export const ANCHOR_CONTEXT = 32;
+
 /** One page Text node placed on the flattened text line. */
 interface Segment {
   node: Text;
@@ -33,11 +36,18 @@ export interface AnchorRange {
   end: number;
 }
 
+/** A resolved location plus how confidently it was re-anchored. */
+export type LocatedAnchor = AnchorRange & {
+  status: "exact" | "shifted";
+};
+
 /** A stored selector: the exact quote plus a little context on each side. */
 export interface QuoteSelector {
   exact: string;
   prefix: string;
   suffix: string;
+  /** Creation-time offset on the flattened text, used to disambiguate repeats. */
+  start?: number;
 }
 
 /** Flatten every anchorable Text node under `root` into one string + segment map. */
@@ -65,27 +75,246 @@ export function buildTextMap(root: Node = document.body): TextMap {
   return { text, segments };
 }
 
-/** Find where `sel` sits on the flattened text, widest context first. */
-export function locate(map: TextMap, sel: QuoteSelector): AnchorRange | null {
+/**
+ * Every index where `needle` occurs in `text`, capped so a pathological page
+ * (the same short probe repeated thousands of times) cannot stall anchoring.
+ */
+function indexOfAll(text: string, needle: string, cap = 50): number[] {
+  const hits: number[] = [];
+  let idx = text.indexOf(needle);
+  while (idx >= 0 && hits.length < cap) {
+    hits.push(idx);
+    idx = text.indexOf(needle, idx + 1);
+  }
+  return hits;
+}
+
+/**
+ * Pick the occurrence of `quote` closest to the recorded creation offset, so a
+ * quote that appears several times re-anchors where it was made instead of to
+ * the first repeat. Without a recorded offset the first occurrence wins (the
+ * historical behavior, which stays correct for unique quotes). Callers only
+ * arrive with a non-empty `hits` list.
+ */
+function pickHit(hits: number[], lead: number, start?: number): number {
+  let best = hits[0] ?? 0;
+  let bestDistance = Math.abs(best + lead - (start ?? 0));
+  for (const hit of hits.slice(1)) {
+    const distance = Math.abs(hit + lead - (start ?? 0));
+    if (distance < bestDistance) {
+      best = hit;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+/**
+ * Find where `sel` sits on the flattened text, widest context first. The
+ * result carries a status: `exact` when the fullest probe (prefix + exact +
+ * suffix) matched, `shifted` when a fallback level had to stand in — a hint
+ * that the page moved under the highlight and it re-anchored by position.
+ * When every exact probe fails, a fuzzy pass (whitespace/case/punctuation
+ * drift, then a bounded edit-distance window search) gets one more chance
+ * before the highlight is written off as orphaned.
+ */
+export function locate(map: TextMap, sel: QuoteSelector): LocatedAnchor | null {
   const exact = sel.exact;
   if (!exact) return null;
   const prefix = sel.prefix ?? "";
   const suffix = sel.suffix ?? "";
-  const attempts = [
-    { probe: prefix + exact + suffix, lead: prefix.length },
-    { probe: prefix + exact, lead: prefix.length },
-    { probe: exact + suffix, lead: 0 },
-    { probe: exact, lead: 0 }
+  const attempts: Array<{ probe: string; lead: number; exact: boolean }> = [
+    { probe: prefix + exact + suffix, lead: prefix.length, exact: true },
+    { probe: prefix + exact, lead: prefix.length, exact: false },
+    { probe: exact + suffix, lead: 0, exact: false },
+    { probe: exact, lead: 0, exact: false }
   ];
   for (const attempt of attempts) {
     if (!attempt.probe) continue;
-    const idx = map.text.indexOf(attempt.probe);
-    if (idx >= 0) {
-      const start = idx + attempt.lead;
-      return { start, end: start + exact.length };
+    const hits = indexOfAll(map.text, attempt.probe);
+    if (hits.length === 0) continue;
+    const idx = pickHit(hits, attempt.lead, sel.start);
+    const start = idx + attempt.lead;
+    return { start, end: start + exact.length, status: attempt.exact ? "exact" : "shifted" };
+  }
+  return fuzzyLocate(map, sel);
+}
+
+// ---------------------------------------------------------------------------
+// Fuzzy re-anchoring
+// ---------------------------------------------------------------------------
+
+/** Highlights longer than this skip the fuzzy pass (bounded work per restore). */
+const FUZZY_MAX_EXACT = 256;
+
+/** Below this the quote carries too little signal for edit-distance matching. */
+const FUZZY_MIN_EXACT = 8;
+
+/** How much a fuzzy candidate may differ, as a share of the quote's length. */
+const FUZZY_DISTANCE_SHARE = 0.2;
+
+/** Padding on each side of the recorded offset for the window search. */
+const FUZZY_WINDOW_PAD = 64;
+
+/** Punctuation CMSes love to swap between forms; canonicalized before compare. */
+const CANONICAL_PUNCT: Record<string, string> = {
+  "\u2018": "'",
+  "\u2019": "'",
+  "\u201a": ",",
+  "\u201b": "'",
+  "\u201c": '"',
+  "\u201d": '"',
+  "\u2013": "-",
+  "\u2014": "-"
+};
+
+/** Page text re-spelled for fuzzy comparison, with the map back to raw offsets. */
+interface NormalizedText {
+  norm: string;
+  /** `norm[i]` was copied from raw offset `rawAt[i]`. */
+  rawAt: number[];
+}
+
+/** Lowercase, collapse whitespace runs to one space, canonicalize punctuation. */
+function normalizeText(text: string): NormalizedText {
+  const out: string[] = [];
+  const rawAt: number[] = [];
+  for (let i = 0; i < text.length; i++) {
+    const raw = text[i]!;
+    const code = raw.charCodeAt(0);
+    const isSpace =
+      code === 32 || (code >= 9 && code <= 13) || code === 160 || code === 8201;
+    const ch = isSpace ? " " : (CANONICAL_PUNCT[raw] ?? raw.toLowerCase());
+    if (ch === " ") {
+      if (out.length === 0 || out[out.length - 1] === " ") continue;
+      out.push(" ");
+      rawAt.push(i);
+    } else {
+      out.push(ch);
+      rawAt.push(i);
     }
   }
-  return null;
+  if (out.length > 0 && out[out.length - 1] === " ") {
+    out.pop();
+    rawAt.pop();
+  }
+  return { norm: out.join(""), rawAt };
+}
+
+/** Position in normalized space of a raw offset (largest norm i at or before it). */
+function normOffsetOf(index: NormalizedText, rawOffset: number): number {
+  let lo = 0;
+  let hi = index.rawAt.length - 1;
+  let ans = 0;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (index.rawAt[mid]! <= rawOffset) {
+      ans = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return ans;
+}
+
+/**
+ * Best local alignment of `needle` inside `hay[from, to)`: the needle must
+ * match in full, but the haystack side may start and end anywhere, so edits
+ * around the quote cannot push it out of the window. Semiglobal Levenshtein —
+ * free prefix/suffix on the haystack — with a backtrace to the start column.
+ */
+function bestLocalMatch(
+  hay: string,
+  needle: string,
+  from: number,
+  to: number
+): { start: number; distance: number } | null {
+  const m = needle.length;
+  const n = to - from;
+  if (m === 0 || n === 0) return null;
+  const width = n + 1;
+  const d = new Uint16Array((m + 1) * width);
+  for (let j = 0; j <= n; j++) d[j] = 0;
+  for (let i = 1; i <= m; i++) d[i * width] = i;
+  for (let i = 1; i <= m; i++) {
+    const ni = needle.charCodeAt(i - 1)!;
+    for (let j = 1; j <= n; j++) {
+      const cost = ni === hay.charCodeAt(from + j - 1) ? 0 : 1;
+      const diag = d[(i - 1) * width + j - 1]! + cost;
+      const del = d[(i - 1) * width + j]! + 1;
+      const ins = d[i * width + j - 1]! + 1;
+      d[i * width + j] = Math.min(diag, del, ins);
+    }
+  }
+  let bestJ = 0;
+  let best = Infinity;
+  for (let j = 0; j <= n; j++) {
+    const value = d[m * width + j]!;
+    if (value < best) {
+      best = value;
+      bestJ = j;
+    }
+  }
+  let i = m;
+  let j = bestJ;
+  while (i > 0 && j > 0) {
+    const cur = d[i * width + j]!;
+    const ni = needle.charCodeAt(i - 1)!;
+    const same = ni === hay.charCodeAt(from + j - 1);
+    if (cur === d[(i - 1) * width + j - 1]! + (same ? 0 : 1)) {
+      i--;
+      j--;
+    } else if (cur === d[(i - 1) * width + j]! + 1) {
+      i--;
+    } else {
+      j--;
+    }
+  }
+  return { start: from + j, distance: best };
+}
+
+/**
+ * Fuzzy re-anchoring for quotes the exact probes could not find. Level one is
+ * cheap: the quote survived with whitespace/case/punctuation drift only, so it
+ * matches exactly in normalized space. Level two needs the recorded creation
+ * offset and searches a window around it with bounded edit distance, which
+ * recovers highlights through small rewordings. Both grade `shifted` — the
+ * page demonstrably moved under the highlight.
+ */
+export function fuzzyLocate(
+  map: TextMap,
+  sel: QuoteSelector
+): LocatedAnchor | null {
+  if (!sel.exact || sel.exact.length > FUZZY_MAX_EXACT) return null;
+  const index = normalizeText(map.text);
+  const needle = normalizeText(sel.exact).norm;
+  if (!needle) return null;
+  const hits = indexOfAll(index.norm, needle);
+  if (hits.length === 1 || (hits.length > 1 && sel.start !== undefined)) {
+    const start =
+      hits.length === 1
+        ? hits[0]!
+        : pickHit(hits, 0, normOffsetOf(index, sel.start!));
+    return {
+      start: index.rawAt[start]!,
+      end: index.rawAt[start + needle.length - 1]! + 1,
+      status: "shifted"
+    };
+  }
+  if (sel.start === undefined || needle.length < FUZZY_MIN_EXACT) return null;
+  const anchorAt = normOffsetOf(index, sel.start);
+  const from = Math.max(0, anchorAt - FUZZY_WINDOW_PAD);
+  const to = Math.min(index.norm.length, anchorAt + needle.length + FUZZY_WINDOW_PAD);
+  const match = bestLocalMatch(index.norm, needle, from, to);
+  if (!match) return null;
+  const budget = Math.max(1, Math.floor(needle.length * FUZZY_DISTANCE_SHARE));
+  if (match.distance > budget) return null;
+  return {
+    start: index.rawAt[match.start]!,
+    end: index.rawAt[Math.min(match.start + needle.length - 1, index.rawAt.length - 1)]! + 1,
+    status: "shifted"
+  };
 }
 
 /** Global offset of a (node, offset) DOM position on the flattened text line. */
@@ -115,7 +344,8 @@ export function selectorFromRange(
     selector: {
       exact: map.text.slice(start, end),
       prefix: map.text.slice(Math.max(0, start - context), start),
-      suffix: map.text.slice(end, end + context)
+      suffix: map.text.slice(end, end + context),
+      start
     },
     anchor: { start, end }
   };

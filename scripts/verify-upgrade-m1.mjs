@@ -1,0 +1,35 @@
+// Exercises the pinned, real Excalidraw API. No model call is asserted here.
+import {execFileSync} from 'node:child_process';
+import {mkdir,writeFile} from 'node:fs/promises';
+const output=`${process.cwd()}/docs/qa/upgrade-m1`;await mkdir(output,{recursive:true});
+const code=`(async()=>{
+const p=app.plugins.plugins['annotation-tutor-lite'];if(p.tutorConversation.state.busy)throw new Error('busy');
+window.tutorM1Stage="create";const view=await p.createExcalidrawDrawing();
+for(let i=0;i<100&&!view.excalidrawAPI;i++)await new Promise(r=>setTimeout(r,100));
+const s=p.excalidrawSurface(view),before=await s.read();
+const grant={clientId:'obsidian-qa',targets:[s.id],read:true,write:true,humanObjectIds:[],learningMemory:false};
+const operations=[{type:'add',id:'source',shape:'rectangle',x:0,y:0,width:180,height:100,style:{backgroundColor:'#d0ebff'}},{type:'add',id:'target',shape:'ellipse',x:340,y:0,width:180,height:100,style:{backgroundColor:'#d3f9d8'}},{type:'add',id:'label',shape:'text',x:35,y:25,width:130,height:50,text:'Tutor 任务',style:{fontSize:24}},{type:'connect',id:'flow',from:'source',to:'target',fromSide:'right',toSide:'left'}];
+const changes={id:'create',taskId:'qa',targetId:s.id,baseRevision:before.target.revision,dependencies:[],operations};
+window.tutorM1Stage="first-commit";const added=await s.commit(changes,grant,new AbortController().signal);
+if(added.objects.length!==4)throw new Error('creation count');
+const rect=added.objects.find(e=>e.type==='rectangle'), arrow=added.objects.find(e=>e.type==='arrow'),label=added.objects.find(e=>e.type==='text');
+if(arrow.startBinding?.elementId!==rect.id)throw new Error('binding missing');
+const untouched=JSON.stringify(label),oldArrow=JSON.stringify(arrow.points);
+window.tutorM1Stage="move-commit";const modified=await s.commit({id:'move',taskId:'qa',targetId:s.id,baseRevision:added.target.revision,dependencies:[],operations:[{type:'update',id:rect.id,geometry:{y:180},style:{backgroundColor:'#ffd8a8'}}]}, {...grant,humanObjectIds:[rect.id,arrow.id]},new AbortController().signal);
+if(JSON.stringify(modified.objects.find(e=>e.id===label.id))!==untouched)throw new Error('unselected changed');
+const movedArrow=modified.objects.find(e=>e.id===arrow.id);
+if(JSON.stringify(movedArrow.points)===oldArrow&&movedArrow.y===arrow.y)throw new Error('arrow did not follow');
+window.tutorM1Stage="preview";const preview=await s.preview();require('fs').writeFileSync(${JSON.stringify(output+'/preview.svg')},preview);
+window.tutorM1Stage="undo";const path=view.file.path;
+await new Promise(r=>setTimeout(r,100));
+view.excalidrawAPI.history.undo();await new Promise(r=>setTimeout(r,120));
+const undone=view.excalidrawAPI.getSceneElements().find(e=>e.id===rect.id);
+const undoVerified=undone?.y===0&&undone?.backgroundColor===rect.backgroundColor;
+view.excalidrawAPI.history.redo();await new Promise(r=>setTimeout(r,120));
+if(!undoVerified)throw new Error('single native undo failed: '+JSON.stringify({y:undone?.y,color:undone?.backgroundColor}));
+window.tutorM1Stage="final-save";await view.save(true,true);
+const action=view.excalidrawAPI.getAppState();
+return {passed:true,version:p.excalidrawCapability().version,path,count:modified.objects.length,checks:['new canvas','typed shapes and text','native connector binding','move with connector follow','unselected style preservation','save','SVG preview'],undoVerified,reopenVerified:false};
+})()`;
+const result=execFileSync('/Applications/Obsidian.app/Contents/MacOS/obsidian-cli',['vault=Documents','eval',`code=${code}`],{encoding:'utf8',timeout:60000});
+await writeFile(`${output}/host-result.txt`,result);console.log(result);if(result.includes('Error'))process.exitCode=1;

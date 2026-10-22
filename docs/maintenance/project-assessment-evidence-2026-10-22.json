@@ -1,0 +1,919 @@
+{
+  "date": "2026-10-22",
+  "head": "3dd08bd2cf129d2934870c06153ddf66cbe06510",
+  "branch": "main",
+  "unmerged_paths": [
+    "CHANGELOG.md",
+    "host-plugins/tutor/.codex-plugin/plugin.json",
+    "host-plugins/tutor/README.md",
+    "host-plugins/tutor/plugin.json",
+    "host-plugins/tutor/scripts/connector-source.mjs",
+    "host-plugins/tutor/scripts/connector.cjs",
+    "manifest.json",
+    "package.json",
+    "src/api-stream.ts",
+    "src/board-agent.ts",
+    "src/board-mcp.ts",
+    "src/board-types.ts",
+    "src/chat-prompt.ts",
+    "src/conversation-diagnostics.ts",
+    "src/i18n.ts",
+    "src/index-table.ts",
+    "src/learning-api-protocol.ts",
+    "src/learning-runner-v3.ts",
+    "src/main.ts",
+    "src/margin-rail.ts",
+    "src/markdown/chat-log-file.ts",
+    "src/schemas.ts",
+    "src/settings-config.ts",
+    "src/settings.ts",
+    "src/store.ts",
+    "src/support-response.ts",
+    "src/tutor-a2a.ts",
+    "src/tutor-agent-adapters.ts",
+    "src/tutor-conversation.ts",
+    "src/tutor-discovery.ts",
+    "src/tutor-grant.ts",
+    "src/tutor-mcp.ts",
+    "src/tutor-pairing-modal.ts",
+    "src/upgrade-i18n.ts",
+    "styles.css",
+    "tests/api-stream.test.ts",
+    "tests/api-transport-error.test.ts",
+    "tests/chat-log-file.test.ts",
+    "tests/conversation-diagnostics-host.test.ts",
+    "tests/conversation-diagnostics.test.ts",
+    "tests/learning-card-host-v3.test.ts",
+    "tests/learning-host-invalidation.test.ts",
+    "tests/learning-runner-v3.test.ts",
+    "tests/startup-host.test.ts",
+    "tests/startup-layout-host.test.ts",
+    "tests/startup-services-host.test.ts",
+    "tests/support-response.test.ts",
+    "tests/tutor-conversation.test.ts",
+    "tests/workflow-agent-review.test.ts"
+  ],
+  "unmerged_count": 49,
+  "conflict_markers": [
+    {
+      "path": "CHANGELOG.md",
+      "groups": 1,
+      "first_line": 9
+    },
+    {
+      "path": "manifest.json",
+      "groups": 1,
+      "first_line": 4
+    },
+    {
+      "path": "package.json",
+      "groups": 1,
+      "first_line": 3
+    },
+    {
+      "path": "src/chat-prompt.ts",
+      "groups": 3,
+      "first_line": 11
+    },
+    {
+      "path": "src/i18n.ts",
+      "groups": 2,
+      "first_line": 1
+    },
+    {
+      "path": "src/index-table.ts",
+      "groups": 1,
+      "first_line": 120
+    },
+    {
+      "path": "src/main.ts",
+      "groups": 20,
+      "first_line": 1
+    },
+    {
+      "path": "src/margin-rail.ts",
+      "groups": 1,
+      "first_line": 137
+    },
+    {
+      "path": "src/markdown/chat-log-file.ts",
+      "groups": 6,
+      "first_line": 24
+    },
+    {
+      "path": "src/schemas.ts",
+      "groups": 1,
+      "first_line": 122
+    },
+    {
+      "path": "src/settings-config.ts",
+      "groups": 4,
+      "first_line": 114
+    },
+    {
+      "path": "src/settings.ts",
+      "groups": 1,
+      "first_line": 960
+    },
+    {
+      "path": "src/store.ts",
+      "groups": 2,
+      "first_line": 73
+    },
+    {
+      "path": "styles.css",
+      "groups": 1,
+      "first_line": 2294
+    },
+    {
+      "path": "tests/chat-log-file.test.ts",
+      "groups": 1,
+      "first_line": 53
+    }
+  ],
+  "conflict_marker_groups": 46,
+  "src_ts_file_count": 126,
+  "test_suite_files": 100,
+  "missing_import_reference_count": 125,
+  "missing_module_count": 79,
+  "missing_imports": [
+    {
+      "file": "src/board-agent.ts",
+      "line": 1,
+      "import": "./teaching-policy.js",
+      "missing": "src/teaching-policy.ts"
+    },
+    {
+      "file": "src/board-agent.ts",
+      "line": 2,
+      "import": "./board-math.js",
+      "missing": "src/board-math.ts"
+    },
+    {
+      "file": "src/board-agent.ts",
+      "line": 3,
+      "import": "./ai-execution.js",
+      "missing": "src/ai-execution.ts"
+    },
+    {
+      "file": "src/board-agent.ts",
+      "line": 4,
+      "import": "./board-drawing-intent.js",
+      "missing": "src/board-drawing-intent.ts"
+    },
+    {
+      "file": "src/board-agent.ts",
+      "line": 8,
+      "import": "./board-model.js",
+      "missing": "src/board-model.ts"
+    },
+    {
+      "file": "src/board-agent.ts",
+      "line": 16,
+      "import": "./board-brushes.js",
+      "missing": "src/board-brushes.ts"
+    },
+    {
+      "file": "src/board-agent.ts",
+      "line": 17,
+      "import": "./board-surfaces.js",
+      "missing": "src/board-surfaces.ts"
+    },
+    {
+      "file": "src/board-agent.ts",
+      "line": 18,
+      "import": "./board-placement.js",
+      "missing": "src/board-placement.ts"
+    },
+    {
+      "file": "src/board-agent.ts",
+      "line": 19,
+      "import": "./board-spatial.js",
+      "missing": "src/board-spatial.ts"
+    },
+    {
+      "file": "src/board-mcp.ts",
+      "line": 11,
+      "import": "./service-work.js",
+      "missing": "src/service-work.ts"
+    },
+    {
+      "file": "src/board-types.ts",
+      "line": 521,
+      "import": "./board-layout.js",
+      "missing": "src/board-layout.ts"
+    },
+    {
+      "file": "src/board-types.ts",
+      "line": 644,
+      "import": "./ai-execution.js",
+      "missing": "src/ai-execution.ts"
+    },
+    {
+      "file": "src/conversation-diagnostics.ts",
+      "line": 1,
+      "import": "./learning-stream-v3.js",
+      "missing": "src/learning-stream-v3.ts"
+    },
+    {
+      "file": "src/learning-api-protocol.ts",
+      "line": 3,
+      "import": "./learning-control-v3.js",
+      "missing": "src/learning-control-v3.ts"
+    },
+    {
+      "file": "src/learning-runner-v3.ts",
+      "line": 1,
+      "import": "./learning-control-v3.js",
+      "missing": "src/learning-control-v3.ts"
+    },
+    {
+      "file": "src/learning-runner-v3.ts",
+      "line": 2,
+      "import": "./learning-dialogue-v3.js",
+      "missing": "src/learning-dialogue-v3.ts"
+    },
+    {
+      "file": "src/learning-runner-v3.ts",
+      "line": 3,
+      "import": "./learning-commands-v3.js",
+      "missing": "src/learning-commands-v3.ts"
+    },
+    {
+      "file": "src/learning-runner-v3.ts",
+      "line": 4,
+      "import": "./learning-stream-v3.js",
+      "missing": "src/learning-stream-v3.ts"
+    },
+    {
+      "file": "src/learning-runner-v3.ts",
+      "line": 5,
+      "import": "./learning-reply-gate.js",
+      "missing": "src/learning-reply-gate.ts"
+    },
+    {
+      "file": "src/learning-runner-v3.ts",
+      "line": 6,
+      "import": "./learning-answer-extract.js",
+      "missing": "src/learning-answer-extract.ts"
+    },
+    {
+      "file": "src/learning-runner-v3.ts",
+      "line": 7,
+      "import": "./learning-effective-v3.js",
+      "missing": "src/learning-effective-v3.ts"
+    },
+    {
+      "file": "src/learning-runner-v3.ts",
+      "line": 8,
+      "import": "./learning-v3.js",
+      "missing": "src/learning-v3.ts"
+    },
+    {
+      "file": "src/learning-runner-v3.ts",
+      "line": 9,
+      "import": "./learning-episode.js",
+      "missing": "src/learning-episode.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 3,
+      "import": "./learning-pdf-context.js",
+      "missing": "src/learning-pdf-context.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 4,
+      "import": "./study-source-binding.js",
+      "missing": "src/study-source-binding.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 5,
+      "import": "./credential-session.js",
+      "missing": "src/credential-session.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 6,
+      "import": "./credential-store.js",
+      "missing": "src/credential-store.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 7,
+      "import": "./desktop-private-storage.js",
+      "missing": "src/desktop-private-storage.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 8,
+      "import": "./desktop-state-io.js",
+      "missing": "src/desktop-state-io.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 9,
+      "import": "./board-draft.js",
+      "missing": "src/board-draft.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 10,
+      "import": "./surface-transaction-journal.js",
+      "missing": "src/surface-transaction-journal.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 11,
+      "import": "./external-generation-gate.js",
+      "missing": "src/external-generation-gate.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 12,
+      "import": "./tutor-local-recovery.js",
+      "missing": "src/tutor-local-recovery.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 13,
+      "import": "./tutor-studio-commit.js",
+      "missing": "src/tutor-studio-commit.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 14,
+      "import": "./web-bridge/state.js",
+      "missing": "src/web-bridge/state.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 15,
+      "import": "./web-bridge/pairing.js",
+      "missing": "src/web-bridge/pairing.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 16,
+      "import": "./web-bridge/pairing-modal.js",
+      "missing": "src/web-bridge/pairing-modal.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 18,
+      "import": "./tutor-result-store.js",
+      "missing": "src/tutor-result-store.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 19,
+      "import": "./board-space-modal.js",
+      "missing": "src/board-space-modal.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 20,
+      "import": "./selection-context.js",
+      "missing": "src/selection-context.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 21,
+      "import": "./learning-expert-modal.js",
+      "missing": "src/learning-expert-modal.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 22,
+      "import": "./learning-experts.js",
+      "missing": "src/learning-experts.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 23,
+      "import": "./interaction-activity.js",
+      "missing": "src/interaction-activity.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 24,
+      "import": "./support-session.js",
+      "missing": "src/support-session.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 25,
+      "import": "./support-private-store.js",
+      "missing": "src/support-private-store.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 26,
+      "import": "./learning-v3.js",
+      "missing": "src/learning-v3.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 27,
+      "import": "./learning-v2.js",
+      "missing": "src/learning-v2.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 28,
+      "import": "./learning-record-read.js",
+      "missing": "src/learning-record-read.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 29,
+      "import": "./learning-invalidation.js",
+      "missing": "src/learning-invalidation.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 30,
+      "import": "./learning-card-v3.js",
+      "missing": "src/learning-card-v3.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 32,
+      "import": "./learning-legacy-v3.js",
+      "missing": "src/learning-legacy-v3.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 33,
+      "import": "./learning-dialogue-v3.js",
+      "missing": "src/learning-dialogue-v3.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 34,
+      "import": "./learning-commands-v3.js",
+      "missing": "src/learning-commands-v3.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 36,
+      "import": "./learning-stream-v3.js",
+      "missing": "src/learning-stream-v3.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 37,
+      "import": "./learning-control-v3.js",
+      "missing": "src/learning-control-v3.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 38,
+      "import": "./learning-context.js",
+      "missing": "src/learning-context.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 40,
+      "import": "./learning-flow.js",
+      "missing": "src/learning-flow.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 41,
+      "import": "./learning-episode-store.js",
+      "missing": "src/learning-episode-store.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 42,
+      "import": "./learning-vault.js",
+      "missing": "src/learning-vault.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 43,
+      "import": "./learning-episode.js",
+      "missing": "src/learning-episode.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 44,
+      "import": "./teaching-policy.js",
+      "missing": "src/teaching-policy.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 45,
+      "import": "./teaching-policy.js",
+      "missing": "src/teaching-policy.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 46,
+      "import": "./tutor-a2a-client.js",
+      "missing": "src/tutor-a2a-client.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 47,
+      "import": "./tutor-journal.js",
+      "missing": "src/tutor-journal.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 49,
+      "import": "./board-vector-agent.js",
+      "missing": "src/board-vector-agent.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 50,
+      "import": "./tutor-codex.js",
+      "missing": "src/tutor-codex.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 51,
+      "import": "./tutor-collaboration.js",
+      "missing": "src/tutor-collaboration.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 52,
+      "import": "./tutor-collaboration-modal.js",
+      "missing": "src/tutor-collaboration-modal.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 59,
+      "import": "./tutor-access.js",
+      "missing": "src/tutor-access.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 61,
+      "import": "./tutor-service.js",
+      "missing": "src/tutor-service.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 62,
+      "import": "./tutor-surface.js",
+      "missing": "src/tutor-surface.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 63,
+      "import": "./excalidraw-surface.js",
+      "missing": "src/excalidraw-surface.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 64,
+      "import": "./excalidraw-agent.js",
+      "missing": "src/excalidraw-agent.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 65,
+      "import": "./ai-execution.js",
+      "missing": "src/ai-execution.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 66,
+      "import": "./board-connection.js",
+      "missing": "src/board-connection.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 117,
+      "import": "./refresh-queue.js",
+      "missing": "src/refresh-queue.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 150,
+      "import": "./board-controller.js",
+      "missing": "src/board-controller.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 151,
+      "import": "./board-recognition.js",
+      "missing": "src/board-recognition.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 152,
+      "import": "./board-recognition-acp.js",
+      "missing": "src/board-recognition-acp.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 154,
+      "import": "./board-image-provider.js",
+      "missing": "src/board-image-provider.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 155,
+      "import": "./board-vectorization.js",
+      "missing": "src/board-vectorization.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 161,
+      "import": "./support-storage-context.js",
+      "missing": "src/support-storage-context.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 163,
+      "import": "./tutor-intent.js",
+      "missing": "src/tutor-intent.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 165,
+      "import": "./board-surfaces.js",
+      "missing": "src/board-surfaces.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 166,
+      "import": "./board-fonts.js",
+      "missing": "src/board-fonts.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 167,
+      "import": "./board-tools.js",
+      "missing": "src/board-tools.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 1501,
+      "import": "./tutor-task.js",
+      "missing": "src/tutor-task.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 1501,
+      "import": "./tutor-task.js",
+      "missing": "src/tutor-task.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 1903,
+      "import": "./learning-commands-v3.js",
+      "missing": "src/learning-commands-v3.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 1998,
+      "import": "./tutor-task.js",
+      "missing": "src/tutor-task.ts"
+    },
+    {
+      "file": "src/main.ts",
+      "line": 1999,
+      "import": "./tutor-task.js",
+      "missing": "src/tutor-task.ts"
+    },
+    {
+      "file": "src/store.ts",
+      "line": 76,
+      "import": "./refresh-queue.js",
+      "missing": "src/refresh-queue.ts"
+    },
+    {
+      "file": "src/support-response.ts",
+      "line": 2,
+      "import": "./learning-stream-v3.js",
+      "missing": "src/learning-stream-v3.ts"
+    },
+    {
+      "file": "src/support-response.ts",
+      "line": 3,
+      "import": "./learning-reply-gate.js",
+      "missing": "src/learning-reply-gate.ts"
+    },
+    {
+      "file": "src/tutor-a2a.ts",
+      "line": 5,
+      "import": "./tutor-task.js",
+      "missing": "src/tutor-task.ts"
+    },
+    {
+      "file": "src/tutor-agent-adapters.ts",
+      "line": 1,
+      "import": "./teaching-policy.js",
+      "missing": "src/teaching-policy.ts"
+    },
+    {
+      "file": "src/tutor-agent-adapters.ts",
+      "line": 4,
+      "import": "./tutor-task.js",
+      "missing": "src/tutor-task.ts"
+    },
+    {
+      "file": "src/tutor-codex-channel.ts",
+      "line": 2,
+      "import": "./codex-command.js",
+      "missing": "src/codex-command.ts"
+    },
+    {
+      "file": "src/tutor-codex-channel.ts",
+      "line": 3,
+      "import": "./teaching-policy.js",
+      "missing": "src/teaching-policy.ts"
+    },
+    {
+      "file": "src/tutor-communication-controller.ts",
+      "line": 7,
+      "import": "./desktop-state-io.js",
+      "missing": "src/desktop-state-io.ts"
+    },
+    {
+      "file": "src/tutor-communication-controller.ts",
+      "line": 8,
+      "import": "./learning-vault.js",
+      "missing": "src/learning-vault.ts"
+    },
+    {
+      "file": "src/tutor-communication-controller.ts",
+      "line": 16,
+      "import": "./tutor-access.js",
+      "missing": "src/tutor-access.ts"
+    },
+    {
+      "file": "src/tutor-communication-controller.ts",
+      "line": 18,
+      "import": "./support-private-store.js",
+      "missing": "src/support-private-store.ts"
+    },
+    {
+      "file": "src/tutor-communication-credentials.ts",
+      "line": 4,
+      "import": "./desktop-state-io.js",
+      "missing": "src/desktop-state-io.ts"
+    },
+    {
+      "file": "src/tutor-communication-credentials.ts",
+      "line": 5,
+      "import": "./desktop-private-storage.js",
+      "missing": "src/desktop-private-storage.ts"
+    },
+    {
+      "file": "src/tutor-communication-credentials.ts",
+      "line": 6,
+      "import": "./support-private-store.js",
+      "missing": "src/support-private-store.ts"
+    },
+    {
+      "file": "src/tutor-communication-peer.ts",
+      "line": 8,
+      "import": "./private-file-io.js",
+      "missing": "src/private-file-io.ts"
+    },
+    {
+      "file": "src/tutor-conversation.ts",
+      "line": 1,
+      "import": "./tutor-task.js",
+      "missing": "src/tutor-task.ts"
+    },
+    {
+      "file": "src/tutor-conversation.ts",
+      "line": 2,
+      "import": "./ai-execution.js",
+      "missing": "src/ai-execution.ts"
+    },
+    {
+      "file": "src/tutor-conversation.ts",
+      "line": 3,
+      "import": "./board-connection.js",
+      "missing": "src/board-connection.ts"
+    },
+    {
+      "file": "src/tutor-conversation.ts",
+      "line": 4,
+      "import": "./board-drawing-intent.js",
+      "missing": "src/board-drawing-intent.ts"
+    },
+    {
+      "file": "src/tutor-conversation.ts",
+      "line": 6,
+      "import": "./board-image-error.js",
+      "missing": "src/board-image-error.ts"
+    },
+    {
+      "file": "src/tutor-conversation.ts",
+      "line": 9,
+      "import": "./board-reference-style.js",
+      "missing": "src/board-reference-style.ts"
+    },
+    {
+      "file": "src/tutor-conversation.ts",
+      "line": 10,
+      "import": "./tutor-intent.js",
+      "missing": "src/tutor-intent.ts"
+    },
+    {
+      "file": "src/tutor-conversation.ts",
+      "line": 11,
+      "import": "./tutor-surface.js",
+      "missing": "src/tutor-surface.ts"
+    },
+    {
+      "file": "src/tutor-conversation.ts",
+      "line": 12,
+      "import": "./surface-transaction-journal.js",
+      "missing": "src/surface-transaction-journal.ts"
+    },
+    {
+      "file": "src/tutor-conversation.ts",
+      "line": 14,
+      "import": "./learning-control-v3.js",
+      "missing": "src/learning-control-v3.ts"
+    },
+    {
+      "file": "src/tutor-mcp.ts",
+      "line": 1,
+      "import": "./learning-context.js",
+      "missing": "src/learning-context.ts"
+    },
+    {
+      "file": "src/tutor-mcp.ts",
+      "line": 8,
+      "import": "./excalidraw-surface.js",
+      "missing": "src/excalidraw-surface.ts"
+    },
+    {
+      "file": "src/tutor-mcp.ts",
+      "line": 9,
+      "import": "./tutor-board-surface.js",
+      "missing": "src/tutor-board-surface.ts"
+    },
+    {
+      "file": "src/tutor-mcp.ts",
+      "line": 11,
+      "import": "./tutor-task.js",
+      "missing": "src/tutor-task.ts"
+    },
+    {
+      "file": "src/tutor-mcp.ts",
+      "line": 12,
+      "import": "./tutor-surface.js",
+      "missing": "src/tutor-surface.ts"
+    },
+    {
+      "file": "src/tutor-mcp.ts",
+      "line": 13,
+      "import": "./surface-transaction-journal.js",
+      "missing": "src/surface-transaction-journal.ts"
+    },
+    {
+      "file": "src/tutor-mcp.ts",
+      "line": 14,
+      "import": "./service-work.js",
+      "missing": "src/service-work.ts"
+    },
+    {
+      "file": "src/tutor-pairing-modal.ts",
+      "line": 2,
+      "import": "./tutor-surface.js",
+      "missing": "src/tutor-surface.ts"
+    }
+  ],
+  "installed_artifacts": [
+    {
+      "vault": "psychological plugin",
+      "version": "0.7.7",
+      "dist_main_matches": true
+    },
+    {
+      "vault": "所作",
+      "version": "0.7.7",
+      "dist_main_matches": true
+    }
+  ],
+  "commands": [
+    {
+      "command": "pnpm typecheck",
+      "result": "blocked before type checking: package.json conflict markers are invalid JSON"
+    },
+    {
+      "command": "pnpm test",
+      "result": "blocked before test execution: package.json conflict markers are invalid JSON"
+    },
+    {
+      "command": "pnpm build",
+      "result": "not run: current script removes the last preserved dist/main.js before attempting compilation"
+    }
+  ],
+  "git_index_sha256": "76cb49694d08bf51f84b3ef8974b3450c598f8a76b72ec9c177861fc44b2734c",
+  "cleanup_report": "cleanup-2026-10-22.json"
+}

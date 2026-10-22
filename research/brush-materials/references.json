@@ -1,0 +1,31 @@
+{
+  "formatVersion": 1,
+  "reviewedAt": "2026-09-26",
+  "policy": "Only individually verified public-domain, CC0 or attributed CC BY 4.0 media may be cropped or distributed. The source painting is a visual texture reference, not a pressure recording.",
+  "references": [
+    {
+      "id": "nga-sargent-men-on-a-spar",
+      "materials": ["pencil"],
+      "creator": "John Singer Sargent",
+      "title": "Men on a Spar",
+      "physicalMedium": "graphite on wove paper",
+      "institution": "National Gallery of Art",
+      "objectUrl": "https://www.nga.gov/artworks/184307-men-spar",
+      "originalUrl": "https://api.nga.gov/iiif/3df9133a-fc32-4498-ba23-915e92c6dc5f/full/full/0/default.jpg?attachment_filename=men_on_a_spar_2015.19.691.jpg",
+      "rights": "Public domain media, explicitly stated on the individual NGA object page",
+      "status": "source-verified; original dimensions, checksum and crop not yet recorded"
+    },
+    {
+      "id": "nga-homer-on-the-sands",
+      "materials": ["watercolor", "pen"],
+      "creator": "Winslow Homer",
+      "title": "On the Sands",
+      "physicalMedium": "watercolor and gouache with pen and black ink over graphite",
+      "institution": "National Gallery of Art",
+      "objectUrl": "https://www.nga.gov/artworks/64550-sands",
+      "originalUrl": "https://api.nga.gov/iiif/2f327993-832c-4e0f-8039-90d378bac74d/full/full/0/default.jpg?attachment_filename=on_the_sands_1984.58.1.jpg",
+      "rights": "Public domain media, explicitly stated on the individual NGA object page",
+      "status": "source-verified; original dimensions, checksum and crop not yet recorded"
+    }
+  ]
+}

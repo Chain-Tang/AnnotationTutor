@@ -1,13 +1,15 @@
+import { captureTextTarget, resolveTextTarget, uniqueTextTarget, type TextTarget } from "./text-target.js";
 // Inline translation + background pre-translation (Alt+T), extracted from the
 // plugin so main.ts stays focused. Owns the per-file glossary cache and the
 // status-bar progress counter; the engine call (`captureText`) and shared
 // services are injected so this stays a cohesive unit.
 
-import { type App, type Editor, type EditorPosition, Notice, setIcon, TFile } from "obsidian";
+import { type App, type Editor, Modal, Notice, setIcon, TFile } from "obsidian";
 import { getLocale, t } from "./i18n.js";
 import type { AnnotationTutorLiteSettings } from "./settings-config.js";
 import type { ReviewOutcome } from "./review-outcome.js";
 import { lineTextWithoutBlockId } from "./editor.js";
+import { TranslationRequestQueue } from "./translation-request-queue.js";
 import {
   applyGlossary,
   buildFileGlossary,
@@ -39,13 +41,20 @@ type LiveGloss =
   | { kind: "fail"; outcome: ReviewOutcome };
 
 export type TranslationDeps = {
+  activity?:()=>void;
   app: App;
   /** Status-bar element for the compact "done/total" pre-translation counter. */
   statusBar: HTMLElement;
   settings: () => AnnotationTutorLiteSettings;
   chatTimeoutMs: () => number;
   /** One one-shot generation through the configured review engine. */
-  captureText: (prompt: string, timeoutMs: number) => Promise<ReviewOutcome>;
+  captureText: (prompt: string, timeoutMs: number, signal?: AbortSignal) => Promise<ReviewOutcome>;
+  /** Independent API requests may overlap; shared ACP sessions must stay serial. */
+  pretranslateConcurrency?: () => number;
+};
+type TranslationRun = {
+  file: TFile | null; path: string | undefined; language: string;
+  configuration: string; controller: AbortController;
 };
 
 export class TranslationController {
@@ -53,18 +62,89 @@ export class TranslationController {
   private readonly glossaryCache = new Map<string, FileGlossary>();
   // File paths with a pre-translation pass in flight, to avoid duplicate runs.
   private readonly pretranslating = new Set<string>();
+  private readonly pretranslateRuns = new Map<string, TranslationRun>();
+  private readonly glossaryLanguages = new Map<string, string>();
+  private readonly runs = new Set<TranslationRun>();
+  private readonly requests: TranslationRequestQueue;
+  private configuration: string;
+  private disposed = false;
 
-  public constructor(private readonly deps: TranslationDeps) {}
+  public constructor(private readonly deps: TranslationDeps) {
+    this.configuration = this.configurationKey();
+    this.requests = new TranslationRequestQueue(() => this.concurrency());
+  }
+
+  private concurrency(): number {
+    const engine = this.deps.settings().reviewEngine;
+    return engine === "opencode" ? 1 : this.deps.pretranslateConcurrency?.() ?? (engine === "api" ? 2 : 1);
+  }
+
+  /** Only compared in memory; never logged, serialized or used as a cache key. */
+  private configurationKey(): string {
+    const settings = this.deps.settings();
+    return JSON.stringify([this.dictionaryLanguageName(), settings.reviewEngine,
+      settings.apiBaseUrl, settings.apiModel, settings.apiKey, settings.agentCommand,
+      settings.agentModel, settings.agentShellPath, settings.agentFallbackModel]);
+  }
+
+  public onSettingsChanged(): void {
+    const configuration = this.configurationKey();
+    if (configuration === this.configuration) return;
+    this.configuration = configuration;
+    for (const run of this.runs) run.controller.abort();
+    this.pretranslateRuns.clear(); this.pretranslating.clear();
+    this.glossaryCache.clear(); this.glossaryLanguages.clear();
+    if (!this.disposed) this.clearPretranslateStatus();
+  }
+
+  public onFileChanged(path: string): void { this.onFileDeleted(path); }
+
+  public dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    for (const run of this.runs) run.controller.abort();
+    this.requests.dispose(); this.runs.clear();
+    this.pretranslateRuns.clear(); this.pretranslating.clear();
+    this.glossaryCache.clear(); this.glossaryLanguages.clear();
+    this.clearPretranslateStatus();
+  }
+
+  private beginRun(file: TFile | null): TranslationRun {
+    this.onSettingsChanged();
+    const run = { file, path: file?.path, language: this.dictionaryLanguageName(),
+      configuration: this.configuration, controller: new AbortController() };
+    if (this.disposed) run.controller.abort(); else this.runs.add(run);
+    return run;
+  }
+
+  private current(run: TranslationRun): boolean {
+    return !this.disposed && !run.controller.signal.aborted && run.configuration === this.configurationKey() &&
+      (!run.file || this.deps.app.vault.getAbstractFileByPath(run.file.path) === run.file);
+  }
+
+  private capture(run: TranslationRun, prompt: string): Promise<ReviewOutcome> {
+    return this.requests.run(run.controller.signal, () => {
+      if (!this.current(run)) throw new DOMException("Translation changed", "AbortError");
+      return this.deps.captureText(prompt, this.deps.chatTimeoutMs(), run.controller.signal);
+    });
+  }
 
   /** A renamed/moved file keeps its cached glossary; a deleted one drops it. */
   public onFileDeleted(path: string): void {
+    for (const run of this.runs) if (run.path === path) run.controller.abort();
     this.glossaryCache.delete(path);
+    this.glossaryLanguages.delete(path);
+    this.pretranslateRuns.delete(path);
+    this.pretranslating.delete(path);
+    if (!this.disposed && !this.pretranslating.size) this.clearPretranslateStatus();
   }
 
   public onFileRenamed(oldPath: string, newPath: string): void {
     const moved = this.glossaryCache.get(oldPath);
-    this.glossaryCache.delete(oldPath);
+    const language = this.glossaryLanguages.get(oldPath);
+    this.onFileDeleted(oldPath);
     if (moved) this.glossaryCache.set(newPath, moved);
+    if (language) this.glossaryLanguages.set(newPath, language);
   }
 
   private dictionaryLanguageName(): string {
@@ -77,10 +157,9 @@ export class TranslationController {
    * falls back to a live call). Pure: no editor/file/notice side effects, so the
    * editor and Reading-view paths can each apply it their own way.
    */
-  private glossFromCache(selection: string, mode: TranslateMode): string | null {
-    const file = this.deps.app.workspace.getActiveFile();
+  private glossFromCache(selection: string, mode: TranslateMode, file: TFile | null): string | null {
     const glossary = file ? this.glossaryCache.get(file.path) : undefined;
-    if (!glossary) return null;
+    if (!glossary || this.glossaryLanguages.get(file!.path) !== this.dictionaryLanguageName()) return null;
     if (mode === "word") {
       const gloss = lookupGloss(glossary, selection);
       if (gloss) {
@@ -101,13 +180,14 @@ export class TranslationController {
     selection: string,
     contextLine: string,
     mode: TranslateMode,
-    target: string
+    target: string,
+    run: TranslationRun
   ): Promise<LiveGloss> {
     const prompt =
       mode === "word"
         ? buildWordGlossPrompt(selection.trim(), contextLine, target)
         : buildPassageGlossPrompt(selection, target);
-    const outcome = await this.deps.captureText(prompt, this.deps.chatTimeoutMs());
+    const outcome = await this.capture(run, prompt);
     if (outcome.kind !== "ok") return { kind: "fail", outcome };
     const wordGloss = mode === "word" ? cleanGloss(outcome.reviewText) : "";
     const replacement =
@@ -126,17 +206,18 @@ export class TranslationController {
    * Add a live word gloss to the active file's cached glossary so a repeat Alt+T
    * on the same term answers from cache. No-op when the file has no glossary yet.
    */
-  private cacheWordGloss(surface: string, gloss: string): void {
+  private cacheWordGloss(file: TFile | null, surface: string, gloss: string, target: string): void {
     if (!surface || !gloss) return;
-    const file = this.deps.app.workspace.getActiveFile();
-    if (!file) return;
+    if (!file || this.deps.app.vault.getAbstractFileByPath(file.path) !== file) return;
     const glossary = this.glossaryCache.get(file.path);
-    if (!glossary) return;
+    if (!glossary || this.glossaryLanguages.get(file.path) !== target || target !== this.dictionaryLanguageName()) return;
     this.glossaryCache.set(file.path, mergeGlossaryEntry(glossary, { surface, gloss }));
   }
 
   /** File-open hook: pre-translate the document when the feature is enabled. */
   public async maybePretranslate(file: TFile): Promise<void> {
+    if (this.disposed) return;
+    this.onSettingsChanged();
     if (!this.deps.settings().pretranslateOnOpen) return;
     // Don't auto-translate the plugin's own generated memory/library notes.
     const root = this.deps.settings().memoryRoot;
@@ -146,6 +227,8 @@ export class TranslationController {
 
   /** Manual command: (re)build the pre-translation glossary for the active note. */
   public async pretranslateActiveFile(): Promise<void> {
+    if (this.disposed) return;
+    this.onSettingsChanged();
     const file = this.deps.app.workspace.getActiveFile();
     if (!file || file.extension !== "md") {
       new Notice(t("notice.openMdFirst"));
@@ -161,93 +244,94 @@ export class TranslationController {
    * user invoked it manually). The live Alt+T path covers anything this misses.
    */
   private async pretranslateFile(file: TFile, manual: boolean): Promise<void> {
-    if (this.pretranslating.has(file.path)) {
+    const path = file.path;
+    if (this.pretranslating.has(path)) {
       if (manual) new Notice(t("notice.pretranslateBusy"));
       return;
     }
-    const content = await this.deps.app.vault.cachedRead(file);
-    const hash = contentHash(content);
-    const existing = this.glossaryCache.get(file.path);
-    if (existing && existing.hash === hash && existing.complete) {
-      if (manual) {
-        new Notice(t("notice.pretranslateUpToDate", { count: existing.entries.length }));
-      }
-      return;
-    }
-    const batches = segmentDocument(
-      content,
-      this.deps.settings().pretranslateChunkChars
-    ).slice(0, MAX_PRETRANSLATE_BATCHES);
-    if (batches.length === 0) {
-      this.glossaryCache.set(file.path, buildFileGlossary(hash, []));
-      if (manual) new Notice(t("notice.pretranslateEmpty"));
-      return;
-    }
-    this.pretranslating.add(file.path);
-    const target = this.dictionaryLanguageName();
-    this.setPretranslateStatus(0, batches.length);
-    const entries: GlossaryEntry[] = [];
-    let done = 0;
-    let failed = 0;
-    let needsKey = false;
+    // Reserve before reading: two open/manual triggers may arrive in one tick.
+    this.pretranslating.add(path);
+    const run = this.beginRun(file);
+    this.pretranslateRuns.set(path, run);
+    const target = run.language;
+    const current = () => this.current(run) && this.pretranslateRuns.get(path) === run && file.path === path;
     try {
-      for (const batch of batches) {
+      const content = await this.deps.app.vault.cachedRead(file);
+      if (!current()) return;
+      const hash = contentHash(content);
+      const existing = this.glossaryCache.get(path);
+      if (existing && existing.hash === hash && existing.complete && this.glossaryLanguages.get(path) === target) {
+        if (manual) new Notice(t("notice.pretranslateUpToDate", { count: existing.entries.length }));
+        return;
+      }
+      const batches = segmentDocument(content, this.deps.settings().pretranslateChunkChars).slice(0, MAX_PRETRANSLATE_BATCHES);
+      if (this.glossaryLanguages.get(path) !== target) this.glossaryCache.delete(path);
+      this.glossaryLanguages.set(path, target);
+      if (batches.length === 0) {
+        this.glossaryCache.set(path, buildFileGlossary(hash, []));
+        if (manual) new Notice(t("notice.pretranslateEmpty"));
+        return;
+      }
+      this.setPretranslateStatus(0, batches.length);
+      const results: GlossaryEntry[][] = Array.from({ length: batches.length }, () => []);
+      let done = 0, failed = 0, needsKey = false;
+      const entries = () => results.flat();
+      const translateBatch = async (index: number): Promise<void> => {
         let outcome: ReviewOutcome;
         try {
-          outcome = await this.deps.captureText(
-            buildGlossaryPrompt(batch, target),
-            this.deps.chatTimeoutMs()
-          );
+          outcome = await this.capture(run, buildGlossaryPrompt(batches[index]!, target));
         } catch (error) {
+          if (!current()) return;
           console.error("[Annotation Tutor Lite] pre-translate batch error", error);
-          outcome = {
-            kind: "failed",
-            detail: error instanceof Error ? error.message : String(error)
-          };
+          outcome = { kind: "failed", detail: error instanceof Error ? error.message : String(error) };
         }
-        if (outcome.kind === "needs-key") {
-          needsKey = true;
-          break;
-        }
-        if (outcome.kind === "ok") {
-          entries.push(...parseGlossary(outcome.reviewText));
-        } else {
-          failed += 1;
-        }
+        if (!current()) return;
+        if (outcome.kind === "needs-key") { needsKey = true; return; }
+        if (outcome.kind === "ok") results[index] = parseGlossary(outcome.reviewText);
+        else failed += 1;
         done += 1;
-        // Publish progress so far so Alt+T can already use the terms found.
-        this.glossaryCache.set(file.path, buildFileGlossary(hash, entries, false));
+        // Source order wins duplicate terms even when replies finish out of order.
+        this.glossaryCache.set(path, buildFileGlossary(hash, entries(), false));
         this.setPretranslateStatus(done, batches.length);
+      };
+      // Probe once before overlapping calls, so missing credentials cost one call.
+      await translateBatch(0);
+      let next = 1;
+      const configured = this.concurrency();
+      const concurrency = Number.isFinite(configured) ? Math.max(1, Math.min(2, Math.floor(configured))) : 1;
+      const worker = async () => {
+        while (!needsKey && current() && next < batches.length) await translateBatch(next++);
+      };
+      await Promise.all(Array.from({ length: concurrency }, worker));
+      if (!current()) return;
+      // An edited source must not acquire a completed cache for the old text.
+      if (contentHash(await this.deps.app.vault.cachedRead(file)) !== hash || !current()) {
+        this.glossaryCache.delete(path);
+        return;
       }
+      const glossary = buildFileGlossary(hash, entries(), !needsKey && failed === 0 && done === batches.length);
+      this.glossaryCache.set(path, glossary);
+      if (!manual) return;
+      if (needsKey) { new Notice(t("notice.apiKeyMissing")); return; }
+      const count = glossary.entries.length;
+      if (count > 0) new Notice(failed > 0 ? t("notice.pretranslatePartial", { count, failed }) : t("notice.pretranslateDone", { count }));
+      else new Notice(t(failed > 0 ? "notice.pretranslateFailed" : "notice.pretranslateEmpty"));
+    } catch (error) {
+      if (!current()) return;
+      console.error("[Annotation Tutor Lite] pre-translate error", error);
+      if (manual) new Notice(t("notice.pretranslateFailed"));
     } finally {
-      this.pretranslating.delete(file.path);
-      if (this.pretranslating.size === 0) this.clearPretranslateStatus();
-    }
-    if (needsKey) {
-      this.glossaryCache.set(file.path, buildFileGlossary(hash, entries));
-      if (manual) new Notice(t("notice.apiKeyMissing"));
-      return;
-    }
-    const glossary = buildFileGlossary(hash, entries);
-    this.glossaryCache.set(file.path, glossary);
-    const count = glossary.entries.length;
-    // Auto runs stay silent — the status-bar counter was the only hint needed.
-    if (!manual) return;
-    if (count > 0) {
-      new Notice(
-        failed > 0
-          ? t("notice.pretranslatePartial", { count, failed })
-          : t("notice.pretranslateDone", { count })
-      );
-    } else if (failed > 0) {
-      new Notice(t("notice.pretranslateFailed"));
-    } else {
-      new Notice(t("notice.pretranslateEmpty"));
+      this.runs.delete(run);
+      if (this.pretranslateRuns.get(path) === run) {
+        this.pretranslateRuns.delete(path); this.pretranslating.delete(path);
+      }
+      if (!this.disposed && this.pretranslating.size === 0) this.clearPretranslateStatus();
     }
   }
 
   /** Show a compact "done/total" pre-translation counter in the status bar. */
   private setPretranslateStatus(done: number, total: number): void {
+    if (this.disposed) return;
     const el = this.deps.statusBar;
     el.empty();
     if (total <= 0) return;
@@ -266,6 +350,8 @@ export class TranslationController {
    * gets every foreign word glossed in place.
    */
   public async translateSelection(editor: Editor): Promise<void> {
+    if (this.disposed) return;
+    this.deps.activity?.();
     const selection = editor.getSelection();
     if (!selection.trim()) {
       new Notice(t("notice.translateSelect"));
@@ -274,39 +360,42 @@ export class TranslationController {
     const from = editor.getCursor("from");
     const to = editor.getCursor("to");
     const mode = classifyTranslateSelection(selection);
-
-    // Fast path: answer from the pre-translation cache when it covers the
-    // selection. Otherwise fall through to a live model call.
-    const cached = this.glossFromCache(selection, mode);
-    if (cached && this.replaceSelection(editor, from, to, selection, cached)) {
-      new Notice(t("notice.translateDone"));
-      return;
-    }
-
-    const progress = new Notice(t("notice.translating"), 0);
+    const file = this.editorFile(editor);
+    const target = captureTextTarget(editor.getValue(), editor.posToOffset(from), editor.posToOffset(to));
+    const run = this.beginRun(file), language = run.language;
+    let progress: Notice | undefined;
     try {
+      const cached = this.glossFromCache(selection, mode, file);
+      if (cached && this.replaceSelection(editor, file, target, cached, run)) {
+        new Notice(t("notice.translateDone"));
+        return;
+      }
+      progress = new Notice(t("notice.translating"), 0);
       const result = await this.liveGloss(
         selection,
         lineTextWithoutBlockId(editor.getLine(from.line)),
         mode,
-        this.dictionaryLanguageName()
+        language,
+        run
       );
+      if (!this.current(run)) return;
       if (!this.handleLiveOutcome(result)) return;
-      if (!this.replaceSelection(editor, from, to, selection, result.replacement)) {
-        new Notice(t("notice.translateFailed", { detail: t("chat.edit.notLocated") }));
+      if (!this.replaceSelection(editor, file, target, result.replacement, run)) {
+        this.preserveResult(result.replacement);
         return;
       }
       // Self-healing cache: a missed word is glossed live once, then remembered.
-      if (result.word) this.cacheWordGloss(result.word.surface, result.word.gloss);
+      if (result.word) this.cacheWordGloss(file, result.word.surface, result.word.gloss, language);
       new Notice(t("notice.translateDone"));
     } catch (error) {
+      if (!this.current(run)) return;
       new Notice(
         t("notice.translateFailed", {
           detail: error instanceof Error ? error.message : String(error)
         })
       );
     } finally {
-      progress.hide();
+      this.runs.delete(run); progress?.hide();
     }
   }
 
@@ -320,43 +409,54 @@ export class TranslationController {
     file: TFile,
     rawSelection: string
   ): Promise<void> {
+    if (this.disposed) return;
     const selection = rawSelection.trim();
     if (!selection) {
       new Notice(t("notice.translateSelect"));
       return;
     }
     const mode = classifyTranslateSelection(selection);
-
-    const cached = this.glossFromCache(selection, mode);
-    if (cached && (await this.replaceInFile(file, selection, cached))) {
-      new Notice(t("notice.translateDone"));
-      return;
-    }
-
-    const progress = new Notice(t("notice.translating"), 0);
+    const run = this.beginRun(file), language = run.language;
+    let progress: Notice | undefined;
     try {
+      const original = await this.deps.app.vault.cachedRead(file);
+      if (!this.current(run)) return;
+      const target = uniqueTextTarget(original, selection);
+      const cached = this.glossFromCache(selection, mode, file);
+      if (cached && await this.replaceInFile(file, target, cached, run)) {
+        if (this.current(run)) new Notice(t("notice.translateDone"));
+        return;
+      }
+      if (!this.current(run)) return;
+      progress = new Notice(t("notice.translating"), 0);
       const content = await this.deps.app.vault.cachedRead(file);
+      if (!this.current(run)) return;
       const result = await this.liveGloss(
         selection,
         sourceLineContaining(content, selection) ?? selection,
         mode,
-        this.dictionaryLanguageName()
+        language,
+        run
       );
+      if (!this.current(run)) return;
       if (!this.handleLiveOutcome(result)) return;
-      if (!(await this.replaceInFile(file, selection, result.replacement))) {
-        new Notice(t("notice.translateFailed", { detail: t("chat.edit.notLocated") }));
+      const replaced = await this.replaceInFile(file, target, result.replacement, run);
+      if (!this.current(run)) return;
+      if (!replaced) {
+        this.preserveResult(result.replacement);
         return;
       }
-      if (result.word) this.cacheWordGloss(result.word.surface, result.word.gloss);
+      if (result.word) this.cacheWordGloss(file, result.word.surface, result.word.gloss, language);
       new Notice(t("notice.translateDone"));
     } catch (error) {
+      if (!this.current(run)) return;
       new Notice(
         t("notice.translateFailed", {
           detail: error instanceof Error ? error.message : String(error)
         })
       );
     } finally {
-      progress.hide();
+      this.runs.delete(run); progress?.hide();
     }
   }
 
@@ -378,41 +478,42 @@ export class TranslationController {
     return true;
   }
 
-  /** Replace the first occurrence of `original` in `file`; true when found. */
-  private async replaceInFile(
-    file: TFile,
-    original: string,
-    replacement: string
-  ): Promise<boolean> {
+  private editorFile(editor: Editor): TFile | null {
+    for (const leaf of this.deps.app.workspace.getLeavesOfType("markdown")) {
+      const view = leaf.view as unknown as { editor?: Editor; file?: TFile };
+      if (view.editor === editor) return view.file ?? null;
+    }
+    return null;
+  }
+
+  private preserveResult(text: string): void {
+    if (this.disposed) return;
+    const modal = new Modal(this.deps.app);
+    modal.titleEl.setText(t("upgrade.translationPreserved"));
+    const field = modal.contentEl.createEl("textarea", { attr: { readonly: "true", rows: "10" } });
+    field.value = text; field.style.width = "100%";
+    const copy = modal.contentEl.createEl("button", { text: t("chat.copy") });
+    copy.onclick = () => { field.select(); void field.ownerDocument.defaultView?.navigator.clipboard.writeText(text); };
+    modal.open();
+  }
+
+  private async replaceInFile(file: TFile, target: TextTarget | null, replacement: string, run: TranslationRun): Promise<boolean> {
+    if (!this.current(run) || !target || this.deps.app.vault.getAbstractFileByPath(file.path) !== file) return false;
     let found = false;
-    await this.deps.app.vault.process(file, (data) => {
-      const idx = data.indexOf(original);
-      if (idx === -1) return data;
-      found = true;
-      return data.slice(0, idx) + replacement + data.slice(idx + original.length);
+    await this.deps.app.vault.process(file, data => {
+      if (!this.current(run)) return data;
+      const range = resolveTextTarget(target, data);
+      if (!range) return data;
+      found = true; return data.slice(0, range.start) + replacement + data.slice(range.end);
     });
     return found;
   }
 
-  /** Replace `original` at the captured range, re-locating it by text if it shifted. */
-  private replaceSelection(
-    editor: Editor,
-    from: EditorPosition,
-    to: EditorPosition,
-    original: string,
-    replacement: string
-  ): boolean {
-    if (editor.getRange(from, to) === original) {
-      editor.replaceRange(replacement, from, to);
-      return true;
-    }
-    const idx = editor.getValue().indexOf(original);
-    if (idx === -1) return false;
-    editor.replaceRange(
-      replacement,
-      editor.offsetToPos(idx),
-      editor.offsetToPos(idx + original.length)
-    );
+  private replaceSelection(editor: Editor, file: TFile | null, target: TextTarget, replacement: string, run: TranslationRun): boolean {
+    if (!this.current(run) || !file || this.editorFile(editor) !== file) return false;
+    const range = resolveTextTarget(target, editor.getValue());
+    if (!range) return false;
+    editor.replaceRange(replacement, editor.offsetToPos(range.start), editor.offsetToPos(range.end));
     return true;
   }
 

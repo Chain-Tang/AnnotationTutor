@@ -9,6 +9,7 @@ export function installCardChrome(card: HTMLElement, head: HTMLElement): () => v
     const active = doc.activeElement;
     const keyboardAction = active && head.contains(active) && active.matches("button:focus-visible");
     const visible = hovered || touched || Boolean(card.dataset["dragging"]) || Boolean(keyboardAction);
+    card.dataset["chromeVisible"] = String(visible);
     // Inline priority keeps even a custom skin's toolbar rules from making
     // controls permanently visible. Skins still own color, texture and shape.
     head.style.setProperty("opacity", visible ? "1" : "0", "important");
@@ -36,6 +37,7 @@ export function installCardChrome(card: HTMLElement, head: HTMLElement): () => v
   update();
   return () => {
     disposed = true;
+    delete card.dataset["chromeVisible"];
     card.removeEventListener("pointerenter", enter);
     card.removeEventListener("pointerleave", leave);
     card.removeEventListener("focusin", update);

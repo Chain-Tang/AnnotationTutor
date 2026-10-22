@@ -1,4 +1,5 @@
-import { type App, Modal, setIcon, setTooltip } from "obsidian";
+import { type App, Modal, setTooltip } from "obsidian";
+import { ANNOTATION_REVIEW_ICON, setAnnotationIcon } from "../annotation-icons.js";
 import { t } from "../i18n.js";
 import type { Annotation } from "../model.js";
 
@@ -84,7 +85,7 @@ export class DetailModal extends Modal {
     const actions = contentEl.createDiv({ cls: "atl-iconbar" });
     this.button(actions, "corner-up-right", t("action.jump"), this.handlers.jump);
     this.button(actions, "pencil", t("action.edit"), this.handlers.edit);
-    this.button(actions, "sparkles", t("action.ask"), this.handlers.ask);
+    this.button(actions, ANNOTATION_REVIEW_ICON, t("action.ask"), this.handlers.ask);
     this.button(
       actions,
       "clipboard-copy",
@@ -105,7 +106,7 @@ export class DetailModal extends Modal {
     const button = container.createEl("button", {
       cls: danger ? "atl-iconbtn atl-iconbtn--danger" : "atl-iconbtn"
     });
-    setIcon(button, icon);
+    setAnnotationIcon(button, icon);
     setTooltip(button, tooltip);
     button.onclick = () => {
       void Promise.resolve(handler()).then(() => this.close());

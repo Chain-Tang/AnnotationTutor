@@ -2,7 +2,8 @@
 // NOT an Obsidian Modal, so there is no dimming backdrop — the source text stays
 // readable behind it. Dismisses on outside click or Escape.
 
-import { setIcon, setTooltip } from "obsidian";
+import { setTooltip } from "obsidian";
+import { ANNOTATION_REVIEW_ICON, setAnnotationIcon } from "../annotation-icons.js";
 import { t } from "../i18n.js";
 import type { Annotation } from "../model.js";
 
@@ -74,7 +75,7 @@ export class NotePopover {
     const bar = this.el.createDiv({ cls: "atl-iconbar" });
     this.iconButton(bar, "corner-up-right", t("action.jump"), handlers.jump);
     this.iconButton(bar, "pencil", t("action.edit"), handlers.edit);
-    this.iconButton(bar, "sparkles", t("action.ask"), handlers.ask);
+    this.iconButton(bar, ANNOTATION_REVIEW_ICON, t("action.ask"), handlers.ask);
     this.iconButton(bar, "trash-2", t("action.delete"), handlers.remove, true);
   }
 
@@ -88,7 +89,7 @@ export class NotePopover {
     const button = container.createEl("button", {
       cls: danger ? "atl-iconbtn atl-iconbtn--danger" : "atl-iconbtn"
     });
-    setIcon(button, icon);
+    setAnnotationIcon(button, icon);
     setTooltip(button, tooltip);
     button.onclick = () => {
       this.close();

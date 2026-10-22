@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type {
+  Annotation,
   IndexRecord,
   LearnerProfile,
   MemoryCell,
@@ -63,6 +64,50 @@ export type LibraryFiles = {
   proposals: LibraryFile[];
 };
 
+type ParsedLibraryKinds = {
+  annotation: Annotation;
+  "memory-cell": MemoryCell;
+  scene: Scene;
+  profile: LearnerProfile;
+  proposal: MemoryProposal;
+};
+type ParsedLibraryFile<Kind extends LibraryDiagnosticKind> = {
+  raw: string;
+  hash: string;
+  value: ParsedLibraryKinds[Kind] | null;
+  diagnostic?: LibraryDiagnostic;
+};
+
+/** Raw versions are separate from last-valid snapshots. An incomplete editor
+ * version must stay cached as invalid, rather than being retried on every read. */
+export class LibraryParseCache {
+  private readonly entries = new Map<string, ParsedLibraryFile<LibraryDiagnosticKind>>();
+
+  read<Kind extends LibraryDiagnosticKind>(kind: Kind, file: LibraryFile): ParsedLibraryFile<Kind> {
+    const key = `${kind}\n${file.path}`;
+    const cached = this.entries.get(key);
+    if (cached?.raw === file.content) return cached as ParsedLibraryFile<Kind>;
+    const parsers = {
+      annotation: parseAnnotationFile, "memory-cell": parseMemoryCellFile,
+      scene: parseSceneFile, profile: parseProfileFile, proposal: parseProposalFile
+    };
+    const value = parsers[kind](file.content) as ParsedLibraryKinds[Kind] | null;
+    const entry: ParsedLibraryFile<Kind> = {
+      raw: file.content, hash: sha256(file.content), value,
+      ...(value ? {} : { diagnostic: invalid(file.path, kind) })
+    };
+    this.entries.set(key, entry);
+    return entry;
+  }
+
+  retain(files: LibraryFiles): void {
+    const paths = new Set(Object.values(files).flatMap(group => group.map(file => file.path)));
+    for (const key of this.entries.keys()) if (!paths.has(key.slice(key.indexOf("\n") + 1))) this.entries.delete(key);
+  }
+
+  clear(): void { this.entries.clear(); }
+}
+
 export function emptyLibrarySnapshot(): LibrarySnapshot {
   return {
     version: 2,
@@ -77,18 +122,30 @@ export function emptyLibrarySnapshot(): LibrarySnapshot {
 }
 
 const indexRecordSchema = z.object({
+  tracking: z.enum(["ordinary", "private", "excluded"]).optional(),
   annotationId: z.string(),
   memoryFile: z.string(),
   sourceFile: z.string(),
   anchor: z.string(),
   anchorOrigin: z.enum(["generated", "existing", "legacy"]),
   selectedText: z.string(),
+  sourceType: z.enum(["markdown", "pdf"]).optional(),
+  sourcePage: z.number().int().positive().optional(),
   status: z.string(),
   concepts: z.array(z.string()),
   relatedMemoryCells: z.array(z.string()),
   reviewSummary: z.string().optional(),
+  reviewText: z.string().optional(),
   userNoteSummary: z.string().optional(),
   userNote: z.string().optional(),
+  dialogue: z.array(z.object({ id: z.string().optional(), role: z.enum(["user", "agent"]), text: z.string(), at: z.string() })).optional(),
+  branch: z.object({ parentAnnotationId: z.string(), rootAnnotationId: z.string(), sourceVersion: z.string(),
+    parentReply: z.object({ id: z.string(), kind: z.enum(["review", "dialogue"]), version: z.string(), text: z.string(), question: z.string().optional(), contextVersion: z.string().optional(),
+      history: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string() })).optional() }) }).optional(),
+  request: z.object({ id: z.string(), status: z.enum(["draft", "generating", "completed", "failed", "cancelled", "interrupted"]),
+    question: z.string(), errorCode: z.string().optional(), startedAt: z.string().optional(), contextVersion: z.string().optional(), sourceVersion: z.string().optional(), updatedAt: z.string() }).optional(),
+  dialogueRequest: z.object({ id: z.string(), status: z.enum(["draft", "generating", "completed", "failed", "cancelled", "interrupted"]),
+    question: z.string(), errorCode: z.string().optional(), startedAt: z.string().optional(), contextVersion: z.string().optional(), sourceVersion: z.string().optional(), updatedAt: z.string() }).optional(),
   createdAt: z.string(),
   updatedAt: z.string()
 });
@@ -118,6 +175,7 @@ const diagnosticSchema = z.object({
 
 const libraryCacheSchema = z.object({
   version: z.literal(2),
+  annotationProjectionVersion: z.literal(3),
   annotations: z.array(indexRecordSchema),
   cells: z.array(cellRecordSchema),
   scenes: z.array(sceneRecordSchema),
@@ -129,36 +187,38 @@ const libraryCacheSchema = z.object({
 
 export function buildLibrarySnapshot(
   files: LibraryFiles,
-  previous?: LibrarySnapshot
+  previous?: LibrarySnapshot,
+  cache = new LibraryParseCache()
 ): LibrarySnapshot {
   const diagnostics: LibraryDiagnostic[] = [];
   const fileHashes: Record<string, string> = {};
-  for (const group of Object.values(files)) {
-    for (const file of group) fileHashes[file.path] = sha256(file.content);
+  const kinds = { annotations: "annotation", cells: "memory-cell", scenes: "scene", profiles: "profile", proposals: "proposal" } as const;
+  for (const group of Object.keys(files) as Array<keyof LibraryFiles>) {
+    for (const file of files[group]) fileHashes[file.path] = cache.read(kinds[group], file).hash;
   }
 
   const annotations = files.annotations.flatMap((file) => {
-    const annotation = parseAnnotationFile(file.content);
+    const parsed = cache.read("annotation", file), annotation = parsed.value;
     if (!annotation) {
-      diagnostics.push(invalid(file.path, "annotation"));
+      diagnostics.push({ ...parsed.diagnostic! });
       return [];
     }
     return [recordFromAnnotation(annotation, file.path)];
   });
 
   const parsedCells = files.cells.flatMap((file) => {
-    const cell = parseMemoryCellFile(file.content);
+    const parsed = cache.read("memory-cell", file), cell = parsed.value;
     if (!cell) {
-      diagnostics.push(invalid(file.path, "memory-cell"));
+      diagnostics.push({ ...parsed.diagnostic! });
       return [];
     }
     return [{ cell, path: file.path }];
   });
 
   const parsedScenes = files.scenes.flatMap((file) => {
-    const scene = parseSceneFile(file.content);
+    const parsed = cache.read("scene", file), scene = parsed.value;
     if (!scene) {
-      diagnostics.push(invalid(file.path, "scene"));
+      diagnostics.push({ ...parsed.diagnostic! });
       return [];
     }
     return [{ scene, path: file.path }];
@@ -195,9 +255,9 @@ export function buildLibrarySnapshot(
     ...scenes.map((scene) => scene.id)
   ]);
   const profiles = files.profiles.flatMap((file) => {
-    const profile = parseProfileFile(file.content);
+    const parsed = cache.read("profile", file), profile = parsed.value;
     if (!profile) {
-      diagnostics.push(invalid(file.path, "profile"));
+      diagnostics.push({ ...parsed.diagnostic! });
       return [];
     }
     // Keep the profile but drop only the claims whose evidence has gone missing.
@@ -220,9 +280,9 @@ export function buildLibrarySnapshot(
   });
 
   const proposals = files.proposals.flatMap((file) => {
-    const proposal = parseProposalFile(file.content);
+    const parsed = cache.read("proposal", file), proposal = parsed.value;
     if (!proposal) {
-      diagnostics.push(invalid(file.path, "proposal"));
+      diagnostics.push({ ...parsed.diagnostic! });
       return [];
     }
     return [proposal];
@@ -238,17 +298,21 @@ export function buildLibrarySnapshot(
     diagnostics,
     files: fileHashes
   };
-  return previous ? retainLastValid(snapshot, previous) : snapshot;
+  // Published records may be used by mutable host UI adapters. Keep that
+  // boundary isolated from parsed raw versions, just as a fresh parse was.
+  return structuredClone(previous ? retainLastValid(snapshot, previous) : snapshot);
 }
 
 export function serializeLibraryCache(snapshot: LibrarySnapshot): string {
-  return `${JSON.stringify(snapshot, null, 2)}\n`;
+  return `${JSON.stringify({ ...snapshot, annotationProjectionVersion: 3 }, null, 2)}\n`;
 }
 
 export function parseLibraryCache(text: string): LibrarySnapshot | null {
   try {
     const result = libraryCacheSchema.safeParse(JSON.parse(text));
-    return result.success ? (result.data as LibrarySnapshot) : null;
+    if (!result.success) return null;
+    const { annotationProjectionVersion: _projectionVersion, ...snapshot } = result.data;
+    return snapshot as LibrarySnapshot;
   } catch {
     return null;
   }

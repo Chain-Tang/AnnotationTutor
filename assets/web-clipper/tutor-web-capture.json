@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "0.1.0",
+  "name": "Tutor Web Capture",
+  "behavior": "create",
+  "noteNameFormat": "{{title|safe_name}} {{date|date:\"YYYY-MM-DD\"}}",
+  "path": "Agent Memory/captures",
+  "context": "{{content}}",
+  "properties": [
+    { "name": "type", "value": "web-capture", "type": "text" },
+    { "name": "tutor_capture", "value": "official-v1", "type": "text" },
+    { "name": "capture_source", "value": "obsidian-web-clipper", "type": "text" },
+    { "name": "tutor_analysis", "value": "pending", "type": "text" },
+    { "name": "title", "value": "{{title}}", "type": "text" },
+    { "name": "source-url", "value": "{{url}}", "type": "text" },
+    { "name": "author", "value": "{{author}}", "type": "multitext" },
+    { "name": "published", "value": "{{published}}", "type": "datetime" },
+    { "name": "captured-at", "value": "{{date}}", "type": "datetime" },
+    { "name": "tags", "value": "web-capture", "type": "multitext" }
+  ],
+  "triggers": [],
+  "noteContentFormat": "> [!source]\n> [{{title}}]({{url}})\n\n{{description}}\n\n## Captured content\n\n{{content}}\n\n## Highlights\n\n{{highlights}}"
+}

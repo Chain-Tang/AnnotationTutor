@@ -36,6 +36,10 @@ const TEMPLATE_CSS = `/* @name My skin */
 /** Manages the plugin's `skins/` folder and the injected custom-skin <style>. */
 export class SkinLoader {
   private styleEl: HTMLStyleElement | null = null;
+  private disposed = false;
+  private pending: Promise<void> = Promise.resolve();
+  private generation = 0;
+  private scan: { generation: number; promise: Promise<SkinDef[]> } | null = null;
 
   public constructor(
     private readonly app: App,
@@ -46,19 +50,39 @@ export class SkinLoader {
     return normalizePath(`${this.pluginDir}/skins`);
   }
 
+  /** Share a scan; a concurrent creation makes every waiter receive a fresh scan. */
+  public loadCustomSkins(): Promise<SkinDef[]> {
+    if (this.disposed) return Promise.resolve([]);
+    if (this.scan?.generation === this.generation) return this.scan.promise;
+    const generation = this.generation;
+    const promise = this.enqueue(() => this.scanFolder()).then(skins => {
+      if (this.disposed) return [];
+      return generation === this.generation ? skins : this.loadCustomSkins();
+    }, error => {
+      if (this.disposed) return [];
+      throw error;
+    });
+    this.scan = { generation, promise };
+    const clear = () => {
+      if (this.scan?.promise === promise) this.scan = null;
+    };
+    // Handle both outcomes without making an unobserved rejecting finally-chain.
+    void promise.then(clear, clear);
+    return promise;
+  }
+
   /** Scan the skins folder; each `.css` file becomes a user SkinDef. */
-  public async loadCustomSkins(): Promise<SkinDef[]> {
+  private async scanFolder(): Promise<SkinDef[]> {
     const adapter = this.app.vault.adapter;
     if (!(await adapter.exists(this.dir))) return [];
-    let files: string[];
-    try {
-      files = (await adapter.list(this.dir)).files;
-    } catch {
-      return [];
-    }
+    if (this.disposed) return [];
+    // A missing directory is empty; a failed directory read is not. Preserve
+    // the caller's current registry on transient storage failure.
+    const files = (await adapter.list(this.dir)).files;
     const skins: SkinDef[] = [];
     const seen = new Set<string>();
     for (const path of files) {
+      if (this.disposed) return [];
       if (!path.toLowerCase().endsWith(".css")) continue;
       const base = path.slice(path.lastIndexOf("/") + 1);
       const id = sanitizeSkinId(base);
@@ -84,6 +108,7 @@ export class SkinLoader {
 
   /** Inject the active skin's CSS. Built-ins carry none, so this clears it. */
   public applyCss(skin: SkinDef | undefined): void {
+    if (this.disposed) return;
     const css = skin && !skin.builtin ? skin.css ?? "" : "";
     if (!css) {
       this.styleEl?.remove();
@@ -99,36 +124,47 @@ export class SkinLoader {
   }
 
   /** Create `skins/<id>.css` from the template and return its id. */
-  public async createFromTemplate(): Promise<string> {
-    const adapter = this.app.vault.adapter;
-    await this.ensureDir();
-    let id = "my-skin";
-    let n = 2;
-    while (await adapter.exists(this.filePath(id))) {
-      id = `my-skin-${n}`;
-      n += 1;
-    }
-    const css = TEMPLATE_CSS.replace(/my-skin/g, id).replace(
-      "@name My skin",
-      `@name ${humanizeSkinId(id)}`
-    );
-    await adapter.write(this.filePath(id), css);
-    return id;
+  public createFromTemplate(): Promise<string> {
+    // Invalidate immediately, before queued IO starts, so reload cannot join a
+    // pre-creation scan and publish a registry that omits the new file.
+    this.generation += 1;
+    return this.enqueue(async () => {
+      const adapter = this.app.vault.adapter;
+      await this.ensureDir();
+      let id = "my-skin";
+      let n = 2;
+      while (await adapter.exists(this.filePath(id))) {
+        this.ensureActive();
+        id = `my-skin-${n}`;
+        n += 1;
+      }
+      this.ensureActive();
+      const css = TEMPLATE_CSS.replace(/my-skin/g, id).replace(
+        "@name My skin",
+        `@name ${humanizeSkinId(id)}`
+      );
+      await adapter.write(this.filePath(id), css);
+      this.ensureActive();
+      return id;
+    });
   }
 
   /** Open the skins folder in the OS file manager (desktop only). */
-  public async openFolder(): Promise<void> {
-    await this.ensureDir();
-    const adapter = this.app.vault.adapter;
-    if (!(adapter instanceof FileSystemAdapter)) return;
-    const full = adapter.getFullPath(this.dir);
-    const electron = require("electron") as {
-      shell?: { openPath?: (p: string) => Promise<string> };
-    };
-    await electron.shell?.openPath?.(full);
+  public openFolder(): Promise<void> {
+    return this.enqueue(async () => {
+      await this.ensureDir();
+      const adapter = this.app.vault.adapter;
+      if (!(adapter instanceof FileSystemAdapter)) return;
+      const full = adapter.getFullPath(this.dir);
+      const electron = require("electron") as {
+        shell?: { openPath?: (p: string) => Promise<string> };
+      };
+      await electron.shell?.openPath?.(full);
+    });
   }
 
   public unload(): void {
+    this.disposed = true;
     this.styleEl?.remove();
     this.styleEl = null;
   }
@@ -139,6 +175,22 @@ export class SkinLoader {
 
   private async ensureDir(): Promise<void> {
     const adapter = this.app.vault.adapter;
-    if (!(await adapter.exists(this.dir))) await adapter.mkdir(this.dir);
+    const exists = await adapter.exists(this.dir);
+    this.ensureActive();
+    if (!exists) await adapter.mkdir(this.dir);
+    this.ensureActive();
+  }
+
+  private ensureActive(): void {
+    if (this.disposed) throw new Error("skin-loader-unloaded");
+  }
+
+  private enqueue<T>(run: () => Promise<T>): Promise<T> {
+    const operation = this.pending.then(() => {
+      this.ensureActive();
+      return run();
+    });
+    this.pending = operation.then(() => {}, () => {});
+    return operation;
   }
 }

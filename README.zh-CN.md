@@ -1,5 +1,8 @@
 # Annotation Tutor Lite
 
+> 当前本地源码候选 **0.7.8**（2026-10-23 设置重设计）。本版本基于 [0.7.7 恢复记录](docs/project-recovery-2026-10-22.md) 中的工程基线；[恢复前项目评估](docs/project-assessment-2026-10-22.md)作为历史快照保留。源码变更本身不等于发布版本，也不会自动更新已安装的库。全部商业与桌面验收仍未完成；学习、主动关怀和专家核对仍默认关闭。[使用与回退](docs/tutor-learning-upgrade.md)。
+
+
 **读到重要的地方，留下自己的理解。**
 
 [English](README.md) · **简体中文**
@@ -20,7 +23,7 @@
 
 无需独立的批注数据库，也不强制注册 TutorLite 云端账号。你的笔记仍然是 Vault 中可以直接打开、编辑和迁移的 Markdown 文件。保存批注不需要 AI；点评、对话与翻译需要配置引擎。
 
-## 0.2.4 这一轮更新
+## 阅读与批注能力（0.2.4 起）
 
 | 阅读材料 | 你可以怎样批注 |
 | --- | --- |
@@ -33,7 +36,7 @@
 
 简洁、纸张、便利贴、叶片或自定义皮肤，都遵循同一套交互：静止时以文字为主，需要操作时才显示清楚的黑色图标。卡片在布局刷新时保留身份，减少拖动和编辑被重新创建打断的问题。在设置中启用页边批注，即可使用可拖动卡片。
 
-我们希望保留的是“在原文旁写下想法”的轻盈感。纸感是视觉与交互设计，不代表已经实现手写笔输入。
+我们希望保留的是“在原文旁写下想法”的轻盈感。页边卡片保持文字编辑；自由笔迹可以使用独立的灵感画板。
 
 ### PDF 与 Markdown，共用一套高亮语言
 
@@ -54,7 +57,9 @@ PDF 批注使用与 Markdown 一致的高亮颜色变量和样式设置。独立
 
 ## 阅读之外，也能连接你的学习材料
 
-- **网页剪藏**：配套 Chromium 扩展保存网页高亮和批注，把选区或可读正文送进 Vault。[查看扩展说明 →](extension/README.md)
+- **灵感画板**：Markdown 实时预览、源码模式、阅读视图共用画板，继续支持 PDF。左侧竖栏用于画笔迹、写文字和绘制图形；画板与右侧对话共用模型、API 和历史，Tutor 流式回复、逐步画图。关闭右侧时，画板只展示最新的临时手写回复，画作保留。上传和双方共创的表情素材独立于当前 Tutor 角色。[画板使用指南 →](docs/inspiration-board.md)
+- **设置工作区（0.7.8）**：按分类搜索设置，在连接列表与详情区中配置模型，并集中查看各功能的路由。后台刷新时保留输入草稿和焦点。[原生预览与验收记录 →](docs/settings-design-qa-2026-10-23.md)
+- **网页剪藏**：默认使用官方 [Obsidian Web Clipper](https://github.com/obsidianmd/obsidian-clipper) 的跨浏览器界面；在 **设置 → Annotation Tutor Lite → 网页采集** 导入 Tutor 版本化模板后，剪藏可通过 Direct API 或 OpenCode 分析。仓库内 Chromium 扩展保留为可选的 **Tutor 高级网页插件**，继续提供页内问答、逐条高亮备注和原始 HTML 快照。[查看高级扩展说明 →](extension/README.md)
 - **阅读辅助**：为支持的 Markdown 工作流提供行内释义和整篇笔记预翻译；不包含整份 PDF 正文抽取。
 - **学习笔记本**：把批注、原文和概念连起来，回顾时不必重新寻找上下文。
 - **四种界面语言**：English、简体中文、繁體中文、日本語。
@@ -66,26 +71,34 @@ PDF 批注使用与 Markdown 一致的高亮颜色变量和样式设置。独立
 
 ### 安装当前源码版本
 
-本页介绍的是源码版本 **0.2.4**。GitHub 最新发行版可能早于源码，请先核对版本号。要获得当前源码，需要 **Node 22.13+** 和 **pnpm 10**：
+本页介绍的是本地源码候选 **0.7.8**；远端 Git 分支可能仍落后于本地工作区，克隆后请核对 `manifest.json` 和当前提交。GitHub 最新发行版可能早于源码，请先核对版本号。开发需要 **Node 22.13+** 和 **pnpm 10**：
 
 ```bash
 git clone https://github.com/Chain-Tang/AnnotationTutor.git
 cd AnnotationTutor
 pnpm install --frozen-lockfile
+npm --prefix extension ci
+pnpm typecheck
+pnpm test
+pnpm test:release
+pnpm package
+pnpm package:verify
 pnpm install:vault -- --vault "/path/to/YourVault"
 ```
 
-安装命令会构建、复制插件文件并更新 Vault 的启用列表。请先保存正在编辑的批注，再重载 Obsidian，或关闭后重新启用插件。**复制新文件不等于运行中的旧插件已经重载。**
+最后一条命令只对选定的测试库执行，并填写库的绝对路径。默认在线安装目前使用 macOS Obsidian CLI：校验程序和凭据兼容性，要求运行中的插件保存并停止任务，备份安装目录，事务式替换，再重载插件并核对版本。请保留输出中的备份路径；任务忙碌或保存失败会阻止替换。
+
+离线安装时，先完全退出 Obsidian，再增加 `--offline`，随后启动 Obsidian 并手动检查加载。离线成功仅代表文件系统检查通过。其他平台需采用离线流程，或另行验证宿主入口。**复制新文件不等于运行中的旧插件已经重载。** [升级与恢复说明 →](docs/tutor-learning-upgrade.md)
 
 ### 安装打包发行版
 
-打开 [Releases](https://github.com/Chain-Tang/AnnotationTutor/releases)，确认版本及附件。如果有插件 ZIP，将其解压到 Vault 的 `.obsidian/plugins/` 下；也可将同一版本的 `main.js`、`manifest.json`、`styles.css` 放到：
+打开 [Releases](https://github.com/Chain-Tang/AnnotationTutor/releases)，确认版本及附件。如果有插件 ZIP，将其解压到 Vault 的 `.obsidian/plugins/` 下；手动安装时，将同一封存版本的完整插件目录（含 `main.js`、`desktop.js`、`mobile.js`、清单、样式、凭据兼容声明、离线字体与许可证）放到：
 
 ```text
 <你的Vault>/.obsidian/plugins/annotation-tutor-lite/
 ```
 
-在 Obsidian 的第三方插件设置中启用 **Annotation Tutor Lite**。存在兼容发行版时，也可通过 BRAT 添加 `Chain-Tang/AnnotationTutor`；BRAT 不会安装尚未发布为发行版的源码改动。
+完整插件 ZIP 和源码安装脚本均包含运行时分包、兼容声明、字体和许可证。**仅复制三个常规插件文件不足以完成安装。** 手动安装后，在 Obsidian 的第三方插件设置中启用 **Annotation Tutor Lite**。更新现有安装时，优先采用带备份与回退的受控安装脚本，避免覆盖运行中的文件。第三方安装工具也必须保留完整封存目录；如果只获取常规插件文件，请改用完整 ZIP。尚未发布的源码改动不会出现在 GitHub 发行附件中。
 
 ### 写下第一条批注
 
@@ -98,14 +111,22 @@ pnpm install:vault -- --vault "/path/to/YourVault"
 
 ## 连接你的导师
 
-在 **设置 → Annotation Tutor Lite → General** 中选择引擎：
+在 **设置 → Annotation Tutor Lite → AI 连接** 中选择引擎：
 
-- **Direct API**：填写自己的 OpenAI 兼容端点、模型与 API 密钥。密钥保存在 Vault 本地插件配置中，不属于本仓库内容。
-- **OpenCode**：自行安装并登录 CLI，再选择该引擎；插件通过 ACP 使用你已认证的 CLI。
+- **Direct API**：填写自己的 OpenAI 兼容端点、模型与 API 密钥。当前候选使用 Vault 外的系统加密凭据存储，插件配置只保存引用；系统存储不可用时，新凭据仅保留在当前会话。历史配置可能仍含旧明文。
+- **OpenCode**：自行安装并登录 CLI，再选择该引擎。“设置 OpenCode”现在会依次验证可执行文件、模型目录、ACP 握手、所选模型和一次最小真实模型往返，不再只凭模型列表报告连接成功。
 
 **本地优先，不等于 AI 完全离线。** 请求点评、对话或翻译时，配置的远端引擎可能接收相关文本与上下文。服务商的隐私政策、数据保留、额度与费用独立于本插件；请勿把插件配置和密钥上传到公共仓库。
 
 如果从 Dock 或桌面快捷方式启动的 Obsidian 找不到 CLI，可在引擎配置中填写可执行文件完整路径；插件也会搜索常见安装目录。
+
+## Tutor Studio 艺术画板
+
+命令面板执行“新建 Tutor 无限画板”可进入独立 Studio。Studio 与文档覆盖层共用原始笔迹和历史协议，但专门提供 Artboard、矢量/绘画/组图层、透明像素锁定与剪贴状态、画布旋转、镜像、单轴对称、裁切、渐变、吸管和本地分享。
+
+核心内置七类可区分笔刷：钢笔、钢笔尖、铅笔、马克笔、荧光笔、粉笔和水彩。文档覆盖层再次点击或长按画笔即可直接选择七类笔刷；独立 Studio 的右侧笔刷面板显示真实算法预览和尺寸、流量、稳定器等参数。
+
+作品可导出 PNG、JPEG、WebP、SVG、PDF、OpenRaster（`.ora`）和可编辑 `.tutorboard`。公开分享默认移除源文档路径、识别服务信息和隐藏图层。高级笔刷使用无脚本、带 SHA-256 与许可信息的 `.tutorbrush` 数据包，不把材质资源塞进主插件。
 
 ## 键盘快捷键
 
@@ -138,22 +159,36 @@ Agent Memory/
 - PDF 的“粗体”以更重的下划线强调，不修改画布上的原文字形。
 - 表格重复文字按出现顺序匹配，尚无完整行列语义身份；无法确认归属的旧锚点不自动清除。
 - PDF 前台物理鼠标操作及真实触屏设备仍需更广泛的端到端验证。DOM 回归不能替代所有 Obsidian 版本与主题的实际验收。
-- 当前桌面版本没有实现笔迹、压感或移动端支持。
+- 桌面版已实现 Pointer Events、压感/倾斜采样与七类笔刷；Android 真机的掌触、分屏、后台恢复和长会话门禁尚未完成，因此 manifest 继续保持桌面专属。
+- 水彩为确定性的多层透明 dab 与湿边模拟，不是真实流体混色；当前也不包含 PSD、CMYK/HDR、完整蒙版、滤镜栈或多人实时协作。
+- 图层组、透明锁与剪贴状态已进入 v4 数据和面板；连续填充已尊重透明像素锁定。逐笔透明锁与跨组剪贴合成仍是下一阶段的渲染硬化项。
 
 ## 开发与反馈
 
 ```bash
+pnpm install --frozen-lockfile
+npm --prefix extension ci
 pnpm typecheck
 pnpm test
-pnpm build
+pnpm test:release
+pnpm package
+pnpm package:verify
 ```
 
-`pnpm dev` 监听构建；`pnpm package` 生成发行附件。0.2.4 本地验证通过 **62 个测试文件、531 项测试**，覆盖悬停按钮、拖动中刷新、PDF 事件路由、高亮样式和表格锚定。GitHub CI 独立运行 Linux、Windows 与 macOS 的构建和测试。
+`pnpm dev` 监听源码变化；`pnpm build` 仅构建插件产物。`pnpm package` 重新构建插件与扩展并生成完整封存目录和 ZIP，`pnpm package:verify` 校验 ZIP 并写入 `dist/package-verification.json`。当前恢复结果与保留项见 [恢复记录](docs/project-recovery-2026-10-22.md)，旧优化报告只代表对应日期的快照。CI 已配置 Linux、Windows 与 macOS 的类型、测试、发布事务和打包检查，Linux 另有覆盖率检查；远端结果需按审阅的提交核对。发布使用经过审阅的分支／提交及完整 ZIP，详见 [维护交接文档](HANDOFF.md)。
 
 反馈交互问题时，请附上 Obsidian／插件版本、皮肤、视图模式、复现步骤，以及安装后是否确实重载了插件。尽量使用不含隐私信息的示例文档。
 
-[使用指南](docs/guide.md) · [更新记录](CHANGELOG.md) · [表格与 PDF 实现笔记](docs/table-and-pdf-anchoring.md) · [Pad 设计提案](docs/pad-handwriting-spec.md)
+[使用指南](docs/guide.md) · [更新记录](CHANGELOG.md) · [表格与 PDF 实现笔记](docs/table-and-pdf-anchoring.md) · [Pad 设计提案](docs/pad-handwriting-spec.md) · [继续开发：Pad 与灵感画板](docs/next-development-plan.md)
 
 ## 许可证
 
 [MIT](LICENSE) · © 2026 Chain。遵守许可证条款即可使用、修改与分发。
+
+#### 画板模型与数学作图
+
+画板现在默认跟随右侧 Tutor 的引擎、连接和模型。可在设置的模型路由中选择“独立配置”，恢复原画板预设或单独填写模型；升级不替换 API 密钥。绘图任务会显示实际执行模型。
+
+可以不打开画板，直接在右侧要求绘制函数或有限点极限图，例如“画 sin(x)/x 在 0 附近的极限图，标出空心点”。Tutor 先识别意图，再打开画板；函数曲线、坐标轴、趋近点与辅助线由宿主统一计算，结果可编辑、整轮撤销。数值检查不是数学证明，拖动对象不会自动重新计算数学关系。
+
+403 或零输出不会再触发绘图格式纠正。独立连接失败时可点击“使用右侧模型重试”。[本轮验收与明确未通过项](docs/qa/board-routing-math-2026-09-18/README.md)。

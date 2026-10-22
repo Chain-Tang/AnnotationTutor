@@ -1,0 +1,10 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "tutor",
+  "version": "0.5.0",
+  "description": "独立 Tutor 教学与精准共画，通过本机 MCP 连接 Obsidian。",
+  "author": {
+    "name": "Tutor contributors"
+  },
+  "license": "MIT"
+}
